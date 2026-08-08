@@ -92,7 +92,7 @@ for command in commands:
     assert 'description' in keys and 'skills' in keys
     assert '$ARGUMENTS' in body
 PY
-echo "  OK 13 Skills + 13 Commands (schema and one-to-one names)"
+echo "  OK 14 Skills + 14 Commands (schema and one-to-one names)"
 
 python3 - <<'PY'
 import json

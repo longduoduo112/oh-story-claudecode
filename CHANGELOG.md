@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.7.6（独立仓迁移准备 · 2026-08-09）
+
+本版把开发包与正式包分成两条受控渠道，并完成从 fork 仓蓝绿切换到同名独立仓之前的代码与发行准备。**本版只声明迁移门禁与发行契约，不表示远端仓库已完成改名或切换。**
+
+### Dev / Release 分流
+
+- 本地日常开发只生成带 commit SHA 和 UTC 时间的 Dev 包；可包含未提交改动，manifest 会明确标记 dirty，不得对外当正式版发布。
+- Release 只能手动触发，必须是干净工作树、当前 `main` 的确切 SHA、同 SHA 的 Dev 和跨平台 CI 全绿，且版本面、CHANGELOG 与 annotated tag 完全一致。
+- 正式包输出 ZIP / tar.gz、manifest 与 SHA-256 校验；稳定安装入口固定为 Release 资产 `oh-story-release.zip`，浮动仓库源仅作 Dev 渠道。
+- Release 先创建 Draft，禁止覆盖已有 tag、Release 或资产；完成人工复核后才可对外发布。ClawHub 发布保持可选且默认关闭。
+
+### 独立仓蓝绿迁移准备
+
+- 安装、更新检查与发行链路收敛到 `qin1473692580-ux/oh-story-claudecode` 的固定 Release 资产，为旧 fork 改名、新独立仓接管原名后保持同一公开地址做准备。
+- 迁移时以 mirror 保留全部 commits、branches 和 tags；远端改名、新仓创建、Release 复制与最终切换由独立的 cutover 流程执行，不在普通版本脚本中暗自修改远程状态。
+- Stars、Watchers 和 fork network 属于 GitHub 仓库元数据，不写入 Git 历史或安装包；蓝绿切换时它们保留在旧 fork，新独立仓单独计数。
+
+### 版本与部署契约
+
+- 公开 bundle 版本升级到 `0.7.6`，五个安装器 / marketplace 版本面由统一脚本校验，禁止单点改号。
+- `setup_skill_version` 升级到 `1.2.8`，`.story-deployed` 的 `agents_version` 升级到 `25`。本版包含部署模板、rules 和会话启动检查变更，已部署项目必须重跑 `/story-setup` 并新开会话。
+
 ## v0.7.5（fork · 2026-08-08）
 
 三类确定性闸口落地：跨章连续性守卫、规划记号泄漏拦截、情绪与钩子下限。同时把追踪状态改成单一权威事务模型。**已部署项目必须重跑 `/story-setup` 并新开会话**——`agents_version` 由 23 升到 24，本轮改了 24 个部署产物（含四端 hook 核与 agent 模板），不重跑则新的硬拦截一条都不生效。

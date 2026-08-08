@@ -1,0 +1,290 @@
+name: Release package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable package version (X.Y.Z); must equal skills/story/VERSION
+        required: true
+        type: string
+      publish_clawhub:
+        description: Publish changed skills to ClawHub while the GitHub Release remains a draft
+        required: true
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: oh-story-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Verify, gate, tag, build, and stage draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      head_sha: ${{ steps.preflight.outputs.head_sha }}
+      tag: ${{ steps.preflight.outputs.tag }}
+      version: ${{ steps.preflight.outputs.version }}
+    steps:
+      - name: Check out the dispatched commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify main HEAD, version, required CI, and unused release identity
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Release must be dispatched from main, not $GITHUB_REF."
+            exit 1
+          fi
+          if ! [[ "$REQUESTED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::version must be a stable X.Y.Z value without prefixes or prerelease suffixes."
+            exit 1
+          fi
+
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          head_sha=$(git rev-parse HEAD^{commit})
+          origin_main_sha=$(git rev-parse refs/remotes/origin/main^{commit})
+          if [ "$head_sha" != "$GITHUB_SHA" ] || [ "$head_sha" != "$origin_main_sha" ]; then
+            echo "::error::The dispatched SHA ($head_sha) is not the current origin/main HEAD ($origin_main_sha)."
+            exit 1
+          fi
+
+          canonical_version=$(tr -d '\r\n' < skills/story/VERSION)
+          if [ "$REQUESTED_VERSION" != "$canonical_version" ]; then
+            echo "::error::Requested version $REQUESTED_VERSION does not equal skills/story/VERSION ($canonical_version)."
+            exit 1
+          fi
+          tag="v$REQUESTED_VERSION"
+          python3 scripts/manage-version.py check --tag "$tag" --require-changelog
+          python3 scripts/check-release-contract-bumps.py
+
+          for required_workflow in package-dev.yml cross-platform.yml cli-compat.yml; do
+            runs_json=$(mktemp)
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$required_workflow" \
+              --branch main \
+              --commit "$head_sha" \
+              --status success \
+              --limit 100 \
+              --json conclusion,headBranch,headSha > "$runs_json"
+            if ! jq -e --arg sha "$head_sha" \
+              'any(.[]; .headSha == $sha and .headBranch == "main" and .conclusion == "success")' \
+              "$runs_json" >/dev/null; then
+              echo "::error::No successful completed $required_workflow run exists for main SHA $head_sha."
+              exit 1
+            fi
+          done
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::Remote tag $tag already exists; release tags are immutable and cannot be reused."
+            exit 1
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              echo "::error::Unable to inspect remote tag $tag."
+              exit "$status"
+            fi
+          fi
+
+          release_error=$(mktemp)
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" >/dev/null 2> "$release_error"; then
+            echo "::error::GitHub Release $tag already exists; releases are immutable and cannot be reused."
+            exit 1
+          elif ! grep -q 'HTTP 404' "$release_error"; then
+            cat "$release_error" >&2
+            exit 1
+          fi
+
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install dashboard test dependencies
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Re-run the package quality gate
+        env:
+          OH_STORY_SKIP_NPM_CI: "1"
+        run: bash scripts/run-quality-gate.sh
+
+      - name: Create the local annotated tag
+        env:
+          HEAD_SHA: ${{ steps.preflight.outputs.head_sha }}
+          TAG: ${{ steps.preflight.outputs.tag }}
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            echo "::error::Local tag $TAG unexpectedly exists; refusing to reuse it."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$TAG" "$HEAD_SHA" --message "oh-story $VERSION"
+
+      - name: Build release archives with tag verification
+        run: python3 scripts/build-package.py release
+
+      - name: Verify and smoke-test the release package
+        env:
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: >-
+          python3 scripts/verify-package.py
+          "dist/oh-story-$VERSION.zip"
+          --install-smoke
+
+      - name: Add the stable zip alias and complete checksum metadata
+        env:
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          version = os.environ["VERSION"]
+          dist = Path("dist")
+          versioned_zip = dist / f"oh-story-{version}.zip"
+          alias_zip = dist / "oh-story-release.zip"
+          tarball = dist / f"oh-story-{version}.tar.gz"
+          manifest_path = dist / f"oh-story-{version}.manifest.json"
+
+          for path in (versioned_zip, tarball, manifest_path):
+              if not path.is_file():
+                  raise SystemExit(f"missing release asset: {path}")
+          shutil.copyfile(versioned_zip, alias_zip)
+
+          def sha256(path: Path) -> str:
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          alias_entry = {
+              "name": alias_zip.name,
+              "format": "zip",
+              "size": alias_zip.stat().st_size,
+              "alias_for": versioned_zip.name,
+          }
+          manifest["files"] = [
+              item for item in manifest.get("files", [])
+              if item.get("name") != alias_zip.name
+          ] + [alias_entry]
+          manifest.setdefault("checksums", {})[alias_zip.name] = sha256(alias_zip)
+          manifest_path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          checksum_targets = (versioned_zip, alias_zip, tarball, manifest_path)
+          sums = "".join(
+              f"{sha256(path)}  {path.name}\n"
+              for path in sorted(checksum_targets, key=lambda item: item.name)
+          )
+          (dist / "SHA256SUMS").write_text(sums, encoding="utf-8")
+          PY
+          (cd dist && sha256sum --check SHA256SUMS)
+
+      - name: Push the tag and stage a new draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.preflight.outputs.head_sha }}
+          TAG: ${{ steps.preflight.outputs.tag }}
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          git push origin "refs/tags/$TAG"
+          gh release create "$TAG" \
+            --draft \
+            --verify-tag \
+            --target "$HEAD_SHA" \
+            --title "oh-story $VERSION" \
+            --generate-notes
+
+          gh release upload "$TAG" \
+            "dist/oh-story-$VERSION.zip" \
+            "dist/oh-story-release.zip" \
+            "dist/oh-story-$VERSION.tar.gz" \
+            "dist/oh-story-$VERSION.manifest.json" \
+            "dist/SHA256SUMS"
+
+  publish-clawhub:
+    name: Publish ClawHub skills
+    needs: prepare
+    if: inputs.publish_clawhub
+    permissions:
+      contents: read
+    uses: ./.github/workflows/publish-clawhub.yml
+    with:
+      target_sha: ${{ needs.prepare.outputs.head_sha }}
+      release_tag: ${{ needs.prepare.outputs.tag }}
+      bump: patch
+      changelog: ''
+    secrets:
+      CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
+  summarize:
+    name: Report draft handoff
+    needs: [prepare, publish-clawhub]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Summarize the manual publication handoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          CLAWHUB_RESULT: ${{ needs.publish-clawhub.result }}
+        run: |
+          set -euo pipefail
+          release_url=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
+          {
+            echo "## Draft Release staged"
+            echo
+            echo "- Draft: [$TAG]($release_url)"
+            echo "- ClawHub job: $CLAWHUB_RESULT"
+            echo
+            if [ "$CLAWHUB_RESULT" = "failure" ] || [ "$CLAWHUB_RESULT" = "cancelled" ]; then
+              echo "ClawHub did not succeed. Keep the GitHub Release as a draft and resolve the failed publisher first."
+            else
+              echo "Before publishing, confirm Settings → General → Releases has Immutable Releases enabled."
+              echo "Download the assets, verify SHA256SUMS, and publish the draft manually only after human review."
+              echo "After publication, run: gh release verify $TAG --repo $GITHUB_REPOSITORY"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

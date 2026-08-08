@@ -30,6 +30,14 @@ jobs:
         run: bash scripts/check-current-skill-contracts.sh
       - name: Current-only skill contract regression
         run: python3 scripts/test-current-skill-contracts.py
+      - name: Package version and archive regression
+        run: |
+          python3 scripts/manage-version.py check
+          python3 scripts/test-manage-version.py
+          python3 scripts/test-build-package.py
+          python3 scripts/test-package-channel.py
+          python3 scripts/test-verify-package.py
+          python3 scripts/test-release-contract-bumps.py
       - name: Check hook-regex sync
         run: bash scripts/check-hook-regex-sync.sh
       - name: Check shared-file consistency

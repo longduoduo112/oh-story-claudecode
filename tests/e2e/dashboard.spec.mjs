@@ -324,8 +324,14 @@ test("CRLF 稿件里的孤立 CR 不会反向触发整篇 LF 重写", async ({ p
   await page.locator("#treeSearch").fill("文风");
   await page.locator(`.file-row[data-path='${filePath}']`).click();
   const editor = page.locator("#editorInput");
-  await editor.press("End");
-  await editor.pressSequentially("\n改");
+  await expect(page.locator("#editorTitle")).toHaveText("文风.md");
+  await expect(editor).toHaveValue(/第三行。$/);
+  // Keyboard-level Enter is timing-sensitive in headless Chromium. `fill`
+  // still exercises the real input handler while making the appended newline
+  // deterministic for this line-ending regression.
+  await editor.fill(`${await editor.inputValue()}\n改`);
+  await expect(editor).toHaveValue(/\n改$/);
+  await expect(page.locator("#saveButton")).toBeEnabled();
   await page.locator("#saveButton").click();
   await expect(page.locator("#dirtyStatus")).toContainText("已保存");
 

@@ -36,6 +36,6 @@ assert manifest['version'] == version, f"version {manifest['version']!r} must ma
 skills = sorted(Path('skills').glob('*/SKILL.md'))
 assert len(skills) == 14, f'expected 14 skills, got {len(skills)}'
 PY
-echo "  OK reasonix-plugin.json (schema + version pin + 13 Skills)"
+echo "  OK reasonix-plugin.json (schema + version pin + 14 Skills)"
 echo ""
 echo "OK: Reasonix adapter checks passed"

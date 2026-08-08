@@ -1,0 +1,65 @@
+name: Dev package
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Quality gate and development package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the triggering commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dashboard test dependencies
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run the release-equivalent quality gate
+        env:
+          OH_STORY_SKIP_NPM_CI: "1"
+        run: bash scripts/run-quality-gate.sh
+
+      - name: Build development archives
+        run: python3 scripts/build-package.py dev
+
+      - name: Verify and smoke-test the development package
+        run: |
+          set -euo pipefail
+          dev_zip=$(find dist -maxdepth 1 -type f -name 'oh-story-*-dev.*.zip' -print -quit)
+          test -n "$dev_zip"
+          python3 scripts/verify-package.py "$dev_zip" --install-smoke
+
+      - name: Upload short-lived development package
+        uses: actions/upload-artifact@v4
+        with:
+          name: oh-story-dev-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0

@@ -20,6 +20,7 @@ skills/
 ├── story-cover/             # 封面生成
 └── browser-cdp/             # 浏览器操控
 scripts/                       # 开发守卫 / 测试 / 代码生成（完整索引见 scripts/README.md）
+RELEASING.md                   # 版本轴、发行 gate、打包与不可变发布流程
 ```
 
 每个 skill 由一个 `SKILL.md`（入口）和 `references/` 目录（知识库）组成。
@@ -57,7 +58,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## CI 检查
 
-PR 自动运行 `.github/workflows/cross-platform.yml`。static-check job 跑以下检查（全部强制）：
+PR 自动运行 `.github/workflows/cross-platform.yml`。`main` 的发行候选另由 `.github/workflows/package-dev.yml` 跑统一 gate 并构建 dev 证据。两条自动化路径的代表性强制检查包括：
 
 - `scripts/static-check.sh` — 结构化解析 frontmatter、精确 Markdown 路径/锚点、Agent 引用与 references 可达性；除基础组件 `browser-cdp` 外禁止跨 Skill 文件引用
 - `python3 scripts/skill-numbering.py check` — 工作流编号连续性、引用可绑定性及小数标签守卫
@@ -71,44 +72,23 @@ PR 自动运行 `.github/workflows/cross-platform.yml`。static-check job 跑以
 - `scripts/check-openclaw-skills.sh` — OpenClaw 单行 frontmatter、`metadata.openclaw` 与可选真实 CLI 发现检查
 - `scripts/check-codex-adapter.sh` — Codex repo skills symlink、custom-agent TOML、hook 生成确定性与 launcher 契约
 - `scripts/test-codex-hooks.sh` — Codex hooks 合成事件测试
-- `scripts/check-zcode-adapter.sh` — ZCode plugin/marketplace、13 Skills/Commands、受支持 Hook 事件与部署锚点检查
+- `scripts/check-zcode-adapter.sh` — ZCode plugin/marketplace、14 Skills/Commands、受支持 Hook 事件与部署锚点检查
 - `scripts/test-zcode-hooks.sh` — ZCode 严格 JSON Hook 契约、正文守卫、连续性与跨平台 Node runner 测试
+- `scripts/manage-version.py` + `test-manage-version.py` — 公开 SemVer 版本面一致性与 tag/changelog 规则
+- `scripts/build-package.py` + `test-build-package.py` — 可复现 dev/release 包、单根目录、排除清单、manifest 和 checksum
+- `scripts/package-channel.py` + `test-package-channel.py` — 统一 gate 后构建，release 仅接受同 HEAD 的干净 dev 证据
+- `scripts/verify-package.py` + `test-verify-package.py` — 安装包安全、manifest/checksum、五版本面与 14-skill 发现 smoke
+- `scripts/check-release-contract-bumps.py` + `test-release-contract-bumps.py` — story-setup/部署 payload 变化对应的独立版本轴增量门禁
 - 采集脚本 `node --check` 语法校验
 
-以上为代表性列举；**强制清单按 `.github/workflows/cross-platform.yml` 为准**，每个脚本的用途与触发时机见 [scripts/README.md](scripts/README.md)。另有 `.github/workflows/cli-compat.yml` 在相关 PR、每周定时和手动触发时安装官方当前版本，真实运行 Claude Code、Codex、OpenCode、OpenClaw 的无鉴权 smoke。
+以上为代表性列举；PR 的强制清单按 `.github/workflows/cross-platform.yml` 为准，发行候选的完整 gate 按 `scripts/run-quality-gate.sh` 与 `.github/workflows/package-dev.yml` 为准。每个脚本的用途与触发时机见 [scripts/README.md](scripts/README.md)。另有 `.github/workflows/cli-compat.yml` 在相关 PR、每周定时和手动触发时安装官方当前版本，真实运行 Claude Code、Codex、OpenCode、OpenClaw 的无鉴权 smoke。
 
 另有 windows / macos job 验证 cdp-utils 加载与 setup 脚本 dry-run。
 
-提交前建议按 Linux CI 的强制清单本地跑一遍：
+提交前用唯一统一入口本地跑完整强制清单：
 
 ```bash
-bash scripts/static-check.sh
-python3 scripts/test-static-check.py
-python3 scripts/skill-numbering.py check
-bash scripts/test-skill-numbering.sh
-bash scripts/check-current-skill-contracts.sh
-python3 scripts/test-current-skill-contracts.py
-bash scripts/check-hook-regex-sync.sh
-bash scripts/check-shared-files.sh
-python3 scripts/test-shared-assets.py
-node scripts/test-normalize-punctuation.js
-node scripts/test-scan-runtime.js
-bash scripts/test-ai-patterns.sh
-bash scripts/test-degeneration.sh
-bash scripts/test-prose-backstop-hook.sh
-bash scripts/test-prose-net-parity.sh
-bash scripts/test-story-continuity.sh
-bash scripts/check-story-setup-deployment.sh
-bash scripts/check-claude-adapter.sh
-bash scripts/check-codex-adapter.sh
-bash scripts/check-opencode-adapter.sh
-bash scripts/check-openclaw-skills.sh
-bash scripts/test-codex-hooks.sh
-bash scripts/check-python-invocation.sh
-bash scripts/check-hook-locale-safety.sh
-bash scripts/test-hook-encoding-portable.sh
-bash scripts/test-charcount-portable.sh
-bash scripts/test-charcount-portable.sh --stub
+bash scripts/run-quality-gate.sh
 
 # 可选真实 CLI smoke（需分别安装对应 CLI）
 CLAUDE_REAL_CHECK=1 bash scripts/check-claude-adapter.sh
@@ -169,6 +149,15 @@ fork → branch → commit → PR → review → merge
 - commit message 用中文，格式：`类型: 简短描述`
 - 类型：`feat`（新增）/ `fix`（修复）/ `docs`（文档）/ `refactor`（重构）
 
+## 版本与发布
+
+完整维护者流程见 [RELEASING.md](RELEASING.md)。核心边界：
+
+- 正式用户安装/更新只使用 `https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download/oh-story-release.zip`；裸仓库或 `main` 安装是 dev-only。
+- 产品 SemVer、`setup_skill_version`、`agents_version` 是三条独立版本轴，不因一次常规发版绑定同步 bump。
+- 本地必须先跑 `python3 scripts/package-channel.py dev` 并对解包产物做安装 smoke，然后 push/merge `main`，等待同 commit 的 `package-dev` 变绿，最后才可从 `main` 手动 dispatch `Release package`。
+- 标签与 Release 资产不可覆盖；发布阶段失败后走新 PATCH，不移动 tag 或原地换包。
+
 ## OpenCode 模板同步
 
 本项目同时支持 Claude Code、OpenCode、Codex、ZCode、OpenClaw 和 Reasonix（Phase 1）。OpenCode 的 agent 模板和项目指令模板由 `scripts/sync-opencode.py` 从 Claude Code 模板自动生成。
@@ -193,11 +182,11 @@ bash scripts/test-opencode-cli-e2e.sh  # 可选：需要本机已安装 opencode
 1. 将 `templates/agents/` 下的 Claude Code agent 转换为 opencode 格式，写入 `opencode/agents/`
 2. 将 `CLAUDE.md.tmpl` 复制到 `opencode/AGENTS.md.tmpl`，替换 `.claude/` 路径引用
 3. 输出同步结果摘要
-4. 可选真实 CLI smoke 会在临时项目里验证 13 个 slash commands、7 个 agents 与 `story-hooks.ts` 插件能被 OpenCode 解析加载
+4. 可选真实 CLI smoke 会在临时项目里验证 14 个 slash commands、7 个 agents 与 `story-hooks.ts` 插件能被 OpenCode 解析加载
 
 ### CI 检测
 
-PR 中如果修改了 Claude Code 模板文件，CI 会自动检测 opencode 模板是否同步，并额外检查 `opencode.json.patch`、13 个 command、7 个 agent 的结构以及 `plugin.ts` 的实际守卫/收尾行为。如果 CI 报错，请在本地运行同步脚本和 `bash scripts/check-opencode-adapter.sh`，再提交结果。
+PR 中如果修改了 Claude Code 模板文件，CI 会自动检测 opencode 模板是否同步，并额外检查 `opencode.json.patch`、14 个 command、7 个 agent 的结构以及 `plugin.ts` 的实际守卫/收尾行为。如果 CI 报错，请在本地运行同步脚本和 `bash scripts/check-opencode-adapter.sh`，再提交结果。
 
 ### 手动维护的部分
 
@@ -252,7 +241,7 @@ bash scripts/check-openclaw-skills.sh
 OPENCLAW_REAL_CHECK=1 bash scripts/check-openclaw-skills.sh  # 本机安装 openclaw 时可选
 ```
 
-`OPENCLAW_REAL_CHECK=1` 会用临时 profile + 临时 workspace 创建隔离 agent，确认 OpenClaw CLI 能从 workspace `skills/` 发现 13 个 story skill；脚本结束后清理临时 profile。
+`OPENCLAW_REAL_CHECK=1` 会用临时 profile + 临时 workspace 创建隔离 agent，确认 OpenClaw CLI 能从 workspace `skills/` 发现 14 个 story skill；脚本结束后清理临时 profile。
 
 ### OpenClaw 已知边界
 
@@ -264,7 +253,7 @@ OPENCLAW_REAL_CHECK=1 bash scripts/check-openclaw-skills.sh  # 本机安装 open
 
 ZCode 采用「原生 plugin + `story-setup` workspace 部署」双入口：
 
-- `.zcode-plugin/plugin.json` 与根 `marketplace.json` 暴露同一组 13 Skills、13 Commands 和 ZCode Hooks；版本必须与 `skills/story/VERSION` 同步。
+- `.zcode-plugin/plugin.json` 与根 `marketplace.json` 暴露同一组 14 Skills、14 Commands 和 ZCode Hooks；版本必须与 `skills/story/VERSION` 同步。
 - `skills/story-setup/references/zcode/` 是 workspace 部署模板，包含 `AGENTS.md.tmpl`、Commands、`config.json.patch` 与无第三方依赖的 Node Hook runner。
 - ZCode 3.3.4 只支持 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`PostToolUseFailure`、`Stop`。不要复制 Claude 的 `PreCompact`、`PostCompact`、`SessionEnd`、`SubagentStop` 或 `Notification`。
 - Hook stdout 为空表示放行；只要非空就必须满足严格 JSON schema。诊断只写 stderr，异常 fail-open；优先使用 `process` + `node`，不要引入 shell/Python launcher 的跨平台分支。
@@ -285,7 +274,7 @@ bash scripts/test-prose-net-parity.sh
 Reasonix（DeepSeek-Reasonix CLI）目前是 Phase 1：只有 skills + 原生 plugin manifest，无项目级 `story-setup` 部署、无 hooks、无 custom agents（涉及专业 Agent 的 Skill 走 solo/direct fallback）：
 
 - 根 `reasonix-plugin.json` 是 plugin manifest；`version` 必须与 `skills/story/VERSION` 同步（`check-reasonix-adapter.sh` 守卫）。
-- Reasonix 原生扫描 `.agents/skills`（指向 `skills/` 的 symlink，与 Codex 共用）发现 13 个 skill。
+- Reasonix 原生扫描 `.agents/skills`（指向 `skills/` 的 symlink，与 Codex 共用）发现 14 个 skill。
 - 真实 CLI 校验 `reasonix doctor capabilities` 不在 CI 内，发版前可手动跑。
 
 ### Reasonix 检查步骤

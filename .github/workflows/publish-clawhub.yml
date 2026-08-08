@@ -1,36 +1,38 @@
 name: Publish skills to ClawHub
 
-# Publishes changed skills to ClawHub on release. Triggers:
-#   - pushing a version tag (v*)
-#   - publishing a GitHub Release
-#   - manual "Run workflow" button (with optional dry-run / bump / changelog)
-#   - PRs that edit THIS file → secretless workflow/skill validation only
-# Pull requests never enter the authenticated job, including same-repo branches.
+# This is a release.yml implementation detail, not an independent publisher.
+# PRs that edit this file run secretless validation only. The authenticated job
+# can run only as a reusable job after release.yml has passed its quality gate,
+# created the annotated tag, and staged a draft GitHub Release.
 # story and browser-cdp are published manually and excluded here.
 on:
-  push:
-    tags: ['v*']
-  release:
-    types: [published]
   pull_request:
     paths: ['.github/workflows/publish-clawhub.yml']
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      target_sha:
+        description: Exact vetted release commit to publish from
+        required: true
+        type: string
+      release_tag:
+        description: Validated vX.Y.Z release tag
+        required: true
+        type: string
       bump:
         description: Version bump for changed skills
-        type: choice
-        options: [patch, minor, major]
-        default: patch
+        required: true
+        type: string
       changelog:
-        description: Changelog text (optional; defaults to the ref name)
+        description: Changelog text (optional; defaults to the release tag)
+        required: false
         type: string
         default: ''
-      dry_run:
-        description: Preview only — do not publish
-        type: boolean
-        default: false
+    secrets:
+      CLAWHUB_TOKEN:
+        description: ClawHub API token; required only when release.yml enables publishing
+        required: true
 
-# Never let two publishes race (e.g. tag push + release published).
+# Never let two orchestrated ClawHub publishes race.
 concurrency:
   group: clawhub-publish
   cancel-in-progress: false
@@ -60,15 +62,47 @@ jobs:
           bash scripts/check-openclaw-skills.sh
 
   publish:
-    # Never expose CLAWHUB_TOKEN to pull-request-controlled code, even when the
-    # branch lives in the canonical repository.
-    if: >-
-      github.repository == 'qin1473692580-ux/oh-story-claudecode' &&
-      github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Require the canonical release orchestrator context
+        env:
+          EXPECTED_REPOSITORY: qin1473692580-ux/oh-story-claudecode
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REPOSITORY" != "$EXPECTED_REPOSITORY" ]; then
+            echo "::error::Authenticated ClawHub publishing is limited to $EXPECTED_REPOSITORY."
+            exit 1
+          fi
+
+      - name: Check out the vetted release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify the reusable-workflow inputs
+        env:
+          EXPECTED_SHA: ${{ inputs.target_sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD^{commit})" != "$EXPECTED_SHA" ]; then
+            echo "::error::Checkout does not match the vetted release SHA."
+            exit 1
+          fi
+          case "$BUMP" in patch|minor|major) ;; *)
+            echo "::error::Invalid ClawHub bump '$BUMP'."
+            exit 1
+          esac
+          python3 scripts/manage-version.py check --tag "$RELEASE_TAG" --require-changelog
 
       - uses: actions/setup-node@v4
         with:
@@ -96,17 +130,29 @@ jobs:
           for s in story browser-cdp; do rm -rf "skills/$s"; done
 
       - name: Resolve changelog text
+        env:
+          REQUESTED_CHANGELOG: ${{ inputs.changelog }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          CL="${{ github.event.inputs.changelog }}"
-          if [ -z "$CL" ]; then CL="Synced from CI (${{ github.ref_name }})"; fi
-          echo "CLAWHUB_CHANGELOG=$CL" >> "$GITHUB_ENV"
+          set -euo pipefail
+          if [ -z "$REQUESTED_CHANGELOG" ]; then
+            REQUESTED_CHANGELOG="Synced from oh-story $RELEASE_TAG"
+          fi
+          {
+            echo 'CLAWHUB_CHANGELOG<<EOF'
+            echo "$REQUESTED_CHANGELOG"
+            echo EOF
+          } >> "$GITHUB_ENV"
 
       - name: Show what would publish
-        run: clawhub --no-input sync --dry-run --bump "${{ github.event.inputs.bump || 'patch' }}"
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: clawhub --no-input sync --dry-run --bump "$BUMP"
 
       - name: Publish changed skills
-        if: github.event.inputs.dry_run != 'true'
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
           clawhub --no-input sync --all \
-            --bump "${{ github.event.inputs.bump || 'patch' }}" \
+            --bump "$BUMP" \
             --changelog "$CLAWHUB_CHANGELOG"

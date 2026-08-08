@@ -2,10 +2,10 @@
 
 ## 当前版本
 
-- `setup_skill_version: 1.2.7`
-- `agents_version: 24`
+- `setup_skill_version: 1.2.8`
+- `agents_version: 25`
 
-`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `24`，都视为待更新部署。直接重新运行 `/story-setup`（Codex 用 `$story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `24`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v24 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
+`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `25`，都视为待更新部署。直接重新运行 `/story-setup`（Codex 用 `$story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `25`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v25 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
 
 ## 升级策略
 
@@ -26,7 +26,7 @@
 - `.claude/agents/` — 所有 agent 定义
 - `.claude/rules/` — 所有 path-scoped 规则
 - `.claude/skills/story-setup/references/agent-references/` — Agent 参考资料副本
-- `.zcode/skills/{13 known skills}/`、`.zcode/commands/{13 known commands}.md` — 仅覆盖 oh-story 已知名称
+- `.zcode/skills/{14 known skills}/`、`.zcode/commands/{14 known commands}.md` — 仅覆盖 oh-story 已知名称
 - `.zcode/hooks/story_zcode_hook.js` — ZCode 专用 Hook runner
 
 ### 用户与 story-setup 共同维护，只合并管理块
@@ -43,11 +43,14 @@
 - `{书名}/设定/`、`大纲/`、`追踪/`
 - `.active-book`
 
-## v24 当前契约
+## v25 当前契约
+
+- 正式更新统一从 GitHub Release 的固定资产 `oh-story-release.zip` 安装；直接指向浮动仓库源的安装只属于 Dev 渠道。
+- 部署包按 14 个 skill 自检，已部署项目需重跑 `/story-setup` 刷新 hooks、agents、rules 与 reference bundle，并新开会话。
 
 - `story-import` 只把作者已有小说重建为写作工程：`拆文库/{导入书名}/` 迁移到正文/设定/大纲/追踪，不再自动登记成主/副对标，也不再复制到项目 `对标/`。只有用户明确选择、且来源为独立 `拆文库/{对标书名}/` 的外部作品才同步到 `对标/{对标书名}/`。
 - 无外部对标时只跳过对标模块、节奏和文风召回；项目题材卡仍从本书题材信息生成，不再被对标分支误伤。对标主产物缺失继续 fail-fast，只有单个可选模块卡未命中时才局部跳过。
-- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v24 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
+- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v25 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
 - 写作与导入只接受当前拆文产物：`剧情/情绪模块.md` 与 `剧情/节奏.md` 缺失时 fail-fast，并给出重跑 Stage 3+ / 重新导入的修复动作。
 - 新建、补建、改纲的细纲只接受完整章节蓝图：缺少阶段位置、结构公式、禁止提前释放、内容概括、情节安排、人物关系、情节细化或结尾设定时，先补齐再写。旧版细纲缺这些字段不阻塞日更，回退消费旧字段（核心事件、情节点序列、目标情绪、章首/章尾钩子、字数目标）。
 - 细纲字段是本章「要发生什么」的内容规格，不规定正文形状：各字段都要在正文里兑现，但正文可合并、穿插、重排情节点，不按条目顺序一条一段平推。细纲「结尾 / 结尾设定」写本章最后落在什么动作、画面或台词上，不写状态判词。
@@ -61,7 +64,7 @@
 ## 升级步骤
 
 1. 在项目根目录重新运行 story-setup。
-2. 确认 `.story-deployed` 写入 `agents_version: 24` 与 `setup_skill_version: 1.2.7`。
+2. 确认 `.story-deployed` 写入 `agents_version: 25` 与 `setup_skill_version: 1.2.8`。
 3. 确认目标 CLI 的 agents、hooks/rules 和 reference bundle 都通过安装验证。
 4. 新开会话，使 custom agents 与 hooks 按当前文件重新注册。
 5. **长篇在写项目必做**：检查每本书的 `追踪/_tracking-state.json` 是否存在。不存在就是旧追踪结构，按下方「追踪模型迁移」重建，否则写下一章会被拦。
@@ -97,7 +100,12 @@
 
 ## 版本变更
 
-### v23 (当前)
+### v25（当前）
+
+- `.story-deployed` 的 `agents_version` 升级到 `25`，`setup_skill_version` 升级到 `1.2.8`。
+- 正式升级改用固定 GitHub Release 资产；已部署项目重跑 `/story-setup` 并新开会话，以获取当前部署模板与 14-skill 路由。
+
+### v24
 
 - `.story-deployed` 的 `agents_version` 升级到 `24`（`setup_skill_version` 仍为 `1.2.7`）。
 - **导入书与对标书解耦**：`story-import` 不再把 `{导入书名}` 自动登记为主/副对标，也不再把本书拆解或设定复制到 `对标/`；外部对标必须来自独立 `拆文库/{对标书名}/`，无外部对标时不创建子目录、不写主对标字段。
