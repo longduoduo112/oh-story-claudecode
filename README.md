@@ -1,10 +1,12 @@
 [English](README_EN.md) | **中文**
 
-# oh-story（星河上人维护版）
+# oh-story
 
 网文写作 skill 包，覆盖长篇与短篇网络小说的扫榜、拆文、写作、去AI味、封面图全流程。内置适配 Claude Code、OpenCode、ZCode、OpenClaw、Codex CLI、Reasonix、workbuddy；能读取项目文件的 Web AI / Agent 环境也可按通用 skills 路径使用。
 
-> 本仓库由 **星河上人** 独立维护。早期代码基于 MIT 开源版本演进，许可与历史归属以 `LICENSE` 和 Git 记录为准；当前 README 只介绍本仓库能力与本仓库案例，不混入第三方演示项目。自研改动来自真实写作复盘——长篇《[财阀除名那晚，古井给我递了药方](https://fanqienovel.com/page/7661645008545516606)》（番茄小说连载中，星河上人 著）与多篇番茄短故事全流程落地：把实战中踩过的坑改回工具本身，而不是每次靠人工记住。
+> **独立仓库与发行线**：本仓库是 oh-story 的现役独立产品仓库和发行线，不属于 GitHub Fork 网络，也不会自动同步任何外部仓库。后续功能、版本、Dev/Release 渠道及商业化由本项目独立规划和维护。早期代码基于 MIT 开源版本演进；完整 Git 历史用于持续记录代码来源与贡献归属，具体许可见 [`LICENSE`](LICENSE)。
+>
+> 本 README 只介绍本仓库能力与本仓库案例，不混入第三方演示项目。自研改动来自真实写作复盘——长篇《[财阀除名那晚，古井给我递了药方](https://fanqienovel.com/page/7661645008545516606)》（番茄小说连载中，星河上人 著）与多篇番茄短故事全流程落地：把实战中踩过的坑改回工具本身，而不是每次靠人工记住。
 
 ### 自研升级清单（按实战复盘沉淀）
 
@@ -32,7 +34,7 @@
 
 围绕四条线展开：爆款逆向 · 剧情模块化重组 · 上下文状态分层管理 · 人机协同。
 
-> v0.7.5 起：三类确定性闸口落地——**跨章连续性守卫**（位置/持有物进热上下文，改动必须逐字报出旧值才放行，堵住「上一章住宿舍、下一章骑车从家出发」这类硬伤）、**规划记号泄漏拦截**（`ch13`、`watcher` 这类临时代号进自动 hook 网，不依赖模型自觉）、**情绪与钩子下限**（此前 84 条规则全是禁止型，零情绪也能通关）。同时撤销早先把上游「第 1 章必须强」「正文章至少 2 级」软化掉的两处改动。`agents_version` 升至 24，已部署项目需重跑 `/story-setup` 并新开会话。
+> v0.7.5 起：三类确定性闸口落地——**跨章连续性守卫**（位置/持有物进热上下文，改动必须逐字报出旧值才放行，堵住「上一章住宿舍、下一章骑车从家出发」这类硬伤）、**规划记号泄漏拦截**（`ch13`、`watcher` 这类临时代号进自动 hook 网，不依赖模型自觉）、**情绪与钩子下限**（此前 84 条规则全是禁止型，零情绪也能通关）。同时恢复「第 1 章必须强」「正文章至少 2 级」两项基础约束。`agents_version` 升至 24，已部署项目需重跑 `/story-setup` 并新开会话。
 >
 > v0.7.3 起：修复跨端拆文的降级路径——ZCode / OpenClaw / Reasonix / 通用 Web AI 四端不部署 project agents，拆文必然走串行降级，而降级说明此前指向一份这四端读不到的 `chapter-extractor.md`，属循环依赖；现改指 skill 自带的 `output-templates.md`。章节概要改叙事化、原文引用改精选，新增 P 行白描硬检查。Dashboard 目录树改按需加载，并修复标准短篇工程（单文件 `正文.md` 结构）不被识别；写作项目与拆文库的扫描预算相互隔离。另修复更新检查链路（旧仓库名导致 API 301、curl 未跟重定向，提醒从未生效）。`agents_version` 21 → 22，**已部署项目需重新运行 `/story-setup` 并新开会话**。
 >
@@ -138,7 +140,7 @@ npx skills add https://github.com/qin1473692580-ux/oh-story-claudecode/releases/
 >
 > **Web AI / 通用 Agent 用户：** 下载并解压上方 Release 资产后，可让 Agent 读取其中 `skills/*/SKILL.md` 与对应 `references/`；直读浮动 GitHub 仓库仅限 dev-only 测试。需要项目内副本时，`story-setup` 可选 `target_cli=generic`，只写通用 `AGENTS.md` 和 `skills/`。无本项目 hooks/custom agents 的环境按 skill 内软约束或 solo/direct fallback 执行。
 >
-> 升级后如果项目里已经跑过 `/story-setup`，建议在项目根重跑一次 `/story-setup`，同步 hooks / agents / references。每版变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Releases](https://github.com/qin1473692580-ux/oh-story-claudecode/releases)；维护者发版见 [RELEASING.md](RELEASING.md)。
+> 升级后如果项目里已经跑过 `/story-setup`，建议在项目根重跑一次 `/story-setup`，同步 hooks / agents / references。每版变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Releases](https://github.com/qin1473692580-ux/oh-story-claudecode/releases)；发版流程见 [RELEASING.md](RELEASING.md)。
 
 > **多 agent 协作要先部署再新开会话**：7 个专业 agent（story-architect、narrative-writer、consistency-checker 等）由 `/story-setup` 写入项目 `.claude/agents/`，或由 `$story-setup` 写入 `.codex/agents/*.toml`。Claude Code / Codex 都在会话启动时更稳定地注册 custom agent；ZCode 3.3.4、OpenClaw Phase 1、Reasonix Phase 1 与 generic 路径默认走 skills + solo fallback。判断是否生效：新会话里跑 `/story-review`，报告头是 `Effective Mode: full/lean` 即注册成功，是 `Fallback: ... -> solo` 说明当前运行时未暴露该 agent。
 
@@ -306,9 +308,15 @@ Claude Code 项目经 `/story-setup` 部署后会启用下列 8 个 shell hook�
 
 真实产出样例：长篇《[财阀除名那晚，古井给我递了药方](https://fanqienovel.com/page/7661645008545516606)》（番茄小说连载中，星河上人 著，全流程用本仓库的 story-long-write 完成）。
 
-**案例边界：** README 只把本仓库维护者自己的作品列为产出案例；文末外部链接仅用于必要的技术来源署名，不代表案例采用、合作背书或推荐导流。
+**案例边界：** README 只把本项目直接产出的作品列为产出案例；文末外部链接仅用于必要的技术来源署名，不代表案例采用、合作背书或推荐导流。
 
 这套 skill 的目标是把真实创作中反复踩到的坑沉淀成可复用、可检查的写作流程。
+
+## 知识产权与商业使用
+
+本仓库是独立运营的开源项目。由本项目贡献者创作的新增代码、文档、设计及其他内容，其著作权归相应贡献者或权利人所有。仓库软件依据 [MIT License](LICENSE) 授权；在保留版权声明和许可声明的前提下，个人与组织可以使用、复制、修改、合并、发布、分发、再许可及销售软件副本，也可以将其用于商业产品或服务。
+
+仓库中继承的历史贡献，以及引用或使用的第三方软件、数据、模型、字体、商标和其他材料，权利仍归各自权利人所有，并分别受其许可或使用条款约束。本项目的独立运营不改变这些权利归属，也不表示与相关权利人存在隶属、合作或授权背书关系。
 
 ## Star History
 
@@ -322,12 +330,12 @@ Claude Code 项目经 `/story-setup` 部署后会启用下列 8 个 shell hook�
 
 ## 贡献
 
-欢迎贡献新 skill、补充知识库、更新市场数据。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎通过 [Issues](https://github.com/qin1473692580-ux/oh-story-claudecode/issues) 提交缺陷和需求，也欢迎 Fork 本仓库后提交 Pull Request，贡献新 skill、补充知识库或更新市场数据。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 交流
 
 - **GitHub Discussions**：[提问 / 求助 / 分享用法](https://github.com/qin1473692580-ux/oh-story-claudecode/discussions)，方便检索。
-- **微信公众号**：星河上人维护的「AI马内」—— 微信搜索关注，后台留言交流。
+- **微信公众号**：「AI马内」—— 微信搜索关注，后台留言交流。
 
 ## 致谢
 

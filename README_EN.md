@@ -1,12 +1,14 @@
-<!-- Last synced with README.md: 2026-07-25 -->
+<!-- Last synced with README.md: 2026-08-09 -->
 
 **English** | [中文](README.md)
 
-# oh-story (maintained by 星河上人)
+# oh-story
 
 A web novel writing skill pack with built-in adapters for Claude Code, OpenCode, ZCode, OpenClaw, Codex CLI, Reasonix, and workbuddy. Web AI / agent environments that can read project files can use the generic skills path. Covers the full pipeline for long-form and short-form Chinese web novels: trend scanning, deconstruction, writing, AI tone removal, and cover generation.
 
-> This repository is independently maintained by **星河上人**. Its early code evolved from MIT-licensed open-source work; licensing and historical attribution remain available in `LICENSE` and the Git history. This README documents only this repository's capabilities and its own examples, without importing third-party demo projects. The original enhancements come from end-to-end writing practice on [财阀除名那晚，古井给我递了药方](https://fanqienovel.com/page/7661645008545516606) and multiple Fanqie short stories.
+> **Independent repository and release line:** This is the active, independently operated product repository and release line for oh-story. It is not part of GitHub's fork network and does not automatically sync from any external repository. Future features, versions, Dev/Release channels, and commercial development are planned and maintained independently. Its early code evolved from MIT-licensed open-source work; the complete Git history preserves source and contribution attribution, and [`LICENSE`](LICENSE) governs distribution and use.
+>
+> This README documents only this repository's capabilities and its own examples, without importing third-party demo projects. The original enhancements come from end-to-end writing practice on [财阀除名那晚，古井给我递了药方](https://fanqienovel.com/page/7661645008545516606) and multiple Fanqie short stories.
 
 ### Independently developed upgrades (distilled from real writing practice)
 
@@ -123,7 +125,7 @@ npx skills add https://github.com/qin1473692580-ux/oh-story-claudecode/releases/
 
 `-g` installs globally (available in every directory); drop `-g` to install only into the current directory. Re-run the same command to update. This URL always resolves to the stable asset from the latest formal GitHub Release, so it never installs the moving `main` development state.
 
-> After updating, if a project has already run `/story-setup`, re-run `/story-setup` from the project root to sync hooks / agents / references. Per-version changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/qin1473692580-ux/oh-story-claudecode/releases); the maintainer process is in [RELEASING.md](RELEASING.md).
+> After updating, if a project has already run `/story-setup`, re-run `/story-setup` from the project root to sync hooks / agents / references. Per-version changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/qin1473692580-ux/oh-story-claudecode/releases); the release process is in [RELEASING.md](RELEASING.md).
 >
 
 > **Codex developers (dev-only):** Use the repository in-place only when developing this repository or testing unreleased `main`: Codex scans `$REPO_ROOT/.agents/skills` (a symlink to `skills/`) and discovers all 14 skills; invoke via `$story`, `$story-setup`, or `/skills`. This is not a stable installation/update path. On Windows, enable git `core.symlinks=true` or use the Release archive above.
@@ -299,9 +301,15 @@ Each skill includes a `references/` knowledge base loaded on demand to keep cont
 
 Real output sample: the long-form novel [财阀除名那晚，古井给我递了药方](https://fanqienovel.com/page/7661645008545516606) (serializing on 番茄小说, by 星河上人, produced end-to-end with this repo's story-long-write).
 
-**Example boundary:** The README lists only work owned by this repository's maintainer as an output example. External links in the acknowledgments are limited to necessary technical attribution; they do not imply example adoption, partnership endorsement, or promotional recommendation.
+**Example boundary:** The README lists only work produced directly by this project as an output example. External links in the acknowledgments are limited to necessary technical attribution; they do not imply example adoption, partnership endorsement, or promotional recommendation.
 
 This skill pack turns recurring problems found in real writing practice into reusable, checkable workflows.
+
+## Intellectual Property and Commercial Use
+
+This repository is an independently operated open-source project. Copyright in new code, documentation, designs, and other materials created by project contributors remains with the respective contributors or rightsholders. The software is licensed under the [MIT License](LICENSE). Subject to retaining the required copyright and permission notices, individuals and organizations may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, including as part of commercial products or services.
+
+Historical contributions and any referenced or incorporated third-party software, data, models, fonts, trademarks, and other materials remain the property of their respective rightsholders and are governed by their respective licenses or terms. Independent operation of this project does not alter those rights or imply affiliation, partnership, or endorsement.
 
 ## Star History
 
@@ -315,12 +323,12 @@ This skill pack turns recurring problems found in real writing practice into reu
 
 ## Contributing
 
-Contributions are welcome — new skills, knowledge base additions, market data updates. See [CONTRIBUTING.md](CONTRIBUTING.md) (Chinese only).
+Use [Issues](https://github.com/qin1473692580-ux/oh-story-claudecode/issues) for bugs and feature requests. Forks and Pull Requests are welcome for new skills, knowledge-base additions, and market-data updates. See [CONTRIBUTING.md](CONTRIBUTING.md) (Chinese only).
 
 ## Community
 
 - **GitHub Discussions**: [ask questions, get help, share workflows](https://github.com/qin1473692580-ux/oh-story-claudecode/discussions).
-- **WeChat Official Account** (Chinese): "AI马内", maintained by 星河上人.
+- **WeChat Official Account** (Chinese): "AI马内".
 
 ## Acknowledgments
 
