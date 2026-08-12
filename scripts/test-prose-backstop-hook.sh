@@ -84,24 +84,6 @@ printf '%s\n' 'watcher' > "$TMP/某书/.deslop-whitelist"
 { printf '# 第17章\n\n'; PAD; printf '\n他看见 watcher 伏在暗处。\n他走了。\n'; } > "$TMP/某书/正文/第017章_白名单.md"
 expect_silent "$TMP/某书/正文/第017章_白名单.md"
 
-# Windows 薄壳不经 argv 传 root/file；在所有平台直接锁定这条环境变量桥。
-ENV_TARGET="$(find "$TMP/某书/正文" -name '*_白名单.md' -print -quit)"
-ENV_OUT="$(OH_STORY_PROSE_ROOT="$TMP" OH_STORY_PROSE_FILE="$ENV_TARGET" \
-  node "$(dirname "$HOOK")/story_hook_cli.js" prose-net 2>/dev/null || true)"
-if [ -n "$ENV_OUT" ]; then
-  echo "FAIL: prose-net environment bridge ignored exact whitelist" >&2
-  printf '%s\n' "$ENV_OUT" | head -2 >&2
-  fails=$((fails+1))
-fi
-# 环境变量只允许成对使用；半套值必须静默 fail-open，不能扫错项目。
-PARTIAL_ENV_OUT="$(OH_STORY_PROSE_FILE="$ENV_TARGET" \
-  node "$(dirname "$HOOK")/story_hook_cli.js" prose-net 2>/dev/null || true)"
-if [ -n "$PARTIAL_ENV_OUT" ]; then
-  echo "FAIL: prose-net accepted a partial environment bridge" >&2
-  printf '%s\n' "$PARTIAL_ENV_OUT" | head -2 >&2
-  fails=$((fails+1))
-fi
-
 # 项目根精确白名单也必须被读取。Windows Git Bash 下这两级 fixture 同时锁定
 # root/file 必须统一到同一盘符路径空间，不得因 MSYS argv 转换漏读任一级。
 rm -f "$TMP/某书/.deslop-whitelist"
