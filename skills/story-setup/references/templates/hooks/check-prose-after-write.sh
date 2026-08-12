@@ -105,7 +105,25 @@ fi
 # 旧 argv 兼容路径，共享核仍不会读取项目外白名单。
 case "$(uname -s 2>/dev/null || true)" in
   MINGW*|MSYS*|CYGWIN*)
-    BASH_ABS="$ABS"
+    # `/tmp/...` 在 Git Bash 中可能只是虚拟别名，而 `project_root` 的 `pwd -P`
+    # 已返回盘符对应的物理路径。若直接做字符串前缀比较，同一个文件会被误判成
+    # 项目外路径，继而回退到会受 MSYS argv 转换影响的旧调用。先分别 `cd` 到项目根
+    # 和目标父目录再取 `pwd -P`，让两边落入同一 Bash 物理路径命名空间；文件名本身
+    # 不经重新编码，继续按原 UTF-8 字节拼回。
+    BASH_ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P || printf '%s' "$ROOT")"
+    BASH_PARENT="$(cd "$(dirname "$ABS")" 2>/dev/null && pwd -P || true)"
+    if [ -n "$BASH_PARENT" ]; then
+      BASH_ABS="${BASH_PARENT%/}/$(basename "$ABS")"
+    else
+      BASH_ABS="$ABS"
+    fi
+    case "$BASH_ROOT" in
+      [A-Za-z]:/*)
+        if command -v cygpath >/dev/null 2>&1; then
+          BASH_ROOT="$(cygpath -u "$BASH_ROOT" 2>/dev/null || printf '%s' "$BASH_ROOT")"
+        fi
+        ;;
+    esac
     case "$BASH_ABS" in
       [A-Za-z]:/*)
         if command -v cygpath >/dev/null 2>&1; then
@@ -113,12 +131,12 @@ case "$(uname -s 2>/dev/null || true)" in
         fi
         ;;
     esac
-    ROOT_PREFIX="${ROOT%/}/"
+    ROOT_PREFIX="${BASH_ROOT%/}/"
     case "$BASH_ABS" in
       "$ROOT_PREFIX"*)
         RELATIVE_TARGET="${BASH_ABS#"$ROOT_PREFIX"}"
         NET_MSG="$(printf '%s' "$RELATIVE_TARGET" \
-          | (cd "$ROOT" 2>/dev/null && node "$CLI" prose-net-relative 2>/dev/null) || true)"
+          | (cd "$BASH_ROOT" 2>/dev/null && node "$CLI" prose-net-relative 2>/dev/null) || true)"
         ;;
       *)
         NET_MSG="$(node "$CLI" prose-net "$ROOT" "$ABS" 2>/dev/null || true)"
