@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - **交付前确定性深扫**：`check-degeneration.js` 增加 `auto|zh|en` 语言模式；`zh` 同时阻断纯英文句/段、连续英文片段和中文叙事里的裸小写英文词。扫描会先保护 URL、邮箱、Markdown 链接、行内/围栏代码、文件路径、扩展名、型号和大写缩写；外文人名、术语或确需保留的对白复用 `.deslop-whitelist` 精确豁免，不用子串泛化放行。
 - **写后与跨章旧债门**：多端写后 Hook 对已落盘中文正文做语言检查，长篇写下一章前再扫上一章英文旧债；命中 blocking 必须先返修、复扫通过，不得带病交付或继续向后写。对话引号按实际命中位置判断，不再因同行别处有引号而整行降级。
 - **Windows stdin 兼容**：确定性检测器增加跨平台 `-` 标准输入入口，直接读取 fd 0；POSIX 仍兼容 `/dev/stdin`，Windows Git Bash 统一使用 `-`，避免 MSYS 在 Node 启动前将 `/dev/stdin` 改写为盘符路径。CRLF 行号与 blocking 退出码保持一致。
+- **Windows Hook 路径兼容**：Claude 写后正文网在 Git Bash/MSYS 下先将 CLI、项目根和正文文件统一为同一盘符路径空间，再调用原生 Node；修复书目级/项目级 `.deslop-whitelist` 被误判越界而漏读，同时保留“不读项目外白名单”的安全边界。
 
 ### 版本与部署
 

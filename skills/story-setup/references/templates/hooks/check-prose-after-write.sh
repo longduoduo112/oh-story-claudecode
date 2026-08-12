@@ -96,7 +96,26 @@ fi
 # 紧邻复读/毒句式
 # （硬信号，退化模型自己发现不了）；字数从 大纲/细纲_第N章*.md 的「字数目标」对照实际<90% 提示。
 # best-effort：找不到细纲/目标静默跳过，不误报。
-NET_MSG="$(node "$CLI" prose-net "$ROOT" "$ABS" 2>/dev/null || true)"
+# Windows Git Bash/MSYS 启动原生 node.exe 前会改写 POSIX 形式 argv；若 root/file
+# 落入不同路径命名空间，共享核会把书目级 `.deslop-whitelist` 安全地判为
+# 越界而漏读。Windows 薄壳先将 CLI/root/file 统一为同一盘符命名空间，再禁止二次
+# argv 转换；不放宽共享核的白名单越界边界。
+NODE_CLI="$CLI"
+NODE_ROOT="$ROOT"
+NODE_ABS="$ABS"
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*)
+    if command -v cygpath >/dev/null 2>&1; then
+      NODE_CLI="$(cygpath -m "$CLI" 2>/dev/null || printf '%s' "$CLI")"
+      NODE_ROOT="$(cygpath -m "$ROOT" 2>/dev/null || printf '%s' "$ROOT")"
+      NODE_ABS="$(cygpath -m "$ABS" 2>/dev/null || printf '%s' "$ABS")"
+    fi
+    NET_MSG="$(MSYS2_ARG_CONV_EXCL='*' node "$NODE_CLI" prose-net "$NODE_ROOT" "$NODE_ABS" 2>/dev/null || true)"
+    ;;
+  *)
+    NET_MSG="$(node "$NODE_CLI" prose-net "$NODE_ROOT" "$NODE_ABS" 2>/dev/null || true)"
+    ;;
+esac
 [ -n "$NET_MSG" ] && OUT+="【退化/工程词/中文语言/毒句式/字数】（硬信号：截断/拒绝语/工程词/语言漂移/毒句式→重写；命中即处理，别留给下一章）${NL}${NET_MSG}${NL}"
 
 [ -z "$OUT" ] && exit 0

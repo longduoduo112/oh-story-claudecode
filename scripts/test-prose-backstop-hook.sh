@@ -30,7 +30,7 @@ run() { CLAUDE_PROJECT_DIR="$TMP" CLAUDE_TOOL_INPUT="{\"tool_input\":{\"file_pat
 fails=0
 expect_silent() {
   local out; out="$(run "$1")"
-  if [ -n "$out" ]; then echo "FAIL: over-capture on non-正文 file: $1" >&2; echo "$out" | head -2 >&2; fails=$((fails+1)); fi
+  if [ -n "$out" ]; then echo "FAIL: expected silent hook result: $1" >&2; echo "$out" | head -2 >&2; fails=$((fails+1)); fi
 }
 expect_fire() {
   local out; out="$(run "$1")"
@@ -83,6 +83,14 @@ expect_fire_kw "$TMP/某书/正文/第016章_去味不豁免英文.md" 裸英文
 printf '%s\n' 'watcher' > "$TMP/某书/.deslop-whitelist"
 { printf '# 第17章\n\n'; PAD; printf '\n他看见 watcher 伏在暗处。\n他走了。\n'; } > "$TMP/某书/正文/第017章_白名单.md"
 expect_silent "$TMP/某书/正文/第017章_白名单.md"
+
+# 项目根精确白名单也必须被读取。Windows Git Bash 下这两级 fixture 同时锁定
+# root/file 必须统一到同一盘符路径空间，不得因 MSYS argv 转换漏读任一级。
+rm -f "$TMP/某书/.deslop-whitelist"
+printf '%s\n' 'watcher' > "$TMP/.deslop-whitelist"
+expect_silent "$TMP/某书/正文/第017章_白名单.md"
+rm -f "$TMP/.deslop-whitelist"
+expect_fire_kw "$TMP/某书/正文/第017章_白名单.md" 裸英文词泄漏
 
 if [ "$fails" -ne 0 ]; then
   echo "Prose backstop hook tests FAILED ($fails)." >&2
