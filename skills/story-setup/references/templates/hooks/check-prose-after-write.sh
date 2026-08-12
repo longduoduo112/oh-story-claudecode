@@ -98,12 +98,30 @@ fi
 # best-effort：找不到细纲/目标静默跳过，不误报。
 # Windows Git Bash/MSYS 启动原生 node.exe 前会改写 POSIX 形式 argv；若 root/file
 # 落入不同路径命名空间，共享核会把书目级 `.deslop-whitelist` 安全地判为
-# 越界而漏读。Windows 薄壳在子进程先进入项目根，令原生 Node 以 `.` 作安全边界；
-# 正文绝对路径和 CLI 路径仍由 Git Bash 按同一规则正常转换。不引入第二套路径桥，
-# 也不放宽共享核的白名单越界边界。
+# 越界而漏读。Windows 薄壳先在 Bash 命名空间确认目标仍属于项目，再进入项目根，
+# 令原生 Node 以 `.` 作安全边界、以 `./<项目内相对路径>` 读正文。这样 root/file
+# 天然经过同一 cwd 解析；CLI 绝对路径仍由 Git Bash 正常转换。项目外目标保留
+# 旧 argv 兼容路径，共享核仍不会读取项目外白名单。
 case "$(uname -s 2>/dev/null || true)" in
   MINGW*|MSYS*|CYGWIN*)
-    NET_MSG="$( (cd "$ROOT" 2>/dev/null && node "$CLI" prose-net . "$ABS" 2>/dev/null) || true)"
+    BASH_ABS="$ABS"
+    case "$BASH_ABS" in
+      [A-Za-z]:/*)
+        if command -v cygpath >/dev/null 2>&1; then
+          BASH_ABS="$(cygpath -u "$BASH_ABS" 2>/dev/null || printf '%s' "$BASH_ABS")"
+        fi
+        ;;
+    esac
+    ROOT_PREFIX="${ROOT%/}/"
+    case "$BASH_ABS" in
+      "$ROOT_PREFIX"*)
+        RELATIVE_TARGET="${BASH_ABS#"$ROOT_PREFIX"}"
+        NET_MSG="$( (cd "$ROOT" 2>/dev/null && node "$CLI" prose-net . "./$RELATIVE_TARGET" 2>/dev/null) || true)"
+        ;;
+      *)
+        NET_MSG="$(node "$CLI" prose-net "$ROOT" "$ABS" 2>/dev/null || true)"
+        ;;
+    esac
     ;;
   *)
     NET_MSG="$(node "$CLI" prose-net "$ROOT" "$ABS" 2>/dev/null || true)"
