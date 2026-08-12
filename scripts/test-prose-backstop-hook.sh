@@ -84,6 +84,24 @@ printf '%s\n' 'watcher' > "$TMP/某书/.deslop-whitelist"
 { printf '# 第17章\n\n'; PAD; printf '\n他看见 watcher 伏在暗处。\n他走了。\n'; } > "$TMP/某书/正文/第017章_白名单.md"
 expect_silent "$TMP/某书/正文/第017章_白名单.md"
 
+# Windows 专用的 stdin 相对路径桥：同一正文应读到书目级白名单，
+# 绝对路径与 `..` 逃逸一律静默拒绝。
+RELATIVE_OUT="$(printf '%s' '某书/正文/第017章_白名单.md' \
+  | (cd "$TMP" && node "$(dirname "$HOOK")/story_hook_cli.js" prose-net-relative) 2>/dev/null || true)"
+if [ -n "$RELATIVE_OUT" ]; then
+  echo "FAIL: relative prose-net ignored exact whitelist" >&2
+  printf '%s\n' "$RELATIVE_OUT" | head -2 >&2
+  fails=$((fails+1))
+fi
+for BAD_RELATIVE in '../outside.md' '/absolute/outside.md'; do
+  BAD_OUT="$(printf '%s' "$BAD_RELATIVE" \
+    | (cd "$TMP" && node "$(dirname "$HOOK")/story_hook_cli.js" prose-net-relative) 2>/dev/null || true)"
+  if [ -n "$BAD_OUT" ]; then
+    echo "FAIL: relative prose-net accepted escaping target: $BAD_RELATIVE" >&2
+    fails=$((fails+1))
+  fi
+done
+
 # 项目根精确白名单也必须被读取。Windows Git Bash 下这两级 fixture 同时锁定
 # root/file 必须统一到同一盘符路径空间，不得因 MSYS argv 转换漏读任一级。
 rm -f "$TMP/某书/.deslop-whitelist"

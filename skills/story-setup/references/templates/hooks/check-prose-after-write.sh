@@ -40,7 +40,8 @@ fi
 # 探测 node（官方现在推荐原生二进制装 Claude Code，只有 npm 装法才带 Node——native 安装
 # 可能无 node。探测不到就静默放行：兜底网降级停用，session-start.sh 会在会话起点提示一次）。
 node -e "" >/dev/null 2>&1 || exit 0
-CLI="$(dirname "$0")/story_hook_cli.js"
+HOOK_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd -P || dirname "$0")"
+CLI="$HOOK_DIR/story_hook_cli.js"
 [ -f "$CLI" ] || exit 0
 
 # 抽取目标文件路径（负载走管道喂 node 的 stdin，按 UTF-8 写回路径）。
@@ -99,8 +100,8 @@ fi
 # Windows Git Bash/MSYS 启动原生 node.exe 前会改写 POSIX 形式 argv；若 root/file
 # 落入不同路径命名空间，共享核会把书目级 `.deslop-whitelist` 安全地判为
 # 越界而漏读。Windows 薄壳先在 Bash 命名空间确认目标仍属于项目，再进入项目根，
-# 令原生 Node 以 `.` 作安全边界、以 `./<项目内相对路径>` 读正文。这样 root/file
-# 天然经过同一 cwd 解析；CLI 绝对路径仍由 Git Bash 正常转换。项目外目标保留
+# 令原生 Node 以 `.` 作安全边界、从 stdin 读取项目内相对路径。这样 root/file
+# 都不进入 MSYS argv 转换；绝对化的 CLI 路径仍由 Git Bash 正常转换。项目外目标保留
 # 旧 argv 兼容路径，共享核仍不会读取项目外白名单。
 case "$(uname -s 2>/dev/null || true)" in
   MINGW*|MSYS*|CYGWIN*)
@@ -116,7 +117,8 @@ case "$(uname -s 2>/dev/null || true)" in
     case "$BASH_ABS" in
       "$ROOT_PREFIX"*)
         RELATIVE_TARGET="${BASH_ABS#"$ROOT_PREFIX"}"
-        NET_MSG="$( (cd "$ROOT" 2>/dev/null && node "$CLI" prose-net . "./$RELATIVE_TARGET" 2>/dev/null) || true)"
+        NET_MSG="$(printf '%s' "$RELATIVE_TARGET" \
+          | (cd "$ROOT" 2>/dev/null && node "$CLI" prose-net-relative 2>/dev/null) || true)"
         ;;
       *)
         NET_MSG="$(node "$CLI" prose-net "$ROOT" "$ABS" 2>/dev/null || true)"

@@ -154,6 +154,19 @@ function deploymentAwareProseBlockReason(root, absolute) {
 
 const [command, ...args] = process.argv.slice(2)
 
+function emitProseNet(root, absolute) {
+  let text
+  try {
+    text = fs.readFileSync(absolute, "utf8")
+  } catch {
+    return
+  }
+  const out = core.proseNetFindings(text, core.readDeslopWhitelist(root, absolute))
+  const wordcount = core.wordcountFinding(absolute, text)
+  if (wordcount) out.push(wordcount)
+  if (out.length) process.stdout.write(out.join("\n"))
+}
+
 if (command === "extract-target") {
   // PostToolUse 工具输入 JSON → 目标文件路径。无输入/解析失败/无路径都以非零退出，
   // 让 bash 侧静默放行（与旧 python sys.exit(1) 一致）。
@@ -208,16 +221,20 @@ if (command === "extract-target") {
   // .deslop-whitelist。保留旧单参数形态，便于已部署脚本滚动升级时 fail-open 而非报错。
   const root = args.length >= 2 ? args[0] : ""
   const absolute = args.length >= 2 ? args[1] : args[0]
-  let text
-  try {
-    text = fs.readFileSync(absolute, "utf8")
-  } catch {
-    process.exit(0)
-  }
-  const out = core.proseNetFindings(text, core.readDeslopWhitelist(root, absolute))
-  const wordcount = core.wordcountFinding(absolute, text)
-  if (wordcount) out.push(wordcount)
-  if (out.length) process.stdout.write(out.join("\n"))
+  emitProseNet(root, absolute)
+} else if (command === "prose-net-relative") {
+  // Windows Git Bash 不可靠地改写传给原生 node.exe 的多个路径 argv。该窄入口
+  // 固定以 Node 继承的 cwd 为项目根，仅从 stdin 接受项目内相对路径；绝对路径、
+  // `..` 逃逸和 NUL 全部静默拒绝，不放宽 .deslop-whitelist 的项目边界。
+  const rawRelative = readStdin()
+  if (!rawRelative || rawRelative.includes("\0")) process.exit(0)
+  const normalized = rawRelative.replace(/\\/g, "/")
+  if (path.isAbsolute(normalized)) process.exit(0)
+  const root = core.existingDir(process.cwd()) || path.resolve(process.cwd())
+  const absolute = core.resolveTarget(root, normalized, root)
+  const relative = path.relative(root, absolute)
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) process.exit(0)
+  emitProseNet(root, absolute)
 } else if (command === "prose-toxic") {
   // 毒句式确定性检测单跑（供 guard 前置门 / 手工复扫调用；prose-net 已含同一组结果）。
   // 契约：stdout 空 = 干净；非空 = findings 行（每行一条，末行为清零要求 + 完整扫描提示）。
