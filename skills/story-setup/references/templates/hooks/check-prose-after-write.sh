@@ -98,22 +98,26 @@ fi
 # best-effort：找不到细纲/目标静默跳过，不误报。
 # Windows Git Bash/MSYS 启动原生 node.exe 前会改写 POSIX 形式 argv；若 root/file
 # 落入不同路径命名空间，共享核会把书目级 `.deslop-whitelist` 安全地判为
-# 越界而漏读。Windows 薄壳先将 CLI/root/file 统一为同一盘符命名空间，再禁止二次
-# argv 转换；不放宽共享核的白名单越界边界。
-NODE_CLI="$CLI"
+# 越界而漏读。Windows 薄壳先将 root/file 统一为同一盘符命名空间，再通过环境变量
+# 交给 Node，完全避开 argv 二次转换；CLI 脚本路径仍由 Git Bash 正常转换。不放宽
+# 共享核的白名单越界边界。
 NODE_ROOT="$ROOT"
 NODE_ABS="$ABS"
 case "$(uname -s 2>/dev/null || true)" in
   MINGW*|MSYS*|CYGWIN*)
-    if command -v cygpath >/dev/null 2>&1; then
-      NODE_CLI="$(cygpath -m "$CLI" 2>/dev/null || printf '%s' "$CLI")"
-      NODE_ROOT="$(cygpath -m "$ROOT" 2>/dev/null || printf '%s' "$ROOT")"
-      NODE_ABS="$(cygpath -m "$ABS" 2>/dev/null || printf '%s' "$ABS")"
+    if command -v cygpath >/dev/null 2>&1 \
+       && NODE_ROOT="$(cygpath -m "$ROOT" 2>/dev/null)" \
+       && NODE_ABS="$(cygpath -m "$ABS" 2>/dev/null)" \
+       && [ -n "$NODE_ROOT" ] && [ -n "$NODE_ABS" ]; then
+      NET_MSG="$(OH_STORY_PROSE_ROOT="$NODE_ROOT" OH_STORY_PROSE_FILE="$NODE_ABS" node "$CLI" prose-net 2>/dev/null || true)"
+    else
+      # 非标准 MSYS 环境或转换异常：回退旧 argv 契约，由宿主的默认
+      # 转换尝试解析；不用未转换 POSIX 值填环境变量导致必然静默。
+      NET_MSG="$(node "$CLI" prose-net "$ROOT" "$ABS" 2>/dev/null || true)"
     fi
-    NET_MSG="$(MSYS2_ARG_CONV_EXCL='*' node "$NODE_CLI" prose-net "$NODE_ROOT" "$NODE_ABS" 2>/dev/null || true)"
     ;;
   *)
-    NET_MSG="$(node "$NODE_CLI" prose-net "$NODE_ROOT" "$NODE_ABS" 2>/dev/null || true)"
+    NET_MSG="$(node "$CLI" prose-net "$NODE_ROOT" "$NODE_ABS" 2>/dev/null || true)"
     ;;
 esac
 [ -n "$NET_MSG" ] && OUT+="【退化/工程词/中文语言/毒句式/字数】（硬信号：截断/拒绝语/工程词/语言漂移/毒句式→重写；命中即处理，别留给下一章）${NL}${NET_MSG}${NL}"

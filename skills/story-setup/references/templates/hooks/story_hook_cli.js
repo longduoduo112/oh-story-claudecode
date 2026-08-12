@@ -206,8 +206,14 @@ if (command === "extract-target") {
   // 可选字数行）。读文件失败静默退出（兜底不反噬流程）。
   // 新契约：prose-net <root> <absolute>，让 Claude 写后网能从正文向上读取最近的
   // .deslop-whitelist。保留旧单参数形态，便于已部署脚本滚动升级时 fail-open 而非报错。
-  const root = args.length >= 2 ? args[0] : ""
-  const absolute = args.length >= 2 ? args[1] : args[0]
+  // Windows Git Bash 会自动改写传给原生 node.exe 的 POSIX 形式 argv。Claude
+  // 薄壳在该平台先用 cygpath 把 root/file 统一到同一命名空间，再用环境
+  // 变量传入。显式 argv 依然优先，保留新双参数与旧单参数滚动升级契约。
+  const envRoot = process.env.OH_STORY_PROSE_ROOT || ""
+  const envAbsolute = process.env.OH_STORY_PROSE_FILE || ""
+  const useEnvPair = args.length === 0 && Boolean(envRoot && envAbsolute)
+  const root = args.length >= 2 ? args[0] : (useEnvPair ? envRoot : "")
+  const absolute = args.length >= 2 ? args[1] : (args[0] || (useEnvPair ? envAbsolute : ""))
   let text
   try {
     text = fs.readFileSync(absolute, "utf8")
