@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const USAGE = `Usage: node check-degeneration.js [--check] [--json] [--fail-on=blocking|all] [--language=auto|zh|en] <file...>
+const USAGE = `Usage: node check-degeneration.js [--check] [--json] [--fail-on=blocking|all] [--language=auto|zh|en] <file...|->
 
 Detect model-degeneration fingerprints that a degrading model cannot self-report:
   - verbatim repetition (复读/打转): a long sentence repeated, or back-to-back identical lines
@@ -108,6 +108,8 @@ for (let i = 2; i < process.argv.length; i += 1) {
   } else if (arg === '-h' || arg === '--help') {
     process.stdout.write(`${USAGE}\n`);
     process.exit(0);
+  } else if (arg === '-') {
+    options.files.push(arg);
   } else if (arg.startsWith('-')) {
     die(`Unknown option: ${arg}`);
   } else {
@@ -123,16 +125,22 @@ let failed = false;
 const allFindings = [];
 
 for (const file of options.files) {
-  const fullPath = path.resolve(file);
+  // Git Bash on Windows exposes `/dev/stdin` to shell tools, but Node's Win32
+  // path resolver turns it into a drive path that cannot be opened. Read fd 0
+  // directly for both conventional stdin spellings while keeping the original
+  // label in findings. Stdin has no trustworthy project root, so it must not
+  // inherit a `.deslop-whitelist` from the caller's cwd.
+  const isStdin = file === '-' || file === '/dev/stdin';
+  const fullPath = isStdin ? null : path.resolve(file);
   let input;
   try {
-    input = fs.readFileSync(fullPath, 'utf8');
+    input = fs.readFileSync(isStdin ? 0 : fullPath, 'utf8');
   } catch (error) {
     failed = true;
     if (!options.json) console.error(`${file}: unable to read (${error.message})`);
     continue;
   }
-  const whitelist = loadLanguageWhitelist(fullPath);
+  const whitelist = isStdin ? emptyLanguageWhitelist() : loadLanguageWhitelist(fullPath);
   const findings = scanDocument(input, { language: options.language, whitelist })
     .map((finding) => ({ file, ...finding }));
   allFindings.push(...findings);

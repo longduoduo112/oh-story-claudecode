@@ -334,22 +334,45 @@ for (const line of [1, 2, 3, 4]) {
 NODE
 echo "  OK 全大写英文/无句号单词台词/短中文 auto 均不逃逸"
 
-# /dev/stdin + CRLF 也必须保留正确行号。
+# `-` 是 Windows/POSIX 通用的显式 stdin 别名，CRLF 也必须保留正确行号。
 set +e
 printf '她开门。\r\nThe room was quiet.\r\n' \
-  | node "$SCRIPT" --language=zh --fail-on=blocking --json /dev/stdin > "$OUT"
-stdin_crlf_status=$?
+  | node "$SCRIPT" --language=zh --fail-on=blocking --json - > "$OUT"
+stdin_dash_status=$?
 set -e
-if [ "$stdin_crlf_status" -ne 1 ]; then
-  echo "FAIL: /dev/stdin CRLF 中的英文句必须 blocking" >&2
+if [ "$stdin_dash_status" -ne 1 ]; then
+  echo "FAIL: - stdin CRLF 中的英文句必须 blocking" >&2
   exit 1
 fi
 node - "$OUT" <<'NODE'
 const fs = require('fs');
 const hit = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.find((f) => f.type === 'language-leak');
+if (!hit || hit.file !== '-' || hit.line !== 2) throw new Error(`dash stdin/CRLF line contract drift: ${JSON.stringify(hit)}`);
+NODE
+echo "  OK - stdin + CRLF 保留 language-leak 行号"
+
+# POSIX 保留惯用的 /dev/stdin 别名。Git Bash/MSYS 会在启动原生
+# node.exe 前改写这个参数，Windows 端不把它当公共契约，统一使用 `-`。
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *)
+    set +e
+    printf '她开门。\r\nThe room was quiet.\r\n' \
+      | node "$SCRIPT" --language=zh --fail-on=blocking --json /dev/stdin > "$OUT"
+    stdin_crlf_status=$?
+    set -e
+    if [ "$stdin_crlf_status" -ne 1 ]; then
+      echo "FAIL: /dev/stdin CRLF 中的英文句必须 blocking" >&2
+      exit 1
+    fi
+    node - "$OUT" <<'NODE'
+const fs = require('fs');
+const hit = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.find((f) => f.type === 'language-leak');
 if (!hit || hit.file !== '/dev/stdin' || hit.line !== 2) throw new Error(`stdin/CRLF line contract drift: ${JSON.stringify(hit)}`);
 NODE
-echo "  OK /dev/stdin + CRLF 保留 language-leak 行号"
+    echo "  OK POSIX /dev/stdin + CRLF 保留 language-leak 行号"
+    ;;
+esac
 
 # --- Markdown 围栏长度、reference id/定义、Unicode 路径均是不可见或结构性内容 ---
 MARKDOWN_PROTECTED="$TMP_DIR/markdown-protected.md"
