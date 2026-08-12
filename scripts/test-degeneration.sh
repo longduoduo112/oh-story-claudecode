@@ -138,7 +138,8 @@ NODE
 
 # --- 裸英文词泄漏（实测样本：「watcher 伏在暗里」）---
 # 中文正文里冒出的小写英文常用词基本是内部代号/占位没换成中文名。判据要两层：
-# 整行以中文为主 + 词是独立全小写 ≥4 位。负例锁住 PDF/DB-40/.pptx/LABADMIN 与纯英文行。
+# 旧规则曾要求整行以中文为主；现在由文档级 language gate 判定。这里负例只锁住
+# PDF/DB-40/.pptx/LABADMIN，纯英文文档的 auto/en 放行与 zh 拦截在下方单独测试。
 BARE_POS="$TMP_DIR/bare-positive.md"
 BARE_NEG="$TMP_DIR/bare-negative.md"
 cat > "$BARE_POS" <<'PROSE'
@@ -166,7 +167,6 @@ cat > "$BARE_NEG" <<'PROSE'
 排好授权生效、检索DB-40、调阅原图和权限关闭的时点，逐项核过。
 我的名字从《星桥项目_v28.pptx》首页消失，掌声还没停下来。
 四月七日凌晨，周妍用 LABADMIN 账号重新上传过同名文件。
-The room was quiet and nobody moved at all in there.
 PROSE
 set +e
 node "$SCRIPT" --json "$BARE_NEG" > "$OUT"
@@ -176,10 +176,319 @@ const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const hits = report.findings.filter((f) => /裸英文词泄漏/.test(f.message));
 if (hits.length !== 0) {
-  throw new Error(`大写缩写/编号道具/扩展名/账号名/纯英文行都不得判为裸英文词，got ${JSON.stringify(hits.map((f) => f.excerpt))}`);
+  throw new Error(`大写缩写/编号道具/扩展名/账号名都不得判为裸英文词，got ${JSON.stringify(hits.map((f) => f.excerpt))}`);
 }
 NODE
-echo "  OK 裸英文词泄漏：PDF / DB-40 / .pptx / LABADMIN / 纯英文行 0 误伤"
+echo "  OK 裸英文词泄漏：PDF / DB-40 / .pptx / LABADMIN 0 误伤"
+
+# --- 中文正文语言门禁：纯英文句段 / 完整英文台词 / 连续短语 / TitleCase / 短词 ---
+LANG_POS="$TMP_DIR/language-zh-positive.md"
+cat > "$LANG_POS" <<'PROSE'
+她盯着墙上的字：The room was quiet and nobody moved.
+Please close the old door before midnight.
+她停住。Go home. 她没有回头。
+他说：“Take the old road.”
+她在名单里看见 Aiden，指尖停住了。
+她低声说 go，门却没有开。
+“别动。”她看见 shadow 藏在门后。
+她说：“去 shadow 那边。”然后关灯。
+他说：“Sorry.”
+她只回了一句：“Go.”
+门外传来一声：“Yes.”
+Sorry.
+PROSE
+set +e
+node "$SCRIPT" --language=zh --json "$LANG_POS" > "$OUT"
+lang_pos_status=$?
+set -e
+if [ "$lang_pos_status" -ne 1 ]; then
+  echo "FAIL: zh 语言门禁正例应退出 1，实际 $lang_pos_status" >&2
+  cat "$OUT" >&2 || true
+  exit 1
+fi
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const hits = r.findings.filter((f) => f.type === 'language-leak');
+const expected = new Map([
+  [1, ['blocking', '连续英文短语泄漏']],
+  [2, ['blocking', '纯英文句段泄漏']],
+  [3, ['blocking', '纯英文句段泄漏']],
+  [4, ['blocking', '完整英文台词泄漏']],
+  [5, ['advisory', '英文专名/短词疑似泄漏']],
+  [6, ['advisory', '英文专名/短词疑似泄漏']],
+  [7, ['blocking', '裸英文词泄漏']],
+  [8, ['advisory', '裸英文词泄漏']],
+  [9, ['blocking', '完整英文台词泄漏']],
+  [10, ['blocking', '完整英文台词泄漏']],
+  [11, ['blocking', '完整英文台词泄漏']],
+  [12, ['blocking', '纯英文句段泄漏']],
+]);
+if (hits.length !== expected.size) {
+  throw new Error(`expected ${expected.size} language hits, got ${hits.length}: ${JSON.stringify(hits.map((f) => `${f.line}:${f.severity}:${f.message}`))}`);
+}
+for (const [line, [severity, label]] of expected) {
+  const hit = hits.find((f) => f.line === line);
+  if (!hit || hit.severity !== severity || !hit.message.includes(label)) {
+    throw new Error(`line ${line} expected ${severity}/${label}, got ${JSON.stringify(hit)}`);
+  }
+}
+NODE
+echo "  OK 中文语言门禁：纯英文句段/英文台词/连续短语 blocking，TitleCase/短词 advisory，引号 offset 精确"
+
+# --- .deslop-whitelist：Latin token / 完整短句只做大小写敏感的精确豁免，不做子串 ---
+WHITE_ROOT="$TMP_DIR/whitelist-project"
+WHITE_BODY="$WHITE_ROOT/正文"
+mkdir -p "$WHITE_BODY"
+cat > "$WHITE_ROOT/.deslop-whitelist" <<'EOF'
+# AI 不能把 Aiden 一并豁免
+AI
+shadow
+Open the door
+Sorry
+EOF
+WHITE_DOC="$WHITE_BODY/chapter.md"
+cat > "$WHITE_DOC" <<'PROSE'
+她在名单里看见 Aiden。
+门牌上写着 shadow。
+他说：“Open the door.”
+他说：“Open the door now.”
+门牌上写着 shadowed。
+他说：“Sorry.”
+他说：“OK。”
+PROSE
+set +e
+node "$SCRIPT" --language=zh --json "$WHITE_DOC" > "$OUT"
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const hits = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.filter((f) => f.type === 'language-leak');
+if (hits.length !== 3) {
+  throw new Error(`whitelist 精确匹配应只剩 Aiden / Open...now / shadowed 三项，got ${JSON.stringify(hits.map((f) => `${f.line}:${f.message}`))}`);
+}
+const aiden = hits.find((f) => f.line === 1);
+if (!aiden || aiden.severity !== 'advisory' || !aiden.message.includes('Aiden')) {
+  throw new Error(`白名单 AI 不得子串豁免 Aiden: ${JSON.stringify(aiden)}`);
+}
+if (hits.some((f) => f.line === 2 || f.line === 3 || f.line === 6 || f.line === 7)) {
+  throw new Error('精确登记的 Latin token / 完整英文短句与全大写缩写台词应豁免');
+}
+if (!hits.some((f) => f.line === 4 && f.severity === 'blocking') || !hits.some((f) => f.line === 5 && f.severity === 'blocking')) {
+  throw new Error('完整短句/Latin token 的超集不得因子串命中白名单而豁免');
+}
+NODE
+echo "  OK .deslop-whitelist：AI≠Aiden，token/完整短句精确豁免，超集不豁免"
+
+# --- 等长保护遮罩：URL/邮箱/Markdown target/inline code/路径/扩展名/数字与 _- 型号 ---
+PROTECTED="$TMP_DIR/language-protected.md"
+cat > "$PROTECTED" <<'PROSE'
+她把结果发到 https://example.com/open/the-door?file=draft.txt。
+请联系 editor@example.com，不要抄送别人。
+正文见 [说明页](docs/open-the-door.md)，那里有原件。
+命令写成 `open the old door`，不要执行。
+文件在 /Users/demo/story/open-door/draft.txt，备份是 C:\draft\story_v28.md。
+她核对 draft.txt、.pptx、DB-40、GPT-4、story_v28、A13 和 2026-08-12。
+四月七日凌晨，周妍用 LABADMIN 账号上传。
+医生复核 Ara h 2、F17-Q、V0、PA66、R66-7、QP-07、PDF、KB 和 IP。
+她把 A客户/B客户 分开记录。
+她核对 A-03、B-02、B-04 与原料 A-218。
+封签下方，A、B、C三个编号还在，她又调出 A、B、C包。
+系统只写了一个字母：C，文件名后面有Q。
+PROSE
+set +e
+node "$SCRIPT" --language=zh --json "$PROTECTED" > "$OUT"
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const hits = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.filter((f) => f.type === 'language-leak');
+if (hits.length !== 0) {
+  throw new Error(`保护区不得产生语言泄漏 finding: ${JSON.stringify(hits.map((f) => `${f.line}:${f.message}`))}`);
+}
+NODE
+echo "  OK 等长遮罩：URL/邮箱/Markdown target/代码/路径/扩展名/数字型号 0 误伤"
+
+# --- 边界回归：全大写句、无句号单词台词、短中文 auto 不得逃逸 ---
+LANG_EDGE="$TMP_DIR/language-edge.md"
+cat > "$LANG_EDGE" <<'PROSE'
+她看见墙上写着：GET OUT NOW.
+她只说：“Go”
+她说：The room was quiet.
+正文见 [docs](https://example.com/doc)。
+PROSE
+set +e
+node "$SCRIPT" --language=auto --fail-on=blocking --json "$LANG_EDGE" > "$OUT"
+lang_edge_status=$?
+set -e
+if [ "$lang_edge_status" -ne 1 ]; then
+  echo "FAIL: 全大写英文/无句号单词台词/短中文 auto 均应 blocking" >&2
+  cat "$OUT" >&2 || true
+  exit 1
+fi
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const hits = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.filter((f) => f.type === 'language-leak');
+for (const line of [1, 2, 3, 4]) {
+  const hit = hits.find((f) => f.line === line);
+  if (!hit || hit.severity !== 'blocking') throw new Error(`line ${line} must be blocking: ${JSON.stringify(hit)}`);
+}
+NODE
+echo "  OK 全大写英文/无句号单词台词/短中文 auto 均不逃逸"
+
+# /dev/stdin + CRLF 也必须保留正确行号。
+set +e
+printf '她开门。\r\nThe room was quiet.\r\n' \
+  | node "$SCRIPT" --language=zh --fail-on=blocking --json /dev/stdin > "$OUT"
+stdin_crlf_status=$?
+set -e
+if [ "$stdin_crlf_status" -ne 1 ]; then
+  echo "FAIL: /dev/stdin CRLF 中的英文句必须 blocking" >&2
+  exit 1
+fi
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const hit = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.find((f) => f.type === 'language-leak');
+if (!hit || hit.file !== '/dev/stdin' || hit.line !== 2) throw new Error(`stdin/CRLF line contract drift: ${JSON.stringify(hit)}`);
+NODE
+echo "  OK /dev/stdin + CRLF 保留 language-leak 行号"
+
+# --- Markdown 围栏长度、reference id/定义、Unicode 路径均是不可见或结构性内容 ---
+MARKDOWN_PROTECTED="$TMP_DIR/markdown-protected.md"
+cat > "$MARKDOWN_PROTECTED" <<'PROSE'
+````js
+const name = "hello";
+```
+`````js
+The room was quiet and nobody moved.
+````
+正文见 [说明][docs]。
+[docs]: https://example.com/open-the-door
+文件在 /Users/张三/open-door。
+她继续走。
+PROSE
+set +e
+node "$SCRIPT" --language=zh --json "$MARKDOWN_PROTECTED" > "$OUT"
+markdown_status=$?
+set -e
+if [ "$markdown_status" -ne 0 ]; then
+  echo "FAIL: 长围栏、reference id/定义、Unicode 路径不得产生 finding" >&2
+  cat "$OUT" >&2 || true
+  exit 1
+fi
+echo "  OK 长 Markdown 围栏、reference id/定义、Unicode 无扩展名路径受保护"
+
+# --- 白名单必须按每个文件的项目根解析，不能被 cwd 跨项目污染 ---
+WHITE_A="$TMP_DIR/whitelist-a"
+WHITE_B="$TMP_DIR/whitelist-b"
+mkdir -p "$WHITE_A" "$WHITE_B"
+cat > "$WHITE_A/.deslop-whitelist" <<'EOF'
+shadow
+EOF
+cat > "$WHITE_A/a.md" <<'PROSE'
+门牌写着 shadow。
+PROSE
+cat > "$WHITE_B/b.md" <<'PROSE'
+她看见 shadow 藏在门后。
+PROSE
+set +e
+(cd "$WHITE_A" && node "$SCRIPT" --language=zh --fail-on=blocking --json a.md "$WHITE_B/b.md") > "$OUT"
+white_isolation_status=$?
+set -e
+if [ "$white_isolation_status" -ne 1 ]; then
+  echo "FAIL: cwd 白名单不得豁免另一项目" >&2
+  cat "$OUT" >&2 || true
+  exit 1
+fi
+node - "$OUT" "$WHITE_A/a.md" "$WHITE_B/b.md" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const aPath = process.argv[3];
+const bPath = process.argv[4];
+if (report.findings.some((f) => f.file === 'a.md')) throw new Error('project A exact whitelist must still apply');
+const b = report.findings.find((f) => f.file === bPath && f.type === 'language-leak');
+if (!b || b.severity !== 'blocking') throw new Error(`project B must not inherit cwd whitelist: ${JSON.stringify(report.findings)}`);
+NODE
+echo "  OK 多文件扫描按各自项目根隔离 .deslop-whitelist"
+
+# --- column 以原文 Unicode code point 计数，保留前导空白 ---
+COLUMN_DOC="$TMP_DIR/column.md"
+cat > "$COLUMN_DOC" <<'PROSE'
+  🙂她看见 Aiden。
+她回头。
+PROSE
+set +e
+node "$SCRIPT" --language=zh --json "$COLUMN_DOC" > "$OUT"
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const hit = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.find((f) => f.type === 'language-leak');
+if (!hit || hit.column !== 8) throw new Error(`Aiden must start at visible source column 8, got ${JSON.stringify(hit)}`);
+NODE
+echo "  OK language-leak column 保留前导空白并按 Unicode code point 计数"
+
+# --- auto/en：英文文档跳过语言门禁；显式 zh 才拦。en 仍保留其他退化检测。 ---
+EN_DOC="$TMP_DIR/english-document.md"
+cat > "$EN_DOC" <<'PROSE'
+The room was quiet and nobody moved.
+A storm rolled over the hills before dawn.
+PROSE
+for mode in auto en; do
+  set +e
+  node "$SCRIPT" --language="$mode" --json "$EN_DOC" > "$OUT"
+  en_status=$?
+  set -e
+  if [ "$en_status" -ne 0 ]; then
+    echo "FAIL: 英文文档 --language=$mode 应放行，实际退出 $en_status" >&2
+    cat "$OUT" >&2 || true
+    exit 1
+  fi
+done
+set +e
+node "$SCRIPT" --language=zh --json "$EN_DOC" > "$OUT"
+zh_english_status=$?
+set -e
+if [ "$zh_english_status" -ne 1 ]; then
+  echo "FAIL: 同一英文文档显式 --language=zh 应被拦截" >&2
+  exit 1
+fi
+
+EN_META="$TMP_DIR/english-meta.md"
+cat > "$EN_META" <<'PROSE'
+The 细纲 says the door must stay closed.
+PROSE
+set +e
+node "$SCRIPT" --language=en --json "$EN_META" > "$OUT"
+en_meta_status=$?
+set -e
+if [ "$en_meta_status" -ne 1 ]; then
+  echo "FAIL: --language=en 只跳过语言门禁，不能跳过原有工程词检测" >&2
+  exit 1
+fi
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (!r.findings.some((f) => f.type === 'meta-leak' && f.severity === 'blocking')) throw new Error('en 模式必须保留 meta-leak');
+if (r.findings.some((f) => f.type === 'language-leak')) throw new Error('en 模式不得运行 language gate');
+NODE
+echo "  OK language=auto/en 放行英文文档；language=en 仍保留原退化/工程词检测"
+
+# --- 命中级引号判断：同一行其他台词不能把引号外的工程词/软拒绝语误降级或豁免 ---
+QUOTE_EXACT="$TMP_DIR/quote-exact.md"
+cat > "$QUOTE_EXACT" <<'PROSE'
+“细纲只是个术语。”她合上本子，细纲又从旁白里漏了出来。
+“作为AI，我会保护你。”她转身。作为AI，我需要提醒您。
+PROSE
+set +e
+node "$SCRIPT" --language=zh --json "$QUOTE_EXACT" > "$OUT"
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const meta = r.findings.find((f) => f.type === 'meta-leak' && f.line === 1);
+const self = r.findings.find((f) => f.type === 'placeholder-leak' && f.line === 2);
+if (!meta || meta.severity !== 'blocking') throw new Error(`引号外第二个细纲必须优先 blocking: ${JSON.stringify(meta)}`);
+if (!self || self.severity !== 'blocking') throw new Error(`引号外 AI 自指不能因本行另有台词而豁免: ${JSON.stringify(self)}`);
+NODE
+echo "  OK 引号命中按精确 offset 判定，同一行其他引号不误降级"
 
 # --- 章号引用泄漏 chNN（实测泄漏样本：「她在 ch13 便学乖了」）---
 # 中文工程词表只收「第X章/本章/前文」，ch13 这类英文缩写一条都不命中，

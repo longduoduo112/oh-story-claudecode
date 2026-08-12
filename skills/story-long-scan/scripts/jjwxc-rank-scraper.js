@@ -24,7 +24,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const { ab, sleep, evalJSONBase64, getArg, localDateStamp, runCli } = require("./cdp-utils");
+const { ab, sleep, evalJSONBase64, getArg, captureRunClock, runCli } = require("./cdp-utils");
+const RUN_CLOCK = captureRunClock();
 
 const BASE_URL = "https://www.jjwxc.net/topten.php";
 
@@ -280,12 +281,12 @@ function scrapeRank(port, rankTypeId, channelId) {
     quality = "[仅列表-无核心指标]";
   }
 
-  const now = new Date().toISOString();
   const lines = [
     `# 晋江 · ${rt.label}`,
     "",
     `- 来源：${url}`,
-    `- 抓取时间：${now}`,
+    `- 抓取时间（UTC）：${RUN_CLOCK.utc}`,
+    `- 报告日期（本地）：${RUN_CLOCK.localDate}`,
     `- 频道数：${data.channels.length}`,
     `- 总条目数：${totalBooks}`,
     `- 详情采集：${detailOk} / ${detailPlanned}（每频道前 ${TOP}，上限 ${DETAIL_LIMIT}）`,
@@ -336,6 +337,14 @@ function scrapeRank(port, rankTypeId, channelId) {
 }
 
 function main() {
+  if (RANKTYPE !== "all" && !RANK_TYPES.some((rank) => rank.id === RANKTYPE)) {
+    throw new Error(`未知 --type: ${RANKTYPE}`);
+  }
+  // 当前脚本只实现全站榜（t=0）；不能把任意数字静默标成“频道 N”。
+  // 若后续支持分频道，先从页面提取并维护明确 ID 白名单再开放。
+  if (CHANNEL !== "0") {
+    throw new Error(`未知 --channel: ${CHANNEL}（当前仅支持 0=全站）`);
+  }
   const rankTypes = RANKTYPE === "all" ? RANK_TYPES.map((r) => r.id) : [RANKTYPE];
   const channels = [CHANNEL]; // 晋江频道 ID 需从页面获取，默认全站
   let written = 0;
@@ -360,7 +369,7 @@ function main() {
         }
 
         const rtInfo = RANK_TYPES.find((r) => r.id === rt);
-        const date = localDateStamp();
+        const date = RUN_CLOCK.localDate;
         const chLabel = ch === "0" ? "全站" : `频道${ch}`;
         const filename = `晋江${rtInfo.label}_${chLabel}_${date}.md`;
         fs.mkdirSync(OUTDIR, { recursive: true });

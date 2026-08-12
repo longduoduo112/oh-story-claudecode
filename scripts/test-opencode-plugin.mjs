@@ -137,13 +137,14 @@ try {
   );
   writeCleanState("book", 3);
 
-  await expectBlocked(
+  await assert.rejects(
     () =>
       hooks["tool.execute.before"](
         { tool: "bash" },
         { args: { command: "cat draft.md > book/正文/第003章_绕过.md" } }
       ),
-    "bash redirect must not bypass the outline guard"
+    /写正文被拦截[\s\S]*已从 Bash 命令识别到正文写入目标/,
+    "bash redirect must be blocked without claiming the static parser is unbypassable"
   );
   await hooks["tool.execute.before"](
     { tool: "bash" },
@@ -241,7 +242,7 @@ try {
 
   fs.writeFileSync(
     "book/正文/第001章_开局.md",
-    `${"街灯一盏盏亮起。".repeat(30)}\nTODO 此处待补`,
+    `${"街灯一盏盏亮起。".repeat(30)}\nTODO 此处待补\n他想 this should never happen again。`,
     "utf8"
   );
   const afterOutput = { output: "write complete" };
@@ -251,6 +252,7 @@ try {
   );
   assert.match(afterOutput.output, /正文兜底检测/);
   assert.match(afterOutput.output, /占位符/);
+  assert.match(afterOutput.output, /连续英文短语泄漏/);
 
   const nonProseOutput = { output: "unchanged" };
   fs.writeFileSync("notes.md", "TODO\n", "utf8");

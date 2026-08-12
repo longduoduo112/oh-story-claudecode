@@ -140,11 +140,12 @@ out="$(run_hook pre-tool-prose-guard '{"tool_name":"Write","tool_input":{"file_p
 assert_denied "$out" "imported project must not permanently bypass invalid tracking guard"
 echo "  OK outline-before-prose guard"
 
-printf '这是正文里的 TODO，而且最后一句被截断' > "$ROOT/short/正文.md"
+printf '这是正文里的 TODO，他想 this should never happen again，而且最后一句被截断' > "$ROOT/short/正文.md"
 out="$(run_hook post-tool-prose-check '{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"short/正文.md"}}')"
 assert_contract "$out" PostToolUse "post-write prose check"
 printf '%s' "$out" | grep -q '占位符' || fail "post-write check missed TODO"
 printf '%s' "$out" | grep -q '疑似截断' || fail "post-write check missed truncation"
+printf '%s' "$out" | grep -q '连续英文短语泄漏' || fail "post-write check missed English language drift"
 echo "  OK post-write strict JSON + UTF-8 findings"
 
 printf '命令写入的正文 TODO。' > "$ROOT/short/正文.md"

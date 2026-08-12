@@ -44,8 +44,9 @@ OpenClaw 会从项目 `skills/` 目录发现 `SKILL.md`。优先通过 OpenClaw 
 ## 写作约束
 
 - 写正文前必须先有对应大纲：长篇 `大纲/细纲_第N章*.md`，短篇 `小节大纲.md`。
+- 中文长篇/短篇正文全程锁定中文；未获用户/设定明确授权的英文句段、裸英文词和英文对话必须改成中文。缩写/型号、URL/邮箱/文件名/代码和 `.deslop-whitelist` 精确登记项除外。英文/海外意图优先路由 `story-globalize`；未安装时报告缺失，不进入中文写作流程。
 - OpenClaw Phase 1 没有硬 hook 拦截；执行写作 skill 时必须由 skill 流程自行检查大纲，不得跳过。
-- **去AI味自锁**（本平台无 hook 兜底，此条是唯一防线）：每章正文落盘后，同一轮内立即按写作 skill 的「最毒句式速查 + 禁用词扫描」自检并清零（能运行 node 时跑 `check-ai-patterns.js --check --fail-on=blocking`）；写下一章前先复查上一章无欠账。唯一豁免＝用户显式说"本章不去味"，豁免章在标题行下加 `<!-- 去味:跳过 -->`。
+- **去AI味/英文泄漏自锁**（本平台无 hook 兜底，此条是唯一防线）：每章正文落盘后，同一轮内立即运行 `check-ai-patterns.js --check --fail-on=blocking` 与 `check-degeneration.js --check --language=zh --fail-on=blocking`，将毒句式、退化信号和未授权英文句段/裸词清零；写下一章前先复查上一章无欠账。`<!-- 去味:跳过 -->` 不豁免英文泄漏；确需保留的外语写入 `.deslop-whitelist`。
 - Compact / 新会话后优先读取 `{书名}/追踪/上下文.md` 恢复当前写作状态。
 
 ## Compact 后恢复上下文

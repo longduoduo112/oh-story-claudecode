@@ -1000,6 +1000,62 @@ def outline_rule_contract_findings(
     ]
 
 
+def marketplace_skill_version_findings(
+    repo_root: Path, skill_name: str
+) -> List[Finding]:
+    """Keep a separately versioned Claude marketplace entry with its Skill.
+
+    Most marketplace entries deliberately retain their original plugin version,
+    so this is opt-in rather than a blanket equality rule.  story-review is the
+    first independently bumped entry; checking it here prevents a SKILL-only
+    bump from shipping stale install metadata again.
+    """
+
+    skill_path = repo_root / "skills" / skill_name / "SKILL.md"
+    marketplace_path = repo_root / ".claude-plugin/marketplace.json"
+    expected = parse_frontmatter_version(skill_path)
+    try:
+        payload = json.loads(marketplace_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return [
+            Finding(
+                "marketplace-skill-version",
+                "cannot read Claude marketplace metadata: {}".format(exc),
+                marketplace_path,
+            )
+        ]
+
+    plugins = payload.get("plugins") if isinstance(payload, dict) else None
+    matches = (
+        [item for item in plugins if isinstance(item, dict) and item.get("name") == skill_name]
+        if isinstance(plugins, list)
+        else []
+    )
+    if len(matches) != 1:
+        return [
+            Finding(
+                "marketplace-skill-version",
+                "Claude marketplace must contain exactly one {!r} entry; found {}".format(
+                    skill_name, len(matches)
+                ),
+                marketplace_path,
+            )
+        ]
+
+    actual = matches[0].get("version")
+    if expected is not None and actual == expected:
+        return []
+    return [
+        Finding(
+            "marketplace-skill-version",
+            "Claude marketplace {!r} version must match SKILL frontmatter {!r}; got {!r}".format(
+                skill_name, expected, actual
+            ),
+            marketplace_path,
+        )
+    ]
+
+
 def extract_produced_outline_fields(text: str) -> set[str]:
     """Return labels declared as headings or `- field: value` entries."""
     fields: set[str] = set()
@@ -1102,6 +1158,7 @@ def validate_repository(repo_root: Path, manifest: ContractManifest) -> List[Fin
         )
     setup_text = read_text(setup_skill) or ""
     findings.extend(sentinel_contract_findings(setup_text, manifest, setup_skill))
+    findings.extend(marketplace_skill_version_findings(repo_root, "story-review"))
 
     for relative in SPAWN_CAPABLE_SKILLS:
         spawn_skill = repo_root / relative
@@ -1173,6 +1230,76 @@ def validate_repository(repo_root: Path, manifest: ContractManifest) -> List[Fin
     # 不剔就一路错到底。剔除步骤和落表前的连续性校验都必须留在 Stage 0。
     findings.extend(require_pattern(long_analyze, r"先剔掉目录块", "stage0-toc-block-removal", "Stage 0 must drop the leading table-of-contents block before building the chapter table"))
     findings.extend(require_pattern(long_analyze, r"落表前校验章号连续", "stage0-chapter-table-validation", "Stage 0 must validate chapter numbers before writing the boundary table"))
+
+    # Stage 2 新任务必须走 JSON -> 确定性 renderer，不得让模型直接
+    # 覆盖 Markdown。这里同时锁住人类契约、机器实现与三个 agent 面。
+    for pattern, code, detail in (
+        (r"OUTPUT_MODE:\s*json", "chapter-json-output-mode", "Stage 2 must request JSON output"),
+        (r"render_chapter_summary\.py", "chapter-json-renderer-call", "Stage 2 must call the deterministic renderer"),
+        (r"legacy_markdown_fallback", "chapter-json-legacy-fallback", "legacy Markdown must be explicit and delayed until JSON retry fails"),
+        (r"旧已落盘 Markdown 不追溯", "chapter-json-no-backfill", "existing Markdown must not be retroactively revalidated"),
+    ):
+        findings.extend(require_pattern(long_analyze, pattern, code, detail))
+
+    chapter_output = repo_root / "skills/story-long-analyze/references/output-templates.md"
+    findings.extend(
+        require_pattern(
+            chapter_output,
+            r"^###\s+Stage 2 结构化中间件",
+            "chapter-json-human-schema",
+            "Stage 2 must publish the human-readable JSON schema",
+        )
+    )
+    for anchor in ("exact keys", "Unicode code point", "P1..PN", "themes", "quote_locator"):
+        findings.extend(
+            require_pattern(
+                chapter_output,
+                re.escape(anchor),
+                "chapter-json-human-schema",
+                "Stage 2 JSON schema must document {}".format(anchor),
+            )
+        )
+
+    chapter_renderer = repo_root / "skills/story-long-analyze/scripts/render_chapter_summary.py"
+    for pattern, detail in (
+        (r"def\s+validate_document\(", "renderer must expose deterministic validation"),
+        (r"expected_id\s*=\s*\"P\{\}\"", "renderer must enforce continuous plot IDs"),
+        (r"cited_points\s*>\s*8", "renderer must cap cited plot points at eight"),
+        (r"len\(value\)", "renderer must count Unicode strings independently of UTF-8 bytes"),
+        (r"os\.replace\(", "renderer must publish Markdown atomically"),
+        (r"--check-only", "renderer must support validation without writes"),
+    ):
+        findings.extend(
+            require_pattern(
+                chapter_renderer,
+                pattern,
+                "chapter-json-renderer-contract",
+                detail,
+            )
+        )
+
+    for relative in (
+        "skills/story-setup/references/templates/agents/chapter-extractor.md",
+        "skills/story-setup/references/opencode/agents/chapter-extractor.md",
+        "skills/story-setup/references/codex/agents/chapter-extractor.toml",
+    ):
+        extractor = repo_root / relative
+        for anchor in (
+            "OUTPUT_MODE: json",
+            "JSON 模式硬契约",
+            "P1..PN",
+            "themes` 虽是数组，但必须恰好 1 项",
+            "合计≤8",
+        ):
+            findings.extend(
+                require_pattern(
+                    extractor,
+                    re.escape(anchor),
+                    "chapter-json-agent-contract",
+                    "{} must document {}".format(relative, anchor),
+                )
+            )
+
     explorer = repo_root / "skills/story-setup/references/templates/agents/story-explorer.md"
     findings.extend(require_pattern(explorer, r"missing_primary_contract", "explorer-primary-failure", "story-explorer must fail closed on missing current benchmark artifacts"))
     findings.extend(require_pattern(explorer, r"repair_action", "explorer-repair-action", "story-explorer must return an explicit repair action"))
@@ -1211,8 +1338,10 @@ def validate_repository(repo_root: Path, manifest: ContractManifest) -> List[Fin
             )
         )
 
+    # 长篇的「对标发现」随 Phase 1-3 从 SKILL.md 搬进 workflow-setup.md（减无条件加载），
+    # 断言跟着内容走；短篇的对标发现仍在自己的 SKILL.md 里。
     for relative in (
-        "skills/story-long-write/SKILL.md",
+        "skills/story-long-write/references/workflow-setup.md",
         "skills/story-short-write/SKILL.md",
         "skills/story-long-write/references/cross-book-recall.md",
         "skills/story-short-write/references/cross-book-recall.md",

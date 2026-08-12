@@ -1198,3 +1198,111 @@ if (ts.length !== 0) throw new Error('裸认知句/时间跳转不应报 trailer
 NODE
 
 echo "trailer-summary (章尾状态总结体) regression tests passed."
+
+# --- 感官对象误作感知主体（sensory-subject-mismatch，advisory）---
+# 只收感官名词紧邻有生感知动作的高置信形状；覆盖正序与「先醒过来的是霉味」倒装。
+FIXTURE_SENSORY_SUBJECT="$TMP_DIR/fixture-sensory-subject-mismatch.md"
+printf '%s\n' \
+  '霉味先醒过来了。' \
+  '潮气突然睁开了眼睛。' \
+  '声音竟然听见了门外的脚步。' \
+  '光看见了床边的人。' \
+  '药味闻到了更浓的血腥气。' \
+  '寒气似乎感到了她的战栗。' \
+  '先醒过来的是霉味。' \
+  '最先醒过来的是一股浓重的霉味。' \
+  '率先睁开眼的是一束光。' \
+  '霉味和潮气先醒过来了。' \
+  '那声音先听见了脚步。' \
+  '**香气先醒过来了。**' \
+  '_琴声先听见了脚步。_' \
+  '一抹晨光先醒过来了。' > "$FIXTURE_SENSORY_SUBJECT"
+set +e
+node "$SCRIPT" --json "$FIXTURE_SENSORY_SUBJECT" > "$OUT"
+sensory_all=$?
+node "$SCRIPT" --fail-on=blocking "$FIXTURE_SENSORY_SUBJECT" >/dev/null 2>&1
+sensory_blk=$?
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const ss = r.findings.filter((f) => f.type === 'sensory-subject-mismatch');
+if (ss.length !== 14) throw new Error('感官主体错位的修饰语/并列/指示词/Markdown 强调变体应全命中，期望 14 处: ' + JSON.stringify(ss));
+if (ss.some((f) => f.severity !== 'advisory')) throw new Error('sensory-subject-mismatch 初期必须为 advisory: ' + JSON.stringify(ss));
+if (!ss.some((f) => f.excerpt.includes('先醒过来的是霉味'))) throw new Error('倒装「先醒过来的是霉味」未命中: ' + JSON.stringify(ss));
+NODE
+[ "$sensory_all" -eq 1 ] || { echo "FAIL: sensory-subject-mismatch advisory 在默认 --fail-on=all 应退出 1，实际 $sensory_all" >&2; exit 1; }
+[ "$sensory_blk" -eq 0 ] || { echo "FAIL: sensory-subject-mismatch advisory 不应触发 --fail-on=blocking，实际 $sensory_blk" >&2; exit 1; }
+
+# 对话/逐字直接引用不审查叙述主谓；感官对象的正常物理路径也不能跨分句误连到角色动作。
+# 同时锁住话题/零主语问句、倒装对象的右词界、前一动词宾语与正常宾语倒装。
+FIXTURE_SENSORY_NORMAL="$TMP_DIR/fixture-sensory-subject-normal.md"
+printf '%s\n' \
+  '“霉味先醒过来了。”' \
+  '她逐字念道：“先醒过来的是霉味。”' \
+  'He quoted "声音听见了脚步" in the margin.' \
+  '> 光看见了床边的人。' \
+  '霉味钻进鼻腔，他才醒过来。' \
+  '潮气顺着窗缝渗进屋里，她睁开眼。' \
+  '脚步声在走廊里响起，她听见后回了头。' \
+  '光从门缝渗进来，她看见灰尘在飘。' \
+  '她最先听见的是走廊里的声音。' \
+  '他先看见的是一道光。' \
+  '药味闻到了吗？' \
+  '脚步声听见了吗？' \
+  '先醒过来的是光头。' \
+  '率先睁开眼的是灯光师。' \
+  '她闻到一股霉味感到恶心。' \
+  '她借着月光看清了纸上的字。' > "$FIXTURE_SENSORY_NORMAL"
+set +e
+node "$SCRIPT" --json "$FIXTURE_SENSORY_NORMAL" > "$OUT"
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const ss = r.findings.filter((f) => f.type === 'sensory-subject-mismatch');
+if (ss.length !== 0) throw new Error('对话/直接引用/物理路径/正常宾语倒装不应命中: ' + JSON.stringify(ss));
+NODE
+
+# 跨行中文引号块、书名号和 Markdown inline code 里是原文/样例；
+# 引用闭合后的普通叙述仍必须恢复检测，防止引用状态吞掉后文。
+FIXTURE_SENSORY_REFERENCES="$TMP_DIR/fixture-sensory-subject-references.md"
+printf '%s\n' \
+  '“她照着纸逐字念：' \
+  '霉味先醒过来了。' \
+  '先醒过来的是霉味。”' \
+  '书名是《先醒过来的是霉味》。' \
+  '样例 `声音听见了脚步` 只用来说明问题。' \
+  '香气先醒过来了。' > "$FIXTURE_SENSORY_REFERENCES"
+set +e
+node "$SCRIPT" --json "$FIXTURE_SENSORY_REFERENCES" > "$OUT"
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const ss = r.findings.filter((f) => f.type === 'sensory-subject-mismatch');
+if (ss.length !== 1 || ss[0].line !== 6 || !ss[0].excerpt.includes('香气')) {
+  throw new Error('跨行引用/书名号/inline code 应豁免，引用后普通叙述仍应命中: ' + JSON.stringify(ss));
+}
+NODE
+
+# 未闭合中文开引号不能让引用状态无限吞掉余下正文；没有有限前瞻闭引号时只掩开符号。
+FIXTURE_SENSORY_UNCLOSED_REFERENCE="$TMP_DIR/fixture-sensory-subject-unclosed-reference.md"
+printf '%s\n' \
+  '“样例' \
+  '这里只是说明。' \
+  '又隔了一行。' \
+  '香气先醒过来了。' > "$FIXTURE_SENSORY_UNCLOSED_REFERENCE"
+set +e
+node "$SCRIPT" --json "$FIXTURE_SENSORY_UNCLOSED_REFERENCE" > "$OUT"
+set -e
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const ss = r.findings.filter((f) => f.type === 'sensory-subject-mismatch');
+if (ss.length !== 1 || ss[0].line !== 4 || !ss[0].excerpt.includes('香气')) {
+  throw new Error('未闭合中文开引号不得吞掉后文的 sensory 命中: ' + JSON.stringify(ss));
+}
+NODE
+
+echo "sensory-subject-mismatch (感官对象误作感知主体) regression tests passed."

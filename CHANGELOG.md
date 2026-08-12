@@ -2,6 +2,90 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.7.10（Dev 候选 · 2026-08-12）
+
+本版修复中文小说写到中途突然切成英文句段、且旧规则因“所在行中文占比不足 50%”而放过的问题。修复不依赖单句提示，而是收成生成、交付、续写三层语言门。
+
+### 中文正文英文泄漏三层门
+
+- **生成前语言锁**：普通长篇、短篇中文流程显式使用 `zh`，narrative-writer 与 solo/direct 回退路径都不得自行切换到英文；用户明确要求英文小说、海外发行时才走 `en` / globalize 契约。
+- **交付前确定性深扫**：`check-degeneration.js` 增加 `auto|zh|en` 语言模式；`zh` 同时阻断纯英文句/段、连续英文片段和中文叙事里的裸小写英文词。扫描会先保护 URL、邮箱、Markdown 链接、行内/围栏代码、文件路径、扩展名、型号和大写缩写；外文人名、术语或确需保留的对白复用 `.deslop-whitelist` 精确豁免，不用子串泛化放行。
+- **写后与跨章旧债门**：多端写后 Hook 对已落盘中文正文做语言检查，长篇写下一章前再扫上一章英文旧债；命中 blocking 必须先返修、复扫通过，不得带病交付或继续向后写。对话引号按实际命中位置判断，不再因同行别处有引号而整行降级。
+
+### 版本与部署
+
+- 产品版本升至 `0.7.10`，`setup_skill_version` 升至 `1.2.12`，`agents_version` 升至 `29`；追踪初始化门的 `TRACKING_REQUIRED_AGENTS_VERSION=28` 与 v28 历史兼容语义保持不变。
+- 本版改动 narrative-writer、检测器、多端 hooks 和 reference bundle；已部署项目必须重新运行 `/story-setup`（Codex 用 `$story-setup`）并新开会话。
+
+## v0.7.9（Dev 候选 · 2026-08-12）
+
+本版不再等待原上游补齐已知问题，在保留本仓库旧项目兼容和多端增强的前提下，把高确定性缺口做成可执行、可回归的本地领先能力。
+
+### 追踪门与拆文格式稳定链路
+
+- Claude 正文守卫采用双轨策略：新部署（`agents_version >= 28`）的普通长篇写作缺少 `追踪/_tracking-state.json` 时 fail-closed，先完成追踪初始化；旧版或无 sentinel 项目仍兼容放行。为保留本仓库的逆向导入能力，已有 `拆文库/{书名}` 的受控 `story-import` 迁移窗口继续按共享核放行；已有 state 的 schema、派生视图修订与跨章顺序仍复用共享核。
+- chapter-extractor 的新任务优先走 `OUTPUT_MODE: json`，由确定性 renderer 校验 schema、枚举、单主题、连续情节点编号、引用上限和概要 Unicode 长度，再以同目录临时文件 + 原子替换渲染 Markdown；旧摘要不追溯重写。
+
+### 去 AI 味与扫榜时间口径
+
+- 正文检测增加“感官对象误作感知主体” advisory，捕捉“霉味先醒过来”一类高置信主谓失配；对话、直接引用、合法物理路径和有意拟人仍按语境复核，不升级成机械 blocking。
+- 长短篇 7 个采集脚本统一捕获单一 run clock：文件头同时写 UTC 抓取时刻与和文件名一致的本地报告日期，避免两处跨午夜分别取时。
+
+### 版本与部署
+
+- 产品版本升至 `0.7.9`，`setup_skill_version` 升至 `1.2.11`，`agents_version` 升至 `28`。
+- 本版改变 hooks、chapter-extractor / narrative-writer 模板与 reference bundle；已部署项目必须重新运行 `/story-setup`（Codex 用 `$story-setup`）并新开会话。
+
+## v0.7.8（Dev 候选 · 2026-08-12）
+
+本版逐项吸收原上游 [`3174916`](https://github.com/worldwonderer/oh-story-claudecode/commit/317491644d7666a535424174897ed6809b71c8f4) 与 [`fcec86e`](https://github.com/worldwonderer/oh-story-claudecode/commit/fcec86e4714b1c870f6c1305712651edf3c9201a) 的新增能力。合并按行为和契约移植，不整树覆盖：保留本仓库独立标识、版本轴、长篇热路径拆分、自研正文检测器、追踪事务、情绪/留存/连续性闸口及跨端适配增强。
+
+### Bash 正文守卫与目录发现收敛
+
+- Claude `PreToolUse` 的细纲前置守卫扩到 `Bash|Write|Edit|MultiEdit`，复用共享核识别重定向、`tee`、`touch`、`cp`、`mv`、`install`、嵌套 shell 与命令替换产生的正文写入目标；该能力是静态 best-effort 守卫，不冒充 shell 沙箱，共享核异常时明确告警并 fail-open。
+- 新增 `merge-claude-settings.py`，按稳定 hook 身份迁移旧 matcher，同时保留用户 hooks、未知顶层字段与重复执行幂等性。
+- Bash、共享 JS 与 Codex Python 的书目录发现统一限制为项目下 4 层，剪枝隐藏目录和 `node_modules`；`.active-book` 只在确证 symlink 逃逸时拒绝，并保留 Windows 中文区域下的可用性。
+
+### 长篇扫榜采集补全
+
+- 七猫大热榜新增 `--period day|month|all`，周期进入文件头和文件名；按 URL 直达并校验实际 active 周期，过滤分页器与页脚伪书目。
+- 起点采集补齐字数、总推荐、签约与收费模式，取不到时明确输出 `[待补]`；起点与七猫简介统一截断为 100 字。
+- 番茄、晋江、起点、七猫采集器统一对非法榜单/频道/周期参数快速失败，避免带错参数后静默采错榜。
+
+### 拆文、审查与去 AI 味契约补强
+
+- Stage 6 只读 `_progress.md` 的章节边界表，不再重新 grep 或自行推断切片；边界缺失/断裂时回到 Stage 0 重建。
+- chapter-extractor 明确 `{}` 只是模板占位符，主题标签只填一个值、空字段写「无」、标签紧跟所属情节点，并在 spawn prompt 内联同一份格式约束和交付前自检，旧部署也能即时生效。
+- 500 章以上长篇拆开「语义分块」与「处理批次」：前者组织叙事弧，后者按 10-20 章分派子 Agent；子 Agent 只回传不超过 8K tokens 的降维结果，主线程分层合并并按批记录 `_progress.md`，不再尝试把 50-200 章一次塞入上下文。
+- `story-review` 新增 `.story-review/state.md` 跨批审查状态，继承未解决 findings，同时继续禁止直接修改正文、设定、大纲和追踪派生视图。
+- 去 AI 味参考与 narrative-writer Gate B 增加「普通名词、常见动作和临时概念不用引号强调」，保留角色对话、逐字引用、书名/代号、场内消息/公告/系统播报及有语境支撑的讽刺强调；与本仓库既有 `quote-emphasis-tic` advisory 检测器闭环。
+
+### 版本与部署
+
+- 产品版本升至 `0.7.8`，`story-review` 升至 `1.1.1`，`setup_skill_version` 升至 `1.2.10`，`agents_version` 升至 `27`。
+- 本版改变 hooks、agent 模板与 reference bundle；已部署项目必须重新运行 `/story-setup`（Codex 用 `$story-setup`）并新开会话。
+
+## v0.7.7（Dev 候选 · 2026-08-10）
+
+本版选择性吸收原上游 v0.7.5 的写作指令精炼，保留本仓库自研的情绪下限、错别字、规划记号泄漏、留存与连续性守卫，不做整树覆盖。
+
+### 去 AI 味校准与提示词减负
+
+- `story-deslop` 的自然文本基准不再规定「1-3 句为主」或固定无标签比例，改为按 beat 调节段落疏密：爽点/转折压短，推理/氛围/情绪链放长；补回逗号长句的句内节奏，并明确普通「说」低频使用可以保留。
+- 五份 `anti-ai-writing.md` 将重复的 detector advisory 清单收敛为一条统一处置规则；命中仍须逐条结合上下文复核，不做同义词轮换或机械注水。
+- `narrative-writer` 删除与 7 Gate、禁止事项、脚本复扫重复的审查/格式叮嘱，保留本仓库新增的留存、连续性、规划标记与题材边界，降低每章常驻提示词的注意力开销。
+- 写作阶段移除「这五个字」一类具体字数表达校验，继续由审查侧负责；普通对话标签与冗余 AI 红线的源码修复纳入本次部署包。
+
+### 长篇热路径拆分
+
+- `story-long-write` 将只在开书时使用的 Phase 1-3（选题、设定、大纲）完整移入按需参考 `references/workflow-setup.md`；日更/单章写作只常驻路径约定、Phase 4-5 与参考索引。
+- 搬移保留本 fork 的题材包、对标排除、细纲留存字段、追踪事务和连续性规则，并同步修正相关锚点与契约检查，不改变缺追踪 state 时的兼容策略。
+
+### 版本与部署
+
+- 产品版本升至 `0.7.7`；部署 payload 行为变化，`agents_version` 升至 `26`。已部署项目需重新运行 `/story-setup` 并新开会话。
+- 本条目当前对应 Dev 包候选；正式 Release 仍须按 `RELEASING.md` 完成干净提交、跨平台 CI 与不可变资产复核。
+
 ## v0.7.6（独立仓迁移准备 · 2026-08-09）
 
 本版把开发包与正式包分成两条受控渠道，并完成从 fork 仓蓝绿切换到同名独立仓之前的代码与发行准备。**本版只声明迁移门禁与发行契约，不表示远端仓库已完成改名或切换。**

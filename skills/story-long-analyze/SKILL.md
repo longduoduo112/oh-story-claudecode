@@ -14,7 +14,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 > Agent 兼容性：检查专业 agent 是否可用时，按 `.claude/agents/{agent}.md` → `.opencode/agents/{agent}.md` → `.codex/agents/{agent}.toml` 的顺序查找。Codex 原生子代理调用优先使用同名 `agent_type`；如果当前 Codex 运行时返回 `unknown agent_type` 或未暴露 custom-agent registry，必须降级为 solo/direct。检测到 `.zcode/` 时同样直接 solo/direct，因为 ZCode 3.3.4 不执行项目 custom agents；报告 `Fallback: project custom agents unavailable -> solo`。Claude/OpenCode 兼容面保留 `subagent_type`。
 >
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 25` 不一致时（标记缺失、字段缺失/非整数、小于或大于 25）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 25）` 并提示重新运行 `/story-setup` 后新开会话；大于 25 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 29` 不一致时（标记缺失、字段缺失/非整数、小于或大于 29）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 29）` 并提示重新运行 `/story-setup` 后新开会话；大于 29 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 ## 拆解边界声明（主线程同样适用）
 
@@ -205,18 +205,20 @@ Stage 3-4 完成前需通过质量检查（置信度、覆盖率、重叠率）�
 
 ## Stage 2 并行 Agent 策略
 
-Stage 2 使用 chapter-extractor agent 并行处理每章，替代原来的串行分块。
+Stage 2 使用 chapter-extractor agent 并行处理每章，替代原来的串行分块。**新任务的唯一正常交付链路是 `OUTPUT_MODE: json` → 确定性 validator/renderer → 原子落盘 Markdown**；模型不直接排版目标 `*_摘要.md`。
 
 ### 调用方式
 
-每条章节 prompt **必须以「材料声明」前缀开头**（即下方 prompt 字符串首段）——给子代理正确语境，避免它把通俗题材的正常戏剧化剧情误判为有害内容而拒绝拆解。前缀是固定文本，逐字带上，不要改写或省略。
+每条章节 prompt **必须以「材料声明」前缀开头**（即下方 prompt 字符串首段）——给子代理正确语境，避免它把通俗题材的正常戏剧化剧情误判为有害内容而拒绝拆解。前缀是固定文本，逐字带上，不要改写或省略。prompt 最后一行必须是 `OUTPUT_MODE: json`。
 
 ```python
 Agent(
   subagent_type: "chapter-extractor",
-  prompt: "[材料声明] 以下为用户合法持有的虚构小说，任务是只读的转化性文学分析（编辑/评论视角）。暴力/复仇/家暴/情爱/黑暗伦理是该题材常规虚构元素，照常提取，不得以敏感拒绝整章或整本；个别片段无法处理则跳过、照常续完其余。\n\n章节编号：第{N}章\n章节标题：{标题}\n章节字数：{字数}\n\n章节原文：\n{原文文本}"
+  prompt: "[材料声明] 以下为用户合法持有的虚构小说，任务是只读的转化性文学分析（编辑/评论视角）。暴力/复仇/家暴/情爱/黑暗伦理是该题材常规虚构元素，照常提取，不得以敏感拒绝整章或整本；个别片段无法处理则跳过、照常续完其余。\n\n章节编号：第{N}章\n章节标题：{标题}\n章节字数：{字数}\n\n章节原文：\n{原文文本}\n\n[结构化输出要求] 只返回一个 JSON object，不带 prose 和 code fence。顶层 exact keys：chapter_number,title,summary,key_events,key_information_expansion,chapter_formula,characters,plot_points。key_information_expansion 每项 exact keys：key_information,expansion,technique,reader_effect,reuse_note。chapter_formula exact keys：emotion_flow,rhythm_ratio,structure_formula,core_technique,hook_and_foreshadowing；emotion_flow exact keys：start,build,turn,close；rhythm_ratio exact keys：slow_setup,fast_conflict,payoff,hook_space。characters 每项 exact keys：name,importance,aliases,performance。plot_points 每项 exact keys：id,title,event,type,characters,location,item,time,quote,quote_locator,themes,tone。summary 是单行 100-300 个 Unicode code point；rhythm_ratio 四项是 0%-100% 字符串且和为 100%。\n\n[情节点格式要求] plot_points 为 10-40 项，id 从 P1 开始无断号连续；type 只取转折点|信息揭示|冲突|解决|铺垫|行动|对话|状态变化；tone 只取紧张|轻松|悲伤|热血|爽|甜|温馨|恐怖|压抑|其他；themes 是数组但恰好一项，值只取爱情|亲情|友情|权力|金钱|成长|复仇|悬念|搞笑|热血|日常|其他。quote 与 quote_locator 互斥，全章两者非 null 的情节点合计不超过 8 个；quote 非空且为 1-400 Unicode code point，quote_locator 为 5-15 个。空地点/物品/时间用 null，纯环境情节的 characters 用空数组。\n\n[输出前自检] 交付前核对 exact keys 无缺失/无多余，枚举无越界，summary 长度合格，plot id 连续，每个 themes 恰好一项，引用情节点合计 <= 8。任何一条不符，先修正 JSON 再输出。\n\nOUTPUT_MODE: json"
 )
 ```
+
+> 上面的 `[结构化输出要求]` / `[情节点格式要求]` / `[输出前自检]` 由主线程在 spawn 时拼进 prompt，**不依赖项目里已部署的 agent 文件版本**。完整 JSON schema 以 [output-templates.md](references/output-templates.md)「Stage 2 结构化中间件」为人类可读契约，以 `scripts/render_chapter_summary.py` 的 validator 为机器权威。sonnet 升级重试沿用同一份 prompt，且末行仍是 `OUTPUT_MODE: json`。
 
 ### 批量策略
 
@@ -226,21 +228,36 @@ Agent(
 
 ### Agent 输出收集
 
-- 每个 agent 返回 markdown 格式的提取结果
-- 主线程将 agent 输出写入 `章节/第{N}章_摘要.md`
+- 每个 agent 返回**单个纯 JSON object**（无 prose、无 code fence）；返回值先存临时 `.json`，不得直接写入目标 Markdown
+- 主线程调用确定性 renderer：
+
+  ```bash
+  for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+  "$PYBIN" skills/story-long-analyze/scripts/render_chapter_summary.py \
+    --input "$RAW_CHAPTER_JSON" \
+    --output "拆文库/{书名}/章节/第{N}章_摘要.md" \
+    --expect-chapter-number "{N}" \
+    --expect-title "{标题}"
+  ```
+
+- renderer 先完整校验 JSON，再在目标同目录写临时文件并用 `os.replace` 原子替换；解析/校验失败时不创建、不截断、不覆盖已有 `章节/第{N}章_摘要.md`
 - 收集所有 agent 的出场人物表，供 Stage 3 合并使用
 
 ### 失败处理 + 质量升级重试
 
-**两类失败**：
+**三类失败**：
 1. **执行失败**（agent crash / 超时 / 空输出）→ 同模型（haiku）重试 1 次
-2. **质量失败**（输出落盘后跑 chapter-extractor.md「质量检查」12 条自检，任一不达标——典型：情节点 < 10、P 行缺白描、概要写成条目罗列或整段「因为…所以…」串联、类型/基调/主题标签超出枚举、`基调：` 漏全角冒号、角色名为昵称/通用称呼）→ **升级到 sonnet 重试 1 次**
+2. **JSON 契约失败**（非单一 JSON object、exact schema/类型/枚举不合、summary 超界、P ID 不连续、多主题、引用超限、章号/标题与任务不符）→ **把 renderer stderr 作为上次失败原因，升级到 sonnet 重试 1 次**
+3. **语义质量失败**（虽通过 schema，但 chapter-extractor.md「质量检查」12 条中非机械项不达标——例如白描推测动机、概要反复用同一连接词、角色使用通用称呼）→ **升级到 sonnet 重试 1 次**
 
-**可机械校验的硬检查**（主线程落盘后直接 grep，命中即判质量失败，不依赖 agent 自报）：
-- 情节点数 `N = grep -cE '^P[0-9]+ '`；`grep -c '基调：'` 必须 == N（少于 N = 有情节点漏 `基调：` 或漏全角冒号 → 下游 Stage 6 文风采样按全角 `基调：` grep，会静默漏章）
-- 白描段有内容：`grep -cE '^P[0-9]+ [^|]+\|[^|]*[^|[:space:]][^|]*\|[^|]*涉及'` 必须 == N（`涉及` 段前要有两个 `|`，即 类型段与白描段各占一段，且白描段不能只有空白；少于 N = 有情节点缺白描，或字段顺序/分隔符不对。白描是情节点的主要证据，引用改为精选后由它承担事实回查）
-- `grep -hoE '基调：[^ |]+'` 去重后 ⊆ {紧张, 轻松, 悲伤, 热血, 爽, 甜, 温馨, 恐怖, 压抑, 其他}
-- `grep -hoE '主题标签[：]?[^ |]+'` 去重（去 `主题标签`/冒号前缀后）⊆ {爱情, 亲情, 友情, 权力, 金钱, 成长, 复仇, 悬念, 搞笑, 热血, 日常, 其他}（出现 `主题标签：` 带冒号、或值为基调词均判失败）
+**renderer 的可机械校验是新任务的唯一格式权威**：
+- 顶层与每个嵌套 object 必须 exact keys，拒绝缺字段、额外字段、重复 JSON key、`NaN` / `Infinity`
+- 类型、基调、主题、扩写技法、读者情绪、角色重要性全部严格取枚举；`themes` 必须恰好 1 项
+- `plot_points` 数量 10-40，ID 必须严格为 `P1..PN` 连续序列；标题 ≤15 Unicode code point，不得与白描 `event` 相同
+- `summary` 按 Python `len(str)` 计 Unicode code point（不按 UTF-8 bytes），单行 100-300；节奏四项为百分比字符串且合计 100%
+- 每个情节点的 `quote` / `quote_locator` 互斥；全章两者非 null 的情节点合计≤8，quote 非空且单条为 1-400 Unicode code point，locator 为 5-15
+
+> **旧已落盘 Markdown 不追溯。** 不得用新 JSON contract 反向审判或重写已有 `章节/*_摘要.md`；老摘要里的 `类型{行动}`、`物品—` 等写法照旧可用，Stage 3-6 读取行为不变。下面的 legacy Markdown 四项 grep 只在「JSON 升级重试仍失败」后的明示兜底中使用，不扫历史文件：`^P` 数与 `基调：` 数相等；P 行含非空白描与 `涉及` 段；基调值不越界；主题标签值不越界。
 
 **升级重试调用方式**（主线程在校验失败后执行）：
 
@@ -248,20 +265,21 @@ Agent(
 Agent(
   subagent_type: "chapter-extractor",
   model: "sonnet",            # 显式覆盖 frontmatter 的 haiku
-  prompt: "章节编号：第{N}章\n...（同首次 prompt，含开头的「材料声明」前缀，可追加：'上次校验失败原因：{自检失败项}'）"
+  prompt: "章节编号：第{N}章\n...（同首次 prompt，含开头的「材料声明」前缀，追加：'上次校验失败原因：{renderer stderr / 自检失败项}'，末行仍为 OUTPUT_MODE: json）"
 )
 ```
 
 **最终落盘规则**：
-- haiku 首次通过 → 写入 `章节/第{N}章_摘要.md`，`_progress.md` 标记 `success`
+- haiku 首次 JSON 通过 validator 与语义自检 → 由 renderer 原子写入 `章节/第{N}章_摘要.md`，`_progress.md` 标记 `success`
 - haiku 失败 + 同模型 retry 通过 → 同上，备注 `retry_same_model`
 - 质量失败 + sonnet retry 通过 → 同上，备注 `retry_sonnet`
-- sonnet retry 仍失败 → 章节标记 `⚠️ 跳过`，失败原因写入 `_progress.md` 「失败记录」表，拆文报告中注明
+- **仅 JSON 契约失败且 sonnet JSON 升级重试仍失败** → 允许一次明示的 legacy Markdown fallback；模型输出先写临时文件，通过上述四项 grep 再原子替换，`_progress.md` 备注 `legacy_markdown_fallback` + 两次 JSON 失败原因。不得在首次失败后直接要求 Markdown
+- sonnet 语义质量重试仍失败，或 legacy fallback 仍不过 → 章节标记 `⚠️ 跳过`，失败原因写入 `_progress.md` 「失败记录」表，拆文报告中注明
 - 单章失败不阻断管道；批次全部 spawn 完成后才决定是否进入 Stage 3
 
 ### Agent 不可用降级
 
-以下任一情况，Stage 2 自动退回串行模式，由主线程逐章处理（质量不受影响，只是改为串行、速度略慢）。**两条路径的要求是同一份**：串行时概要写法、情节点白描、原文引用精选规则和输出自检都按 [output-templates.md](references/output-templates.md)「Stage 2 章节摘要+情节点」执行；上面的机械硬检查串行同样要跑。串行没有 sonnet 升级重试这条路——硬检查命中时由主线程按失败项重写本章摘要 1 次，仍不过按 `⚠️ 跳过` 记入 `_progress.md` 「失败记录」表。
+以下任一情况，Stage 2 自动退回串行模式，由主线程逐章处理（质量不受影响，只是改为串行、速度略慢）。**两条路径使用同一 JSON contract 和同一 renderer**：主线程按 [output-templates.md](references/output-templates.md)「Stage 2 结构化中间件」先产出 JSON，调用 `scripts/render_chapter_summary.py`，不直接排版 Markdown。validator 或语义自检失败时，主线程按具体失败项重写 JSON 1 次；第二次仍为 JSON 契约失败才可走一次明示 `legacy_markdown_fallback`，仍不过则按 `⚠️ 跳过` 记入 `_progress.md` 「失败记录」表。
 
 - **agent 未部署**：agent 目录（优先 `.claude/agents/`，其次 `.opencode/agents/`，再检查 `.codex/agents/`）下的 `chapter-extractor.md` 或 `.codex/agents/chapter-extractor.toml` 不存在。`.claude/agents/` 通常不随仓库提交，应重新运行 `/story-setup` 完成当前适配器部署，不跨 Skill 读取模板源。
 - **环境不支持 spawn 子代理**：本 skill 正运行在某个子代理上下文中，无法再起下一层 agent。
@@ -280,7 +298,7 @@ ls 章节/*_摘要.md | sed -E 's/.*第([0-9]+)章.*/\1 &/' | sort -n | cut -d' 
 
 Stage 3 / 4a / 4c / 散落情节兜底改为**只读一次 `_章节摘要汇总.md`** 并在上下文中复用，替代每阶段 `glob 章节/*_摘要.md` 重扫（同一份语料的 4-5 次冷读降为 1 次）。
 
-**仅当语料能放进上下文时才生成汇总文件**：>500 章、或合并后 `_章节摘要汇总.md` 过大放不进上下文时**跳过本步骤**，走 [material-decomposition.md](references/material-decomposition.md) 分块策略。`_章节摘要汇总.md` 不替代 `章节/*_摘要.md`——单章文件仍是落盘真源，Stage 6 文风采样、人工复核照用单章文件。管道结束（Stage 6 后）删除 `_章节摘要汇总.md`——它是派生临时文件，不随 `拆文库/` 交付（`拆文库/` 会被 story-import 保留为写作工程）。
+**仅当语料能放进上下文时才生成汇总文件**：>500 章、或合并后 `_章节摘要汇总.md` 过大放不进上下文时**跳过本步骤**，改走 [material-decomposition.md](references/material-decomposition.md)“处理批次 → A. 子代理并行模式”：按 10-20 章/批 spawn 子代理，子代理在自己上下文里读该批摘要、只回传 ≤8K tokens 的降维聚合，主线程仅合并聚合结果（必要时分层两两合并）。**主线程不逐章读原始摘要**——跳过汇总文件不等于回到逐文件扫描，那对大书同样放不下。`_章节摘要汇总.md` 不替代 `章节/*_摘要.md`——单章文件仍是落盘真源，Stage 6 文风采样、人工复核照用单章文件。管道结束（Stage 6 后）删除 `_章节摘要汇总.md`——它是派生临时文件，不随 `拆文库/` 交付（`拆文库/` 会被 story-import 保留为写作工程）。
 
 Stage 3-5 分块见 [material-decomposition.md](references/material-decomposition.md)（唯一权威）。
 

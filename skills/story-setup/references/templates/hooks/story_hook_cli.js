@@ -5,11 +5,14 @@
 // Claude 侧 hook 是 bash（settings.json 挂 bash 脚本），归核逻辑走这里 require 的
 // 共享核 story_hook_core.js——和 OpenCode/ZCode 用的是同一份，由 check-shared-files
 // 保证字节相同。归核（单份实现在 core）的面：正文网/字数（prose-net）、路径抽取
-// （extract-target）、git commit 侦测（is-git-commit）、连续性（continuity）。
+// （extract-target）、Bash 正文写入前置门（prose-command-guard）、毒句式扫描
+// （prose-toxic）、大纲/追踪阻断判定（prose-block-reason）、git commit 侦测
+// （is-git-commit）、连续性（continuity）。
 // 尚未归核、各端独立实现的面：
-//   - 大纲阻断判定：Claude 走 guard-outline-before-prose.sh 纯 bash（本 cli 无 prose-block
-//     子命令）；codex prose_block_reason ↔ core proseBlockReason 由
-//     scripts/test-prose-net-parity.sh Part E 锁 parity。
+//   - Write/Edit/MultiEdit 的无 Node 兜底：Claude 仍由 guard-outline-before-prose.sh
+//     保留纯 bash 细纲检查；Bash 命令必须先区分真正写入和只读提及，故经本 CLI 复用
+//     共享核，node 缺失时该命令面 fail-open。codex prose_block_reason ↔ core
+//     proseBlockReason 由 scripts/test-prose-net-parity.sh Part E 锁 parity。
 //   - staged markdown warnings：Claude 走 validate-story-commit.sh bash grep；codex
 //     staged_markdown_warnings ↔ core stagedMarkdownWarnings 同由 Part E 锁 parity。
 //     匹配语义与文案以 JS core 为准。
@@ -17,6 +20,7 @@
 // 旧内嵌 python 那套 cp936/LC_ALL 编码体操。
 
 const fs = require("node:fs")
+const path = require("node:path")
 const core = require("./story_hook_core.js")
 
 function readStdin() {
@@ -27,35 +31,125 @@ function readStdin() {
   }
 }
 
-// 与旧 extract_target_path 的 dig 逐字对应：只认 dict 的 file_path/path/filePath，
-// 再往 tool_input/input/parameters/args 里递归；list 不下钻。
-function digTargetPath(value) {
+const NESTED_INPUT_KEYS = ["tool_input", "input", "parameters", "args"]
+
+function digString(value, keys, allowEmpty = false) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    for (const key of ["file_path", "path", "filePath"]) {
+    for (const key of keys) {
       const found = value[key]
-      if (typeof found === "string" && found) return found
+      if (typeof found === "string" && (allowEmpty || found)) return found
     }
-    for (const key of ["tool_input", "input", "parameters", "args"]) {
-      const found = digTargetPath(value[key])
+    for (const key of NESTED_INPUT_KEYS) {
+      const found = digString(value[key], keys, allowEmpty)
       if (found) return found
     }
   }
   return ""
 }
 
-// 与旧 validate-story-commit find_command 逐字对应：dict 的 command/cmd/script（是字符串就取，
-// 允许空串），再往 tool_input/input/parameters/args 递归。
-function digCommand(value) {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    for (const key of ["command", "cmd", "script"]) {
-      if (typeof value[key] === "string") return value[key]
+const digTargetPath = (value) => digString(value, ["file_path", "path", "filePath"])
+const digCommand = (value) => digString(value, ["command", "cmd", "script"], true)
+const digWorkingDirectory = (value) =>
+  digString(value, ["cwd", "working_directory", "workingDirectory"])
+
+const TRACKING_REQUIRED_AGENTS_VERSION = 28
+const MISSING_TRACKING_STATE = "追踪/_tracking-state.json 缺失"
+
+function deployedAgentsVersion(root) {
+  try {
+    const text = fs.readFileSync(path.join(root, ".story-deployed"), "utf8")
+    const line = text.split(/\r?\n/).find((item) => item.startsWith("agents_version:"))
+    if (!line) return null
+    let value = line.slice("agents_version:".length).trim()
+    if (value.length >= 2) {
+      const first = value[0]
+      const last = value[value.length - 1]
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+        value = value.slice(1, -1)
+      }
     }
-    for (const key of ["tool_input", "input", "parameters", "args"]) {
-      const found = digCommand(value[key])
-      if (found) return found
-    }
+    if (!/^\d+$/.test(value)) return null
+    const version = Number(value)
+    return Number.isSafeInteger(version) ? version : null
+  } catch {
+    return null
   }
-  return ""
+}
+
+function longProseTarget(absolute) {
+  const base = path.basename(absolute)
+  if (path.basename(path.dirname(absolute)) !== "正文") return null
+  const match = base.match(/^第0*(\d+)章.*\.md$/)
+  if (!match) return null
+  return {
+    absolute,
+    base,
+    book: path.dirname(path.dirname(absolute)),
+    chapter: Number(match[1]),
+  }
+}
+
+// 严格核在追踪检查点后还有上一章中文语言漂移 / 毒句式欠账门。legacy 项目仅豁免“state
+// 缺失”本身，不能连无状态欠账门一起吞掉；因此在严格核返回缺 state 后，用核导出的
+// languageLeakRecords / toxicPhraseFindings 补跑同一判据。这只是 legacy 兼容支路；state 在场时仍原样走
+// core.proseBlockReason，不在薄壳里重写追踪规则。
+function legacyProseDebtReason(root, target) {
+  if (fs.existsSync(target.absolute) || target.chapter <= 1) return null
+  let prevFile = null
+  try {
+    const candidates = fs.readdirSync(path.dirname(target.absolute))
+      .filter((file) => {
+        const match = file.match(/^第0*(\d+)章.*\.md$/)
+        return match && Number(match[1]) === target.chapter - 1 && !file.includes("_原稿_")
+      })
+      .sort()
+    if (candidates.length) prevFile = path.join(path.dirname(target.absolute), candidates[0])
+  } catch {}
+  if (!prevFile) return null
+
+  let prevText
+  try {
+    prevText = fs.readFileSync(prevFile, "utf8")
+  } catch {
+    return null
+  }
+  const languageHits = core.languageLeakRecords(prevText, core.readDeslopWhitelist(root, prevFile))
+    .filter((record) => record.blocking)
+  if (languageHits.length) {
+    const shown = languageHits.slice(0, 6).map((record) => record.finding)
+    const more = languageHits.length - shown.length
+    let reason = `⛔ 写正文被拦截：上一章（${path.basename(prevFile)}）有 ${languageHits.length} 处未清中文语言漂移欠账，先改成中文再写第 ${target.chapter} 章；确需保留的外语逐项写入项目根 .deslop-whitelist 后重试。\n${shown.join("\n")}`
+    if (more > 0) reason += `\n（另有 ${more} 处，请执行正文确定性扫描查看全部命中）`
+    return reason
+  }
+  // 去味跳过只豁免毒句式，不能豁免上面的语言网。
+  if (/去味(：|:)跳过/.test(prevText.split(/\r?\n/).slice(0, 6).join("\n"))) return null
+  const hits = core.toxicPhraseFindings(prevText).filter((line) => line.startsWith("第"))
+  if (!hits.length) return null
+  const shown = hits.slice(0, 6)
+  const more = hits.length - shown.length
+  let reason = `⛔ 写正文被拦截：上一章（${path.basename(prevFile)}）有 ${hits.length} 处未清毒句式欠账，先清零再写第 ${target.chapter} 章；用户显式豁免时在上一章标题行下加 <!-- 去味:跳过 --> 后重试。\n${shown.join("\n")}`
+  if (more > 0) reason += `\n（另有 ${more} 处，完整扫描：node <skill>/scripts/check-ai-patterns.js --check 上一章文件）`
+  return reason
+}
+
+function deploymentAwareProseBlockReason(root, absolute) {
+  const target = longProseTarget(absolute)
+  if (!target) return core.proseBlockReason(root, absolute)
+
+  const state = path.join(target.book, "追踪", "_tracking-state.json")
+  if (fs.existsSync(state)) return core.proseBlockReason(root, absolute)
+
+  const version = deployedAgentsVersion(root)
+  if (version !== null && version >= TRACKING_REQUIRED_AGENTS_VERSION) {
+    // v28 起普通长篇写入缺 state 必须硬拦。整条交给严格核，同时保留核定义的
+    // 受控 story-import 窗口（拆文库/{书名} 在场且 state 尚未初始化）。
+    return core.proseBlockReason(root, absolute)
+  }
+
+  const reason = core.proseBlockReason(root, absolute)
+  if (!reason || !reason.includes(MISSING_TRACKING_STATE)) return reason
+  return legacyProseDebtReason(root, target)
 }
 
 const [command, ...args] = process.argv.slice(2)
@@ -74,17 +168,53 @@ if (command === "extract-target") {
   const target = digTargetPath(obj)
   if (!target) process.exit(1)
   process.stdout.write(target)
+} else if (command === "prose-command-guard") {
+  // Claude Bash PreToolUse JSON → 真正的正文写入目标 → 共享核阻断原因。只识别共享核明确
+  // 支持的重定向/tee/touch/cp/mv/install 写法；grep 等只读提及不会产生 target。无目标正常
+  // 放行；解析/共享核异常用独立退出码交给 bash 壳显式告警后 fail-open，不能伪装成“无目标”。
+  const root = args[0]
+  const raw = process.env.HOOK_INPUT || readStdin()
+  try {
+    if (!root || !raw) process.exit(0)
+    const obj = JSON.parse(raw)
+    const shellCommand = digCommand(obj)
+    if (!shellCommand) process.exit(0)
+    let base = root
+    const requestedBase = core.existingDir(digWorkingDirectory(obj))
+    if (requestedBase) {
+      const relative = path.relative(path.resolve(root), requestedBase)
+      if (!relative.startsWith("..") && !path.isAbsolute(relative)) base = requestedBase
+    }
+    const seen = new Set()
+    for (const target of core.extractProseTargets(shellCommand)) {
+      const absolute = core.resolveTarget(root, target, base)
+      if (seen.has(absolute)) continue
+      seen.add(absolute)
+      const reason = deploymentAwareProseBlockReason(root, absolute)
+      if (reason) {
+        process.stdout.write(`${reason}（已从 Bash 命令识别到正文写入目标。）`)
+        break
+      }
+    }
+  } catch (error) {
+    const detail = error && error.message ? error.message : String(error)
+    process.stderr.write(`[story-guard] Bash 正文目标解析失败，已降级放行：${detail}`)
+    process.exit(3)
+  }
 } else if (command === "prose-net") {
   // 轻量确定性网（含毒句式）+ 字数欠账，对齐旧内嵌 python 第二段的 out 列表（net 逐条 +
   // 可选字数行）。读文件失败静默退出（兜底不反噬流程）。
-  const absolute = args[0]
+  // 新契约：prose-net <root> <absolute>，让 Claude 写后网能从正文向上读取最近的
+  // .deslop-whitelist。保留旧单参数形态，便于已部署脚本滚动升级时 fail-open 而非报错。
+  const root = args.length >= 2 ? args[0] : ""
+  const absolute = args.length >= 2 ? args[1] : args[0]
   let text
   try {
     text = fs.readFileSync(absolute, "utf8")
   } catch {
     process.exit(0)
   }
-  const out = core.proseNetFindings(text)
+  const out = core.proseNetFindings(text, core.readDeslopWhitelist(root, absolute))
   const wordcount = core.wordcountFinding(absolute, text)
   if (wordcount) out.push(wordcount)
   if (out.length) process.stdout.write(out.join("\n"))
@@ -113,7 +243,7 @@ if (command === "extract-target") {
   const root = args[0]
   const absolute = args[1]
   try {
-    const reason = core.proseBlockReason(root, absolute)
+    const reason = deploymentAwareProseBlockReason(root, absolute)
     if (reason) process.stdout.write(reason)
   } catch {
     process.exit(0)

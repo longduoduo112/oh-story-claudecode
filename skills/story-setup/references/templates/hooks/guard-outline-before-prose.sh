@@ -1,15 +1,19 @@
 #!/bin/bash
-# guard-outline-before-prose.sh — PreToolUse(Write|Edit|MultiEdit) 流程守卫
+# guard-outline-before-prose.sh — PreToolUse(Bash|Write|Edit|MultiEdit) 流程守卫
 # 写「正文」前必须先有对应大纲/细纲，否则阻止（exit 2，BLOCKING）。
 #
-# 只拦截「首次创建正文文件且缺细纲」这一种情况：
+# 细纲门只拦「首次创建正文文件且缺细纲」；追踪门另按部署代际判定：
 #   - 长篇 正文/第N章_*.md ：要求同书 大纲/细纲_第N章.md 存在
 #   - 短篇 正文.md         ：要求同目录 小节大纲.md 存在
-# 正文已存在（续写/去AI味/改稿）一律放行；非正文目标、解析不到路径一律静默放行。
+#   - agents_version >= 28 的普通长篇缺 _tracking-state.json 时，首建与修改都拦截
+#   - 拆文库/{书名} 在场时保留受控 story-import 窗口，与共享严格核一致
+#   - 旧版/无 sentinel 缺 state 仍兼容放行追踪缺失本身，但上一章中文语言/毒句欠账仍走共享核
+# 非正文目标、解析不到路径一律静默放行。
 # 设计原则：宁可漏拦不可误伤——任何不确定都 exit 0。
 set -euo pipefail
 
 source "$(dirname "$0")/lib/common.sh"
+source "$(dirname "$0")/lib/sentinel.sh"
 
 # 全程走字节稳定区域：本 hook 在中文路径上做 bash 通配（中间目录是中文书名时
 # 细纲_第*章*.md 在 GBK 区域会 NOMATCH）、sed 提章号、case 匹配。Windows 中文系统若导出
@@ -29,7 +33,7 @@ fi
 # 的 node 调用处用管道喂 stdin（story_hook_cli.js extract-target 在 HOOK_INPUT 缺省时读 stdin）；
 # 下方 extract_target_bash 用的是 printf 内建，不需要 export。
 
-# 提取目标文件路径：优先 node 共享核（与其它端同一份实现）；node 缺席、或 node 在但抽取失败时
+# 提取直接写工具的目标文件路径：优先 node 共享核（与其它端同一份实现）；node 缺席、或 node 在但抽取失败时
 # 都回落纯 bash 抽取。这是阻断守卫，不能因 node 问题而 fail-open——官方现在推荐原生二进制装
 # Claude Code，只有 npm 装法才带 Node，native 运行时可能无 node；旧 node 不识 node: 前缀、或
 # 部署的核损坏时 node 探测通过但抽取会抛错。只要能解析出目标路径就照常判定拦截，两条路径都抽不到
@@ -61,12 +65,33 @@ TARGET=""
 if node -e "" >/dev/null 2>&1 && [ -f "$CLI" ]; then
   TARGET="$(printf '%s' "$HOOK_INPUT" | node "$CLI" extract-target 2>/dev/null || true)"
 fi
-# node 在场却抽空（旧 node 不识 node: 前缀 / 核损坏时探测通过但抽取抛错）也回落纯 bash，
-# 否则会走 fail-open。两条路径都解析不到才放行。
+# node 在场却抽空（旧 node 不识 node: 前缀 / 核损坏时探测通过但抽取抛错）也回落纯 bash。
+# Bash 负载没有 file_path；直接目标抽不到时，再让共享核只识别重定向/tee/touch/cp/mv 的写入目标，
+# 避免把 grep/cat 等只读命令里提及的正文路径误判为写入。该面依赖 node；node 缺席时 Bash 命令
+# 按“宁可漏拦不可误伤”放行，Write/Edit/MultiEdit 仍走上面的纯 bash 兜底。
 [ -z "$TARGET" ] && TARGET="$(extract_target_bash 2>/dev/null || true)"
-[ -z "$TARGET" ] && exit 0
 
 ROOT=$(project_root)
+if [ -z "$TARGET" ]; then
+  if node -e "" >/dev/null 2>&1 && [ -f "$CLI" ]; then
+    set +e
+    COMMAND_BLOCK="$(printf '%s' "$HOOK_INPUT" | node "$CLI" prose-command-guard "$ROOT" 2>&1)"
+    COMMAND_STATUS=$?
+    set -e
+    if [ "$COMMAND_STATUS" -ne 0 ]; then
+      printf '%s\n' "⚠ Bash 正文写入守卫解析失败，本次按 fail-open 放行；请改用 Write/Edit 或修复 hook：${COMMAND_BLOCK:-未知错误}" >&2
+      exit 0
+    fi
+    if [ -n "$COMMAND_BLOCK" ]; then
+      printf '%s\n' "$COMMAND_BLOCK" >&2
+      exit 2
+    fi
+  elif printf '%s' "$HOOK_INPUT" | grep -q '正文'; then
+    printf '%s\n' "⚠ 当前环境缺少可用 Node/story_hook_cli.js，无法判定 Bash 是否写正文；本次按 fail-open 放行，请改用 Write/Edit 以启用大纲守卫。" >&2
+  fi
+  exit 0
+fi
+
 # 绝对路径直接采用，相对路径才拼项目根。
 # Windows + Git Bash 下 Claude Code 可能传入盘符绝对路径（F:/work/... 或 F:\work\...）；
 # 只认 /* 会把它们当相对路径拼成 $ROOT/F:/work/...，找错 大纲/ 目录、误报细纲缺失（issue #184）。
@@ -82,17 +107,29 @@ esac
 # 顺序校验在 Claude Code 上从不触发——跨章连续性守卫在这一端是开环的：模型不主动跑
 # tracking_commit.py 就没人拦位置/持有物漂移。
 #
-# 但只能对**已采用追踪模型的项目**跑核：core 里 requireState=true，state 不存在就一律
-# 阻断，会把所有尚未迁移的老项目当场卡死（check-story-setup-deployment 的
-# 「有细纲应放行」用例正是这一场景）。以 _tracking-state.json 是否在场作门槛后，
-# 已迁移项目拿到与另三端一致的顺序校验，未迁移项目行为不变。
-# node 不可用或核抛异常时回落纯 bash（只查细纲），兜底不能反过来卡流程。
+# 追踪门是双轨的：agents_version >= 28 的新部署对普通缺 state 项目 fail-closed；
+# 旧版/无 sentinel 项目仍保留迁移兼容，不因缺 state 单独被卡；只要 Node/共享核可用就调用
+# proseBlockReason，校验 schema/revision/提交顺序并补跑上一章中文语言/毒句欠账。新部署的缺 state 判定先用
+# 纯 bash 执行，确保 Claude Code 原生安装不带 Node 时也不会退化放行；核定义的
+# 拆文库/{书名} story-import 窗口仍然保留。
 GUARD_BOOK=""
+GUARD_IS_LONG=0
 case "$(basename "$(dirname "$ABS")")" in
-  正文) GUARD_BOOK="$(dirname "$(dirname "$ABS")")" ;;
+  正文) GUARD_BOOK="$(dirname "$(dirname "$ABS")")"; GUARD_IS_LONG=1 ;;
   *)    [ "$(basename "$ABS")" = "正文.md" ] && GUARD_BOOK="$(dirname "$ABS")" ;;
 esac
-if [ -n "$GUARD_BOOK" ] && [ -f "$GUARD_BOOK/追踪/_tracking-state.json" ] \
+TRACKING_STATE="${GUARD_BOOK:+$GUARD_BOOK/追踪/_tracking-state.json}"
+TRACKING_REQUIRED_AGENTS_VERSION=28
+AGENTS_VERSION="$(read_sentinel_field agents_version "$ROOT/.story-deployed")"
+if [ "$GUARD_IS_LONG" -eq 1 ] && [ ! -f "$TRACKING_STATE" ] \
+   && [ ! -d "$ROOT/拆文库/$(basename "$GUARD_BOOK")" ] \
+   && [[ "$AGENTS_VERSION" =~ ^[0-9]+$ ]] \
+   && [ "$AGENTS_VERSION" -ge "$TRACKING_REQUIRED_AGENTS_VERSION" ] 2>/dev/null; then
+  DISPLAY_BOOK="${GUARD_BOOK#$ROOT/}"
+  printf '%s\n' "⛔ 写正文被拦截：${DISPLAY_BOOK} 的追踪/_tracking-state.json 缺失；已有正文项目走 /story-import 的「旧追踪项目迁移」重建追踪（不必重跑全书拆解），新书先用 tracking_commit.py init 初始化。" >&2
+  exit 2
+fi
+if [ -n "$GUARD_BOOK" ] \
    && node -e "" >/dev/null 2>&1 && [ -f "$CLI" ]; then
   BLOCK_REASON="$(node "$CLI" prose-block-reason "$ROOT" "$ABS" 2>/dev/null || true)"
   if [ -n "$BLOCK_REASON" ]; then

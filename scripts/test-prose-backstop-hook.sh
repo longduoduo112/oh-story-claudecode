@@ -74,6 +74,16 @@ expect_fire_kw "$TMP/某书/正文/第013章_工程词.md" 工程词
 { printf '# 第14章\n\n'; PAD; printf '\n他握紧拳头一步步走过去缓缓逼近。\n他握紧拳头一步步走过去缓缓逼近。\n他停下了。\n'; } > "$TMP/某书/正文/第014章_复读.md"
 expect_fire_kw "$TMP/某书/正文/第014章_复读.md" 复读
 
+# 中文语言网：混合长英文必须由真实 PostToolUse hook 命中；去味跳过不豁免语言；
+# 项目级精确白名单则应放行指定 token。
+{ printf '# 第15章\n\n'; PAD; printf '\n他盯着门，this should never happen again，然后关了灯。\n他走了。\n'; } > "$TMP/某书/正文/第015章_英文.md"
+expect_fire_kw "$TMP/某书/正文/第015章_英文.md" 连续英文短语泄漏
+{ printf '# 第16章\n\n<!-- 去味:跳过 -->\n'; PAD; printf '\n他看见 shadow 伏在暗处。\n他走了。\n'; } > "$TMP/某书/正文/第016章_去味不豁免英文.md"
+expect_fire_kw "$TMP/某书/正文/第016章_去味不豁免英文.md" 裸英文词泄漏
+printf '%s\n' 'watcher' > "$TMP/某书/.deslop-whitelist"
+{ printf '# 第17章\n\n'; PAD; printf '\n他看见 watcher 伏在暗处。\n他走了。\n'; } > "$TMP/某书/正文/第017章_白名单.md"
+expect_silent "$TMP/某书/正文/第017章_白名单.md"
+
 if [ "$fails" -ne 0 ]; then
   echo "Prose backstop hook tests FAILED ($fails)." >&2
   exit 1

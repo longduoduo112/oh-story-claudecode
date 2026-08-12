@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -146,6 +147,40 @@ def semantic_findings(
         Path("fixture.md"),
         primary_artifacts,
     )
+
+
+def test_marketplace_skill_version_guard() -> None:
+    """A separately bumped Skill must not leave stale Claude install metadata."""
+
+    with tempfile.TemporaryDirectory(prefix="marketplace-skill-version-") as tmp:
+        root = Path(tmp)
+        skill_dir = root / "skills/story-review"
+        marketplace_dir = root / ".claude-plugin"
+        skill_dir.mkdir(parents=True)
+        marketplace_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: story-review\nversion: 1.1.1\n---\n",
+            encoding="utf-8",
+        )
+        marketplace = marketplace_dir / "marketplace.json"
+        marketplace.write_text(
+            json.dumps({"plugins": [{"name": "story-review", "version": "1.1.0"}]}),
+            encoding="utf-8",
+        )
+        stale = VALIDATOR.marketplace_skill_version_findings(root, "story-review")
+        require(
+            "marketplace-skill-version" in finding_codes(stale),
+            "stale story-review marketplace metadata must fail",
+        )
+
+        marketplace.write_text(
+            json.dumps({"plugins": [{"name": "story-review", "version": "1.1.1"}]}),
+            encoding="utf-8",
+        )
+        require(
+            not VALIDATOR.marketplace_skill_version_findings(root, "story-review"),
+            "matching story-review marketplace metadata must pass",
+        )
 
 
 def test_bad_fallbacks_fail() -> None:
@@ -311,8 +346,9 @@ def test_stale_scan_phase_reference_accepts_backticks() -> None:
         manifest_with(topic_decision_phase=current + 1),
         "stale-topic-decision-phase-reference",
     )
+    # 长篇「先查选题决策」随 Phase 1 搬进 workflow-setup.md，扫描目标跟着内容走。
     for relative in (
-        "skills/story-long-write/SKILL.md",
+        "skills/story-long-write/references/workflow-setup.md",
         "skills/story-long-analyze/SKILL.md",
     ):
         require(
@@ -758,8 +794,496 @@ def test_rubric_parity_guard() -> None:
         )
 
 
+def test_issue_315_333_343_prompt_contracts() -> None:
+    """写作引号、Stage 6 切片真值、跨批 review 持久化必须有单一明确契约。"""
+
+    anti_ai_paths = (
+        "skills/story-deslop/references/anti-ai-writing.md",
+        "skills/story-long-write/references/anti-ai-writing.md",
+        "skills/story-review/references/anti-ai-writing.md",
+        "skills/story-short-analyze/references/anti-ai-writing.md",
+        "skills/story-setup/references/agent-references/anti-ai-writing.md",
+    )
+    anti_ai_copies = {
+        relative: (REPO_ROOT / relative).read_text(encoding="utf-8")
+        for relative in anti_ai_paths
+    }
+    anti_ai = anti_ai_copies["skills/story-long-write/references/anti-ai-writing.md"]
+    writer_paths = (
+        "skills/story-setup/references/templates/agents/narrative-writer.md",
+        "skills/story-setup/references/opencode/agents/narrative-writer.md",
+        "skills/story-setup/references/codex/agents/narrative-writer.toml",
+    )
+    writer_copies = {
+        relative: (REPO_ROOT / relative).read_text(encoding="utf-8")
+        for relative in writer_paths
+    }
+    writer = writer_copies["skills/story-setup/references/templates/agents/narrative-writer.md"]
+    require(
+        "普通名词" in anti_ai and "引号强调" in anti_ai,
+        "#315: anti-ai reference must distinguish normal nouns from legitimate quotations",
+    )
+    require(
+        "引号强调" in writer and "角色对话" in writer,
+        "#315: narrative-writer Gate B must prevent quote emphasis without banning dialogue",
+    )
+    require(
+        all(
+            anchor in anti_ai
+            for anchor in (
+                "sensory-subject-mismatch",
+                "霉味、潮气、声音、光线",
+                "先醒过来的是霉味",
+                "钻进",
+                "响起",
+                "渗进",
+                "逐字直接引用（含跨行中文引号块）",
+                "书名号及 Markdown inline code 样例豁免",
+                "有意拟人",
+            )
+        ),
+        "sensory-subject: anti-ai reference must define the advisory, inversion, physical-path, quote, and personification boundaries",
+    )
+    require(
+        all(
+            anchor in writer
+            for anchor in (
+                "sensory-subject-mismatch",
+                "霉味/潮气/声音/光",
+                "醒来/睁眼/听见/看见/闻到/感到",
+                "钻进/响起/渗进",
+                "只作 advisory",
+                "引号内对话/逐字引用（含跨行中文引号块）",
+                "书名号及 Markdown inline code 样例豁免",
+                "有意拟人",
+            )
+        ),
+        "sensory-subject: narrative-writer Gate B must preserve the same advisory and exemption boundaries",
+    )
+    require(
+        len(set(anti_ai_copies.values())) == 1,
+        "sensory-subject: all five anti-ai reference copies must remain byte-identical",
+    )
+    sensory_writer_lines = {}
+    for relative, text in writer_copies.items():
+        line = next(
+            (
+                candidate
+                for candidate in text.splitlines()
+                if "sensory-subject-mismatch" in candidate and "霉味/潮气/声音/光" in candidate
+            ),
+            "",
+        )
+        require(line, f"sensory-subject: {relative} is missing the Gate B contract")
+        sensory_writer_lines[relative] = line
+    require(
+        len(set(sensory_writer_lines.values())) == 1,
+        "sensory-subject: template/OpenCode/Codex narrative-writer Gate B lines must stay synchronized",
+    )
+
+    style = (
+        REPO_ROOT / "skills/story-long-analyze/references/style-profile-generator.md"
+    ).read_text(encoding="utf-8")
+    require(
+        "只读 `_progress.md`" in style and "章节边界" in style,
+        "#333: Stage 6 must read the persisted chapter-boundary table",
+    )
+    for stale in ("正确 Grep 模式", "相应调整 regex", "拿到 grep 的", "用 Step 4 grep"):
+        require(stale not in style, f"#333: Stage 6 still instructs a second slice via: {stale}")
+
+    review = (REPO_ROOT / "skills/story-review/SKILL.md").read_text(encoding="utf-8")
+    for anchor in (
+        ".story-review/state.md",
+        "上一批未解决 findings 摘要",
+        "先读取 state.md",
+        "原子重写 state.md",
+        "同时只维护一条跨批审查",
+        "征得用户确认",
+        "缺失、损坏或本批超出既定范围",
+    ):
+        require(anchor in review, f"#343: review persistence contract missing {anchor}")
+
+
+def test_chinese_prose_language_contract() -> None:
+    """中文正文的生成、落盘、无 Hook 执行面必须共享同一条语言锁。"""
+
+    writer_paths = (
+        "skills/story-setup/references/templates/agents/narrative-writer.md",
+        "skills/story-setup/references/opencode/agents/narrative-writer.md",
+        "skills/story-setup/references/codex/agents/narrative-writer.toml",
+    )
+    writer_copies = {
+        relative: (REPO_ROOT / relative).read_text(encoding="utf-8")
+        for relative in writer_paths
+    }
+    writer_contract_lines: dict[str, str] = {}
+    for relative, text in writer_copies.items():
+        for anchor in (
+            "中文正文语言锁",
+            "story-globalize",
+            ".deslop-whitelist",
+            "--language=zh",
+            "英文句子",
+            "裸英文词",
+        ):
+            require(anchor in text, f"language-lock: {relative} is missing {anchor}")
+        line = next(
+            (
+                candidate
+                for candidate in text.splitlines()
+                if "输出前扫描标题行以外的所有拉丁字母段" in candidate
+            ),
+            "",
+        )
+        require(line, f"language-lock: {relative} is missing the pre-output scan")
+        writer_contract_lines[relative] = line
+    require(
+        len(set(writer_contract_lines.values())) == 1,
+        "language-lock: template/OpenCode/Codex narrative-writer lines must stay synchronized",
+    )
+
+    story_format = (
+        REPO_ROOT / "skills/story-setup/references/templates/rules/story-format.md"
+    ).read_text(encoding="utf-8")
+    for anchor in (
+        '"**/正文/**"',
+        '"**/正文.md"',
+        "禁止中文正文语言漂移",
+        ".deslop-whitelist",
+    ):
+        require(anchor in story_format, f"language-lock: story-format is missing {anchor}")
+
+    self_lock_templates = (
+        "skills/story-setup/references/generic/AGENTS.md.tmpl",
+        "skills/story-setup/references/openclaw/AGENTS.md.tmpl",
+        "skills/story-setup/references/reasonix/AGENTS.md.tmpl",
+    )
+    for relative in self_lock_templates:
+        text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        for anchor in (
+            "check-ai-patterns.js",
+            "check-degeneration.js",
+            "--language=zh",
+            "--fail-on=blocking",
+            "story-globalize",
+            ".deslop-whitelist",
+        ):
+            require(anchor in text, f"language-lock: {relative} is missing {anchor}")
+
+    chinese_skill_paths = (
+        "skills/story-deslop/SKILL.md",
+        "skills/story-long-write/SKILL.md",
+        "skills/story-short-write/SKILL.md",
+        "skills/story-review/SKILL.md",
+    )
+    for relative in chinese_skill_paths:
+        text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        for anchor in ("check-degeneration.js", "--language=zh", "--fail-on=blocking"):
+            require(anchor in text, f"language-lock: {relative} is missing {anchor}")
+
+    router = (REPO_ROOT / "skills/story/SKILL.md").read_text(encoding="utf-8")
+    for anchor in ("story-globalize", "英文小说", "海外", "停止"):
+        require(anchor in router, f"language-lock: story router is missing {anchor}")
+
+
+def test_issue_351_large_book_and_extractor_contracts() -> None:
+    """超长篇处理批次与 chapter-extractor 格式必须在主流调用面保持一致。"""
+
+    analyze = (REPO_ROOT / "skills/story-long-analyze/SKILL.md").read_text(encoding="utf-8")
+    for anchor in (
+        "[情节点格式要求]",
+        "[输出前自检]",
+        "不依赖项目里已部署的 agent 文件版本",
+        "10-20 章/批",
+        "≤8K tokens",
+        "主线程不逐章读原始摘要",
+    ):
+        require(anchor in analyze, f"#351: long-analyze spawn/batch contract missing {anchor}")
+
+    material = (
+        REPO_ROOT / "skills/story-long-analyze/references/material-decomposition.md"
+    ).read_text(encoding="utf-8")
+    for anchor in (
+        "语义分块",
+        "处理批次",
+        "10-20 章/批",
+        "每份 ≤8K tokens",
+        "两两/分组合并",
+        "进度与按批恢复",
+        "主线程在并行模式下不读",
+    ):
+        require(anchor in material, f"#351: large-book decomposition contract missing {anchor}")
+    require(
+        "回退原「扫描全部章节摘要」逐文件方式" not in material,
+        "#351: large books must not silently fall back to main-thread per-chapter scans",
+    )
+
+    output = (
+        REPO_ROOT / "skills/story-long-analyze/references/output-templates.md"
+    ).read_text(encoding="utf-8")
+    extractor_paths = (
+        "skills/story-setup/references/templates/agents/chapter-extractor.md",
+        "skills/story-setup/references/opencode/agents/chapter-extractor.md",
+        "skills/story-setup/references/codex/agents/chapter-extractor.toml",
+    )
+    for anchor in (
+        "`{}` 是占位标记",
+        "`主题标签` 只填一个值",
+        "空字段统一写“无”",
+        "每个情节点后紧跟",
+    ):
+        require(anchor in output, f"#351: serial output template missing {anchor}")
+    require("落盘文本无 `{`/`}`" in output, "#351: serial output self-check missing")
+
+    for relative in extractor_paths:
+        extractor = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        for anchor in (
+            "`{}` 是占位标记",
+            "主题标签` 只填一个值",
+            "空字段统一写“无”",
+            "每个情节点后紧跟",
+            "输出前自检",
+        ):
+            require(anchor in extractor, f"#351: {relative} missing {anchor}")
+
+
+def chapter_json_fixture() -> dict[str, object]:
+    """Return a minimal but fully valid deterministic Stage 2 payload."""
+
+    plot_points = []
+    for number in range(1, 11):
+        plot_points.append(
+            {
+                "id": f"P{number}",
+                "title": f"节点{number}",
+                "event": f"林川完成第{number}步并确认结果。",
+                "type": "行动",
+                "characters": ["林川"],
+                "location": "古井边" if number == 1 else None,
+                "item": "药方" if number == 1 else None,
+                "time": None,
+                "quote": f"关键原句{number}" if number <= 8 else None,
+                "quote_locator": None,
+                "themes": ["成长"],
+                "tone": "紧张",
+            }
+        )
+    return {
+        "chapter_number": 1,
+        "title": "古井递方",
+        # 100 个 Unicode code point，UTF-8 则是 300 bytes：防止实现误按字节计数。
+        "summary": "药" * 100,
+        "key_events": ["林川来到古井边", "古井递出药方"],
+        "key_information_expansion": [
+            {
+                "key_information": "古井会递出药方",
+                "expansion": "先写异响，再用人物动作确认药方存在",
+                "technique": "延迟揭示",
+                "reader_effect": "好奇",
+                "reuse_note": "保留信息延迟链，替换人物、场景和道具",
+            }
+        ],
+        "chapter_formula": {
+            "emotion_flow": {
+                "start": "压抑",
+                "build": "疑惑",
+                "turn": "紧张",
+                "close": "期待",
+            },
+            "rhythm_ratio": {
+                "slow_setup": "25%",
+                "fast_conflict": "25%",
+                "payoff": "25%",
+                "hook_space": "25%",
+            },
+            "structure_formula": ["发现异响", "接近古井", "取得药方"],
+            "core_technique": "用具体道具承载章尾悬念",
+            "hook_and_foreshadowing": "章尾留下药方来源与用途的疑问",
+        },
+        "characters": [
+            {
+                "name": "林川",
+                "importance": "major",
+                "aliases": [],
+                "performance": "听见井中异响后靠近查看，发现石缝中露出的药方。",
+            }
+        ],
+        "plot_points": plot_points,
+    }
+
+
+def test_chapter_json_renderer_contract() -> None:
+    """JSON 正常链路可执行，任一反例失败时不碰旧 Markdown。"""
+
+    renderer = REPO_ROOT / "skills/story-long-analyze/scripts/render_chapter_summary.py"
+    require(renderer.is_file(), "chapter JSON renderer must exist")
+
+    def invoke(input_path: Path, output_path: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(renderer),
+                "--input",
+                str(input_path),
+                "--output",
+                str(output_path),
+                *extra,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="chapter-json-renderer-") as tmp:
+        root = Path(tmp)
+        input_path = root / "chapter.json"
+        output_path = root / "chapter.md"
+        valid = chapter_json_fixture()
+        input_path.write_text(json.dumps(valid, ensure_ascii=False), encoding="utf-8")
+
+        result = invoke(
+            input_path,
+            output_path,
+            "--expect-chapter-number",
+            "1",
+            "--expect-title",
+            "古井递方",
+        )
+        require(result.returncode == 0, result.stdout + result.stderr)
+        markdown = output_path.read_text(encoding="utf-8")
+        require(markdown.startswith("## 第1章 古井递方\n"), "renderer must emit canonical heading")
+        require(markdown.count("\nP") == 10, "renderer must emit exactly ten plot-point lines")
+        require(
+            markdown.count("主题标签成长 | 基调：紧张") == 10,
+            "renderer must deterministically project one theme and one tone per point",
+        )
+        first_render = output_path.read_bytes()
+        second = invoke(input_path, output_path)
+        require(second.returncode == 0, second.stdout + second.stderr)
+        require(output_path.read_bytes() == first_render, "renderer output must be deterministic")
+
+        output_path.write_text("SENTINEL\n", encoding="utf-8")
+        checked = invoke(input_path, output_path, "--check-only")
+        require(checked.returncode == 0, checked.stdout + checked.stderr)
+        require(
+            output_path.read_text(encoding="utf-8") == "SENTINEL\n",
+            "--check-only must never touch --output",
+        )
+
+        invalid_cases: list[tuple[str, dict[str, object], str]] = []
+
+        short_summary = chapter_json_fixture()
+        short_summary["summary"] = "药" * 99
+        invalid_cases.append(("summary-unicode-length", short_summary, "at least 100 Unicode"))
+
+        non_contiguous = chapter_json_fixture()
+        non_contiguous["plot_points"][4]["id"] = "P6"  # type: ignore[index]
+        invalid_cases.append(("plot-id-gap", non_contiguous, "plot IDs must be continuous"))
+
+        multi_theme = chapter_json_fixture()
+        multi_theme["plot_points"][0]["themes"] = ["成长", "悬念"]  # type: ignore[index]
+        invalid_cases.append(("multiple-themes", multi_theme, "at most 1 item"))
+
+        too_many_quotes = chapter_json_fixture()
+        too_many_quotes["plot_points"][8]["quote"] = "第九条引用"  # type: ignore[index]
+        invalid_cases.append(("nine-quotes", too_many_quotes, "at most 8 points"))
+
+        long_quote = chapter_json_fixture()
+        long_quote["plot_points"][0]["quote"] = "字" * 401  # type: ignore[index]
+        invalid_cases.append(("quote-too-long", long_quote, "at most 400 Unicode"))
+
+        unknown_enum = chapter_json_fixture()
+        unknown_enum["plot_points"][0]["tone"] = "激动"  # type: ignore[index]
+        invalid_cases.append(("unknown-tone", unknown_enum, "must be one of"))
+
+        extra_key = chapter_json_fixture()
+        extra_key["model_note"] = "should fail"
+        invalid_cases.append(("extra-key", extra_key, "unexpected keys"))
+
+        bad_ratio = chapter_json_fixture()
+        bad_ratio["chapter_formula"]["rhythm_ratio"]["hook_space"] = "24%"  # type: ignore[index]
+        invalid_cases.append(("rhythm-ratio-sum", bad_ratio, "must sum to 100%"))
+
+        quote_and_locator = chapter_json_fixture()
+        quote_and_locator["plot_points"][0]["quote_locator"] = "可回查关键原句"  # type: ignore[index]
+        invalid_cases.append(
+            ("quote-and-locator", quote_and_locator, "may set quote or quote_locator, not both")
+        )
+
+        not_a_number = chapter_json_fixture()
+        not_a_number["summary"] = float("nan")
+        invalid_cases.append(("nan", not_a_number, "non-finite JSON number"))
+
+        infinity = chapter_json_fixture()
+        infinity["summary"] = float("inf")
+        invalid_cases.append(("infinity", infinity, "non-finite JSON number"))
+
+        for label, payload, error_fragment in invalid_cases:
+            input_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            output_path.write_text("SENTINEL\n", encoding="utf-8")
+            failed = invoke(input_path, output_path)
+            require(failed.returncode != 0, f"{label}: invalid fixture unexpectedly passed")
+            require(error_fragment in failed.stderr, f"{label}: wrong failure: {failed.stderr}")
+            require(
+                output_path.read_text(encoding="utf-8") == "SENTINEL\n",
+                f"{label}: validation failure touched the existing output",
+            )
+
+        input_path.write_text(
+            json.dumps(chapter_json_fixture(), ensure_ascii=False), encoding="utf-8"
+        )
+        for label, mismatch_args, error_fragment in (
+            (
+                "chapter-number-mismatch",
+                ("--expect-chapter-number", "2"),
+                "must equal expected chapter 2",
+            ),
+            (
+                "chapter-title-mismatch",
+                ("--expect-title", "错误章名"),
+                "does not match the expected chapter title",
+            ),
+        ):
+            output_path.write_text("SENTINEL\n", encoding="utf-8")
+            mismatch = invoke(input_path, output_path, *mismatch_args)
+            require(mismatch.returncode != 0, f"{label}: mismatch unexpectedly passed")
+            require(error_fragment in mismatch.stderr, f"{label}: wrong failure: {mismatch.stderr}")
+            require(
+                output_path.read_text(encoding="utf-8") == "SENTINEL\n",
+                f"{label}: mismatch touched the existing output",
+            )
+
+        valid_text = json.dumps(chapter_json_fixture(), ensure_ascii=False)
+        duplicate_key = valid_text.replace(
+            '{"chapter_number": 1,',
+            '{"chapter_number": 1, "chapter_number": 1,',
+            1,
+        )
+        input_path.write_text(duplicate_key, encoding="utf-8")
+        output_path.write_text("SENTINEL\n", encoding="utf-8")
+        duplicate_failed = invoke(input_path, output_path)
+        require(duplicate_failed.returncode != 0, "duplicate JSON key unexpectedly passed")
+        require("duplicate JSON key" in duplicate_failed.stderr, duplicate_failed.stderr)
+        require(
+            output_path.read_text(encoding="utf-8") == "SENTINEL\n",
+            "duplicate JSON key touched the existing output",
+        )
+
+        fenced = "```json\n" + json.dumps(chapter_json_fixture(), ensure_ascii=False) + "\n```\n"
+        input_path.write_text(fenced, encoding="utf-8")
+        output_path.write_text("SENTINEL\n", encoding="utf-8")
+        failed_fence = invoke(input_path, output_path)
+        require(failed_fence.returncode != 0, "fenced model prose must not be accepted as JSON")
+        require(
+            output_path.read_text(encoding="utf-8") == "SENTINEL\n",
+            "parse failure touched the existing output",
+        )
+
+
 def main() -> int:
     test_manifest_contract()
+    test_marketplace_skill_version_guard()
     test_bad_fallbacks_fail()
     test_fail_fast_prose_passes()
     test_sibling_bullets_do_not_lend_the_missing_condition()
@@ -774,6 +1298,10 @@ def main() -> int:
     test_p1_deletion_guards()
     test_analyze_portability_guards()
     test_rubric_parity_guard()
+    test_issue_315_333_343_prompt_contracts()
+    test_chinese_prose_language_contract()
+    test_issue_351_large_book_and_extractor_contracts()
+    test_chapter_json_renderer_contract()
     test_structured_sentinel_contract()
     test_structured_outline_contract()
     test_upgrading_version_contract()

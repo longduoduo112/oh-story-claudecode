@@ -66,6 +66,34 @@ for MODE in default gbk; do
   [ "$(run_guard_py "$MODE" 'short/正文.md')" = 0 ] && pass "[$MODE] short allowed, 小节大纲 present" || bad "[$MODE] short should allow when 小节大纲 present"
 done
 
+# 1a 双轨追踪门：哨兵版本是 ASCII，但阻断文案/书路径是中文。在默认与强制 GBK
+# stdout 下都锁住 >=28 缺 state 硬拦、<28/无效版本兼容放行，且不误伤短篇。
+echo "--- Part 1a: deployment-version tracking gate under cp936 simulation ---"
+mkdir -p "$P1/book/追踪"
+for MODE in default gbk; do
+  rm -f "$P1/book/追踪/_tracking-state.json"
+  printf '%s\n' 'agents_version: 27' > "$P1/.story-deployed"
+  [ "$(run_guard_py "$MODE" 'book/正文/第1章_开端.md')" = 0 ] \
+    && pass "[$MODE] legacy v27 allows missing tracking state" \
+    || bad "[$MODE] legacy v27 should allow missing tracking state"
+  printf '%s\n' 'agents_version: invalid' > "$P1/.story-deployed"
+  [ "$(run_guard_py "$MODE" 'book/正文/第1章_开端.md')" = 0 ] \
+    && pass "[$MODE] invalid sentinel stays on legacy track" \
+    || bad "[$MODE] invalid sentinel should not activate the v28 tracking gate"
+  printf '%s\n' 'agents_version: 28' > "$P1/.story-deployed"
+  [ "$(run_guard_py "$MODE" 'book/正文/第1章_开端.md')" = 2 ] \
+    && pass "[$MODE] v28 blocks missing tracking state" \
+    || bad "[$MODE] v28 should block missing tracking state"
+  printf '%s\n' 'agents_version: 29' > "$P1/.story-deployed"
+  [ "$(run_guard_py "$MODE" 'book/正文/第1章_开端.md')" = 2 ] \
+    && pass "[$MODE] future v29 inherits tracking gate" \
+    || bad "[$MODE] future versions should inherit the v28 tracking gate"
+  [ "$(run_guard_py "$MODE" 'short/正文.md')" = 0 ] \
+    && pass "[$MODE] v29 tracking gate does not apply to short prose" \
+    || bad "[$MODE] long-form tracking gate wrongly blocked short prose"
+done
+rm -f "$P1/.story-deployed"
+
 # ===== Part 1b：Windows 盘符绝对路径分类（issue #184，任何平台可跑）=====
 # Windows + Git Bash 下 Claude Code 传入盘符绝对路径（F:/... 或 F:\...）。旧 case 只认 /*，
 # 把它当相对路径拼成 $ROOT/F:/...，找错 大纲/ 目录 → 误报细纲缺失。修复后盘符路径按绝对路径处理。
@@ -155,6 +183,16 @@ else
   : > "$BOOK/大纲/细纲_第1章.md"
   [ "$(rg '中文测试书/正文/第1章_开端.md')" = 0 ] && pass "[GBK] guard allows present 细纲 (Chinese glob)" || bad "[GBK] guard should allow present 细纲 under GBK"
   [ "$(rg '中文测试书/正文/第001章_开端.md')" = 0 ] && pass "[GBK] guard tolerates zero-pad 第001章" || bad "[GBK] guard should tolerate zero-pad 第001章 under GBK"
+
+  # 中文中间路径 + 真 GBK locale 下，sentinel 双轨与 state 在场后的共享核路径都须稳定。
+  printf '%s\n' 'agents_version: 27' > "$P2/.story-deployed"
+  [ "$(rg '中文测试书/正文/第1章_开端.md')" = 0 ] && pass "[GBK] legacy v27 allows missing state" || bad "[GBK] legacy v27 should allow missing state"
+  printf '%s\n' 'agents_version: 28' > "$P2/.story-deployed"
+  [ "$(rg '中文测试书/正文/第1章_开端.md')" = 2 ] && pass "[GBK] v28 blocks missing state" || bad "[GBK] v28 missing-state gate failed"
+  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":0}' > "$BOOK/追踪/_tracking-state.json"
+  printf '%s\n' '> 状态修订：0' > "$BOOK/追踪/上下文.md"
+  [ "$(rg '中文测试书/正文/第1章_开端.md')" = 0 ] && pass "[GBK] v28 allows valid tracking state" || bad "[GBK] valid state did not reach shared prose guard cleanly"
+  rm -f "$P2/.story-deployed" "$BOOK/追踪/_tracking-state.json" "$BOOK/追踪/上下文.md"
 
   # 2b detect-story-gaps：正常伏笔表不误报；同时证明中文书目能被发现。
   # F001 状态用全角空格 U+3000 补白（已埋 前后各一个），守住 LC_ALL=C 下 trim 仍认全角空格。

@@ -10,11 +10,13 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 **核心信念：AI 味的主要问题并非语法错误；更常见的是过度圆滑、工整、解释充分。改写目标是保留剧情功能，同时增加口语、停顿、跳跃和具体动作。**
 
+**中文正文语言边界**：本 skill 的普通正文流程按 `zh` 处理，文件模式与交互贴文模式都不得把中文润色成英文。普通英文句/段、连续英文片段和未授权的裸英文词属于语言泄漏，不是可保留的“原文风格”。英文小说、英文短故事、中文改英文、native 化或海外发行请求应路由 `story-globalize`；当前环境没有该 skill 时报告缺失并停止，不用本中文去味流程交付英文正稿。
+
 ---
 
 > Agent 兼容性：检查专业 agent 是否可用时，按 `.claude/agents/{agent}.md` → `.opencode/agents/{agent}.md` → `.codex/agents/{agent}.toml` 的顺序查找。Codex 原生子代理调用优先使用同名 `agent_type`；如果当前 Codex 运行时返回 `unknown agent_type` 或未暴露 custom-agent registry，必须降级为 solo/direct。检测到 `.zcode/` 时同样直接 solo/direct，因为 ZCode 3.3.4 不执行项目 custom agents；报告 `Fallback: project custom agents unavailable -> solo`。Claude/OpenCode 兼容面保留 `subagent_type`。
 >
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 25` 不一致时（标记缺失、字段缺失/非整数、小于或大于 25）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 25）` 并提示重新运行 `/story-setup` 后新开会话；大于 25 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 29` 不一致时（标记缺失、字段缺失/非整数、小于或大于 29）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 29）` 并提示重新运行 `/story-setup` 后新开会话；大于 29 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 ## 核心哲学
 
@@ -63,8 +65,9 @@ AI味不按语法错误处理，也不需要"修正"。它属于风格问题：�
 ### 自然文本特征（与AI味对比）
 | 维度 | 自然文本 | AI味文本 |
 |------|----------|--------|
-| 段落长度 | 1-3句为主，偶尔1句独占1行 | 每段4-6句，整齐均匀 |
-| 对话标签 | 60%+无标签，用动作替代"说" | 几乎每句都有"说道/问道" |
+| 段落长度 | 随 beat 长短不一：爽点/转折压短，推理/氛围/情绪链放长 | 通篇同一长度，整齐均匀 |
+| 句内节奏 | 叙述以逗号长句为主（逗号之间 8-12 字、整句 20-30 字，见 anti-ai-writing.md 规则 3） | 要么长句臃肿，要么通篇碎句像提纲 |
+| 对话标签 | 标签低频且不公式化，多用动作/上下文引出；普通"说"可保留 | 几乎每句都有"说道/问道/笑道" |
 | 情绪表达 | 动作展示（"手在抖"） | 直接告诉（"很紧张"） |
 | 比喻 | 生活化（"像哈士奇护食"） | 文学化（"如寒冰般"） |
 | 语气词 | "嘤""嘶""靠""行吧" | 几乎没有 |
@@ -118,10 +121,12 @@ AI味不按语法错误处理，也不需要"修正"。它属于风格问题：�
 
 ```bash
 node scripts/check-ai-patterns.js --check --fail-on=blocking <正文文件...>
+node scripts/check-degeneration.js --check --language=zh --fail-on=blocking <正文文件...>
 ```
 
 - severity=blocking 的类别（`not-is-comparison` / `em-dash` / `voice-contrast` / `negation-parade` / `reverse-not-is` / `trailer-ending` / `trailer-summary`）并入 Gate B，属于写作/去 AI 味时优先处理的 blocking 类问题。
 - 其他 findings（碎句号、长段落、微动作、动作清单、抽象总结、套词、比喻密度、解释链、公文腔、过度精炼、低连接密度、引号强调滥用、`formulaic-parallelism` 工整并列）只作读感提示；完整类别和修法见 `references/anti-ai-writing.md`。其中工整并列会扫描台词，必须读语境判断，不能因为 hook 对台词低误报豁免就跳过。
+- `check-degeneration.js` 的 `language-leak` 语言 blocking（消息会细分纯英文句段、完整英文台词、连续短语或裸词）不计入 AI 味轻/中/重定档，但必须先改回中文并复扫。合法的大写缩写/型号、URL、邮箱、Markdown 链接目标、文件路径/扩展名、行内或围栏代码以及 `.deslop-whitelist` 精确登记项不属于泄漏。
 - 处理方式：删掉否定铺垫，直接写后项；或改成角色动作、物件细节、身体反应来呈现。
 - 若用户只要检测，保留报告不改文。若执行去 AI 味，只改确实损害读感且无叙事功能的问题；功能性写法标 `[需复核]` 并保留。
 
@@ -201,6 +206,8 @@ node scripts/check-ai-patterns.js --check --fail-on=blocking <正文文件...>
 - 大小写敏感（中文不区分）
 
 匹配规则：扫描时若禁用词命中段对应的子串在 `.deslop-whitelist` 中存在同样的子串，跳过该次告警。匹配方式与 banned-words.md 一致，使用子串扫描。
+
+**语言门单独使用精确匹配**：外文人名、术语或确需保留的外语对白，要以完整 token 或完整短句写入 `.deslop-whitelist`；不做子串泛化。例如白名单 `AI` 不能顺带豁免 `Aiden`。上一段的子串规则只用于 banned-words 命中，不用于语言泄漏。
 
 示例 `.deslop-whitelist`：
 
@@ -353,14 +360,14 @@ AI写作的结尾特征：总想总结、升华、点题。
 
 ```bash
 node scripts/check-ai-patterns.js --check --fail-on=blocking <正文文件...>
-node scripts/check-degeneration.js --check <正文文件...>
+node scripts/check-degeneration.js --check --language=zh --fail-on=blocking <正文文件...>
 node scripts/normalize-punctuation.js <正文文件...>
 ```
 
 作用边界：
 - `check-ai-patterns.js` 只报告不改写：severity=blocking 的类别（`not-is-comparison` / `em-dash` / `voice-contrast` / `negation-parade` / `reverse-not-is` / `trailer-ending` / `trailer-summary`）优先改正文并复扫；advisory 先通读判断，确属提纲感、解释腔或模板腔再改，功能性写法标 `[需复核]`。
 - 它只是读感提示；完整类别、例外和修法见 `references/anti-ai-writing.md`。
-- `check-degeneration.js` 报告模型退化（逐字复读/打转、末尾截断、占位符、工程词泄漏 `细纲`/`情节点` 等），每条带 `severity: blocking|advisory`。blocking 是退化信号，去AI味改不掉，应回去重新生成那一段再 deslop；advisory（tier2 章节/歧义词）只提示。
+- `check-degeneration.js` 报告模型退化（逐字复读/打转、末尾截断、占位符、工程词泄漏 `细纲`/`情节点`、中文正文里的英文句段/裸词等），每条带 `severity: blocking|advisory`。复读/截断/拒绝语等 blocking 重新生成受影响段落；语言 blocking 把未授权英文改回中文。两类都必须复扫清零才能交付；advisory 只有在用户/设定明确授权或 `.deslop-whitelist` 精确登记时才能保留。
 - `normalize-punctuation.js` 机械兜底：清除残留的 `……`、漏网破折号 `——`/`—`、双连字符 `--` 和独立行 `---`；默认不改变引号风格，也不把有功能的 `？` / 少量 `！` 改成句号。
 - 知乎盐言短篇可保留 `「」`；只有用户或项目明确要求时，才给标点脚本加 `--quote-mode ascii` 或 `--quote-mode yan`。
 - 对话中表示被打断或拖长的 `——` 不再作为例外保留；脚本会改成句号、逗号、动作可承接的断句或中文连接词。无功能标点堆砌由人工 Gate D/E 判断处理。
@@ -431,7 +438,7 @@ node scripts/normalize-punctuation.js <正文文件...>
 | [references/anti-ai-writing.md](references/anti-ai-writing.md) | **去AI味完整指南**：预防+三遍法+范例 |
 | [scripts/normalize-punctuation.js](scripts/normalize-punctuation.js) | 文件模式落盘后做确定性标点收尾；默认保留引号风格 |
 | [scripts/check-ai-patterns.js](scripts/check-ai-patterns.js) | 文件模式「AI味扫描」预检与「确定性收尾」复扫（只看引号外叙述），只报告不改写 |
-| [scripts/check-degeneration.js](scripts/check-degeneration.js) | 文件模式「确定性收尾」复扫，只报告不改写 |
+| [scripts/check-degeneration.js](scripts/check-degeneration.js) | 文件模式预检与「确定性收尾」复扫；中文正文显式用 `--language=zh --fail-on=blocking` |
 
 ---
 

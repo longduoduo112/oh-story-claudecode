@@ -36,6 +36,8 @@ Codex CLI 中优先通过 `$skill-name` 或 `/skills` 调用；自然语言也�
 - Codex custom agents 部署在 `.codex/agents/*.toml`，需要新开 Codex 会话后才会稳定可用。
 - Codex hooks 部署在 `.codex/hooks.json` 和 `.codex/hooks/`；项目 `.codex/` 层需要被信任，非 managed hooks 还需要在 `/hooks` 中 review/trust 后才会运行。
 - 写正文前必须先有对应大纲：长篇 `大纲/细纲_第N章*.md`，短篇 `小节大纲.md`。Codex hooks 会做机械守卫，但 skill 流程本身也必须遵守。
+- 中文长篇/短篇正文全程锁定中文；未获用户/设定明确授权的英文句段、裸英文词和英文对话必须改成中文。缩写/型号、URL/邮箱/文件名/代码和 `.deslop-whitelist` 精确登记项除外。
+- 英文小说/英文短故事/中文改英文/海外发行意图优先路由 `story-globalize`；若当前环境未安装，报告缺失并停止中文正文流程，不冒充已通过英文发行 Gate。
 - Compact 后优先读取 `{书名}/追踪/上下文.md` 恢复当前写作状态。
 
 ## 协作规则

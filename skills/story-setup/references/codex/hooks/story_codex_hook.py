@@ -103,6 +103,39 @@ def safe_rel(root: Path, path: Path) -> str:
         return str(path)
 
 
+def _walk_project_entries(root: Path, max_depth: int = 4):
+    """Yield non-ignored entries below project directories up to max_depth.
+
+    ``max_depth`` matches ``find -maxdepth``: root children are depth 1, entries at
+    depth 4 are visible, and depth 5 is not.
+    Hidden directories, node_modules and directory symlinks are pruned before descent.
+    """
+
+    def walk(base: Path, remaining: int):
+        if remaining <= 0:
+            return
+        try:
+            entries = sorted(base.iterdir(), key=lambda item: item.name)
+        except OSError:
+            return
+        visible = [
+            entry
+            for entry in entries
+            if not entry.name.startswith(".") and entry.name != "node_modules"
+        ]
+        yield from visible
+        if remaining == 1:
+            return
+        for entry in visible:
+            try:
+                if entry.is_dir() and not entry.is_symlink():
+                    yield from walk(entry, remaining - 1)
+            except OSError:
+                continue
+
+    yield from walk(root, max_depth)
+
+
 def read_active_book(root: Path) -> Path | None:
     active_file = root / ".active-book"
     if active_file.exists():
@@ -117,20 +150,16 @@ def read_active_book(root: Path) -> Path | None:
                 candidate.relative_to(root.resolve())
             except Exception:
                 candidate = None  # type: ignore[assignment]
-            if candidate and candidate.exists():
+            if candidate and candidate.is_dir():
                 return candidate
-    for track in root.glob("**/追踪"):
-        if any(part.startswith(".") for part in track.relative_to(root).parts):
-            continue
-        return track.parent
-    for body in root.glob("**/正文"):
-        if any(part.startswith(".") for part in body.relative_to(root).parts):
-            continue
-        return body.parent
-    for body_file in root.glob("**/正文.md"):
-        if any(part.startswith(".") for part in body_file.relative_to(root).parts):
-            continue
-        return body_file.parent
+    entries = list(_walk_project_entries(root))
+    for marker in ("追踪", "正文"):
+        for entry in entries:
+            if entry.name == marker and entry.is_dir() and not entry.is_symlink():
+                return entry.parent
+    for entry in entries:
+        if entry.name == "正文.md" and entry.is_file() and not entry.is_symlink():
+            return entry.parent
     return None
 
 
@@ -140,7 +169,7 @@ def hook_context(event: str, text: str) -> dict[str, Any]:
 
 # ── 轻量确定性网（与 templates/hooks/check-prose-after-write.sh 内嵌 python 同实现，保持 parity）──
 # 只兜「硬信号」（漏跑最伤、退化模型自己发现不了的）：截断 / 生成拒绝语·AI 自指 /
-# 工程词漏进正文 / 紧邻整行复读。不依赖 check-degeneration.js，是独立的轻量网。
+# 工程词漏进正文 / 中文语言漂移 / 紧邻整行复读。不依赖 check-degeneration.js，是独立的轻量网。
 # 收尾标点集与深扫 oracle check-degeneration.js 的 findTruncation 对齐（[。！？!?…”"』」）)】]）：
 # 】 是章尾系统播报模板的收束符（agent-references/hooks-chapter.md 章尾实战模板一/四），ASCII "
 # 是 normalize-punctuation.js --quote-mode ascii 的合法收引号，两者都不该被判「疑似截断」。
@@ -153,21 +182,249 @@ _NET_SOFT_PATTERNS = [
     (re.compile(r"^(Sure|Certainly|Here'?s|As an AI|I (?:cannot|can't|am unable|apologize))"), "英文 AI 腔"),
     (re.compile(r"我(无法|不能)(继续(写|创作|生成|下去|输出)?|生成(内容|文本|正文)?|创作|续写|写作|完成(这个|本)?(章|篇|创作|请求)?)"), "生成拒绝语"),
 ]
-# 裸英文词泄漏：与 js 核 bareLatinLeak 逐字对应（parity 由 test-prose-net-parity.sh 锁）。
-# 中文正文里冒出的小写英文常用词基本都是内部代号/占位没换成中文名，实测样本
-# 「那里土气眼还压着没说破的东西，watcher 伏在暗里」——watcher 本该是个中文名字。
-# 两层判据缺一就误报：整行以中文为主（≥50%）、词是独立全小写 ≥4 位且不接字母数字/不跟 ./_-。
-_NET_BARE_LATIN = re.compile(r"(?<![A-Za-z0-9./_-])[a-z]{4,}(?![A-Za-z0-9._-])")
-_NET_CJK_CHAR = re.compile(r"[\u4e00-\u9fff]")
+# 中文正文语言网。与 JS 共享核同构，fixture 逐字 parity 由
+# scripts/test-prose-net-parity.sh 锁定。网只在已被宿主判定为中文正文路径的文件上运行。
+# blocking：纯英文句段、完整英文台词、连续 >=3 普通英文词且字母总数 >=12、
+# 叙述中独立全小写 >=4 词。完整英文台词（包括无句号的“Go”）始终 blocking；
+# 确属专名/引文时必须用精确白名单表达意图。保护区先等长遮罩。
+_LANGUAGE_WORD = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)?")
+_LANGUAGE_SEQUENCE = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)?(?:[ \t]+[A-Za-z]+(?:['’][A-Za-z]+)?){2,}")
+_LANGUAGE_SENTENCE = re.compile(r"[^。！？!?;；\n]+[。！？!?;；]?")
+_LANGUAGE_CJK = re.compile(r"[\u3400-\u9fff]")
+_LANGUAGE_QUOTE_PAIRS = (("「", "」"), ("『", "』"), ("“", "”"), ("‘", "’"), ('"', '"'), ("'", "'"))
+_LANGUAGE_OUTER_QUOTES = re.compile(r"^[\s「」『』“”‘’\"']+|[\s「」『』“”‘’\"']+$")
+_LANGUAGE_TRAILING_PUNCT = re.compile(r"[。.！？!?,，；;：:…]+$")
 
 
-def _net_bare_latin_leak(line: str) -> str | None:
-    if len(line) < 8:
-        return None
-    if len(_NET_CJK_CHAR.findall(line)) / len(line) < 0.5:
-        return None
-    m = _NET_BARE_LATIN.search(line)
-    return m.group(0) if m else None
+def _normalized_language_phrase(value: str) -> str:
+    text = _LANGUAGE_OUTER_QUOTES.sub("", str(value or "").strip()).strip()
+    text = _LANGUAGE_TRAILING_PUNCT.sub("", text).strip()
+    return re.sub(r"[ \t\r\n　]+", " ", text)
+
+
+def parse_deslop_whitelist(text: str) -> list[str]:
+    entries: list[str] = []
+    for raw in str(text or "").splitlines():
+        if re.match(r"^\s*#", raw):
+            continue
+        value = re.sub(r"\s+#.*$", "", raw).strip()
+        if value:
+            entries.append(value)
+    return entries
+
+
+def read_deslop_whitelist(root: Path, abs_path: Path | None = None) -> list[str]:
+    try:
+        boundary = root.resolve()
+        current = abs_path.resolve().parent if abs_path is not None else boundary
+        try:
+            current.relative_to(boundary)
+        except ValueError:
+            current = boundary
+        while True:
+            candidate = current / ".deslop-whitelist"
+            try:
+                return parse_deslop_whitelist(candidate.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                pass
+            if current == boundary:
+                break
+            parent = current.parent
+            try:
+                parent.relative_to(boundary)
+            except ValueError:
+                break
+            if parent == current:
+                break
+            current = parent
+    except OSError:
+        pass
+    return []
+
+
+def _language_whitelisted(entries: list[str], candidate: str, single_token: bool = False) -> bool:
+    raw = str(candidate or "").strip()
+    if not raw:
+        return False
+    if single_token:
+        return any(entry == raw for entry in entries)
+    normalized = _normalized_language_phrase(raw)
+    return any(_normalized_language_phrase(entry) == normalized for entry in entries)
+
+
+def _mask_language_protected(line: str) -> str:
+    chars = list(line)
+
+    def mask(start: int, end: int) -> None:
+        chars[start:end] = [" "] * (end - start)
+
+    def apply(rx: re.Pattern[str], range_fn: Any = None) -> None:
+        for match in rx.finditer(line):
+            start, end = range_fn(match) if range_fn else match.span()
+            mask(start, end)
+
+    apply(re.compile(r"\x60+[^\x60\n]*\x60+"))
+    apply(re.compile(r"(?<![A-Za-z0-9_])(?:https?://|ftp://|www\.)[^\s<>\"‘’'「」『』“”（）()]+", re.IGNORECASE))
+    apply(re.compile(r"(?<![A-Za-z0-9_])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z0-9_])"))
+
+    def markdown_target(match: re.Match[str]) -> tuple[int, int]:
+        opened = match.group(0).find("(")
+        return (match.start() + opened + 1, match.end() - 1)
+
+    apply(re.compile(r"\]\(\s*(?:<[^>\r\n]+>|[^)\s\r\n]+)(?:\s+[\"'][^\"'\r\n]*[\"'])?\s*\)"), markdown_target)
+
+    def markdown_reference_id(match: re.Match[str]) -> tuple[int, int]:
+        offset = match.group(0).rfind(match.group(1))
+        return (match.start() + offset, match.start() + offset + len(match.group(1)))
+
+    apply(re.compile(r"\]\s*\[([A-Za-z0-9_.-]+)\]"), markdown_reference_id)
+    path_part = r"[^\s/\\<>\"'“”‘’「」『』【】()（）,，。；;：:!！?？、]+"
+    apply(re.compile(rf"(?:[A-Za-z]:[\\/]|\.{{1,2}}[\\/]|/)(?:{path_part}[\\/])*{path_part}"))
+    apply(re.compile(rf"(?<![A-Za-z0-9])(?:{path_part}[\\/])+{path_part}(?![A-Za-z0-9])"))
+    apply(re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z0-9_-]+\.)+[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])"))
+    apply(re.compile(r"(?<![A-Za-z0-9])\.[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])"))
+    apply(re.compile(r"(?<![A-Za-z0-9_])[A-Z][a-z]{2,}[ \t]+[a-z][ \t]+\d{1,4}(?![A-Za-z0-9_])"))
+    apply(re.compile(r"(?<![A-Za-z0-9_])[A-Z](?=[\u3400-\u9fff])"))
+    apply(re.compile(r"(?<![A-Za-z0-9])(?:[A-Z][、,，/／]){1,}[A-Z](?=(?:[一二三四五六七八九十百两千0-9]+(?:个)?)?(?:包|组|类|客户|方案|版本|档|编号|记录|样本|文件))"))
+    apply(re.compile(r"(?:字母|文件名(?:后面|末尾)|后缀|代号|编号)[ \t]*(?:是|为|有|写着|标成|：|:)?[ \t]*[A-Z](?![A-Za-z0-9])"))
+    apply(re.compile(r"(?<![A-Za-z0-9_])(?=[A-Za-z0-9_-]*[A-Za-z])(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*(?![A-Za-z0-9_])"))
+    apply(re.compile(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+(?![A-Za-z0-9_])"))
+    return "".join(chars)
+
+
+def _language_quote_spans(line: str) -> list[tuple[int, int, int, int]]:
+    spans: list[tuple[int, int, int, int]] = []
+    for opened, closed in _LANGUAGE_QUOTE_PAIRS:
+        cursor = 0
+        while cursor < len(line):
+            start = line.find(opened, cursor)
+            if start < 0:
+                break
+            end = line.find(closed, start + len(opened))
+            if end < 0:
+                break
+            spans.append((start, end + len(closed), start + len(opened), end))
+            cursor = end + len(closed)
+    return sorted(spans, key=lambda span: (span[0], span[1]))
+
+
+def _language_containing_quote(spans: list[tuple[int, int, int, int]], start: int, end: int) -> tuple[int, int, int, int] | None:
+    return next((span for span in spans if start >= span[2] and end <= span[3]), None)
+
+
+def _language_only(value: str) -> bool:
+    without_words = _LANGUAGE_WORD.sub("", value)
+    residue = re.sub(r"[\s\d　「」『』“”‘’\"'()\[\]{}（）【】<>。.！？!?,，；;：:…—~*_=+\-]", "", without_words)
+    return _LANGUAGE_CJK.search(value) is None and re.search(r"[A-Za-z]", without_words) is None and not residue
+
+
+def _language_excerpt(value: str) -> str:
+    return _normalized_language_phrase(value)[:40]
+
+
+def _language_record(line_no: int, start: int, end: int, finding_type: str, excerpt: str, blocking: bool) -> dict[str, Any]:
+    advice = (
+        "中文正文必须改成中文；确需逐字保留时写入 .deslop-whitelist 精确登记。"
+        if blocking else
+        "请核对是否为设定中的专名/短词；非有意保留就改成中文，保留则写入 .deslop-whitelist 精确登记。"
+    )
+    return {
+        "line": line_no,
+        "start": start,
+        "end": end,
+        "blocking": blocking,
+        "finding": f"第{line_no}行 {finding_type}：「{excerpt}」——{advice}",
+    }
+
+
+def language_leak_records(text: str, whitelist_entries: list[str] | None = None) -> list[dict[str, Any]]:
+    entries = whitelist_entries if isinstance(whitelist_entries, list) else []
+    records: list[dict[str, Any]] = []
+    fence_char = ""
+    fence_length = 0
+    for line_no, raw in enumerate(str(text).split("\n"), 1):
+        trimmed = raw.strip()
+        fence = re.match(r"^(`{3,}|~{3,})", trimmed)
+        if fence:
+            marker = fence.group(1)
+            if not fence_char:
+                fence_char = marker[0]
+                fence_length = len(marker)
+            elif marker[0] == fence_char and len(marker) >= fence_length and re.fullmatch(re.escape(fence_char) + "{" + str(fence_length) + r",}[ \t]*", trimmed):
+                fence_char = ""
+                fence_length = 0
+            continue
+        if fence_char or _net_is_skippable(trimmed):
+            continue
+        if re.match(r"^\s{0,3}\[[^\]\n]+\]:\s*(?:<[^>\n]+>|\S+)", raw):
+            continue
+        masked = _mask_language_protected(raw)
+        quotes = _language_quote_spans(raw)
+        occupied: list[tuple[int, int]] = []
+
+        def overlaps(start: int, end: int) -> bool:
+            return any(start < right and end > left for left, right in occupied)
+
+        def add(record: dict[str, Any]) -> None:
+            records.append(record)
+            occupied.append((record["start"], record["end"]))
+
+        for span in quotes:
+            visible = masked[span[2]:span[3]]
+            words = list(_LANGUAGE_WORD.finditer(visible))
+            if not words or not _language_only(visible):
+                continue
+            candidate = raw[span[2]:span[3]]
+            if _language_whitelisted(entries, candidate, False):
+                continue
+            if len(words) == 1 and re.fullmatch(r"[A-Z]{2,}", words[0].group(0)):
+                continue
+            add(_language_record(line_no, span[2], span[3], "完整英文台词泄漏", _language_excerpt(candidate), True))
+
+        for sentence in _LANGUAGE_SENTENCE.finditer(masked):
+            start, end = sentence.span()
+            if overlaps(start, end):
+                continue
+            words = list(_LANGUAGE_WORD.finditer(sentence.group(0)))
+            if not words or not _language_only(sentence.group(0)):
+                continue
+            candidate = raw[start:end]
+            if _language_whitelisted(entries, candidate, len(words) == 1):
+                continue
+            if len(words) == 1 and re.fullmatch(r"[A-Z]{2,}", words[0].group(0)):
+                continue
+            single_sentence = len(words) == 1 and re.search(r"[。！？.!?][ \t]*$", candidate) is not None
+            if len(words) >= 2 or single_sentence or re.fullmatch(r"[a-z]{4,}", words[0].group(0)):
+                finding_type = "纯英文句段泄漏" if len(words) >= 2 or single_sentence else "裸英文词泄漏"
+                add(_language_record(line_no, start, end, finding_type, _language_excerpt(candidate), True))
+            else:
+                add(_language_record(line_no, start, end, "英文专名/短词疑似泄漏", _language_excerpt(candidate), False))
+
+        for sequence in _LANGUAGE_SEQUENCE.finditer(masked):
+            start, end = sequence.span()
+            if overlaps(start, end):
+                continue
+            if len(re.findall(r"[A-Za-z]", sequence.group(0))) < 12 or _language_whitelisted(entries, sequence.group(0), False):
+                continue
+            add(_language_record(line_no, start, end, "连续英文短语泄漏", _language_excerpt(sequence.group(0)), True))
+
+        for word in _LANGUAGE_WORD.finditer(masked):
+            start, end = word.span()
+            token = word.group(0)
+            if overlaps(start, end) or _language_whitelisted(entries, token, True):
+                continue
+            if re.fullmatch(r"[A-Z]{2,}", token):
+                continue
+            quote = _language_containing_quote(quotes, start, end)
+            if re.fullmatch(r"[a-z]{4,}", token):
+                add(_language_record(line_no, start, end, "英文专名/短词疑似泄漏" if quote else "裸英文词泄漏", token, not bool(quote)))
+            else:
+                add(_language_record(line_no, start, end, "英文专名/短词疑似泄漏", token, False))
+    return records
+
+
+def language_leak_findings(text: str, whitelist_entries: list[str] | None = None) -> list[str]:
+    return [record["finding"] for record in language_leak_records(text, whitelist_entries)]
 
 
 _NET_HARD_PATTERNS = [
@@ -318,7 +575,7 @@ def toxic_phrase_findings(text: str) -> list[str]:
     return findings
 
 
-def prose_net_findings(text: str) -> list[str]:
+def prose_net_findings(text: str, whitelist_entries: list[str] | None = None) -> list[str]:
     findings: list[str] = []
     content: list[tuple[int, str]] = []
     for i, raw in enumerate(text.split("\n"), 1):
@@ -345,11 +602,6 @@ def prose_net_findings(text: str) -> list[str]:
                 break
         if hit:
             continue
-        bare = _net_bare_latin_leak(s)
-        if bare:
-            findings.append(
-                f"第{i}行 裸英文词泄漏：「{bare}」——中文正文里的小写英文词多是没换成中文名的内部代号/占位；改成角色或事物在故事内的中文称呼。"
-            )
     for (la, sa), (lb, sb) in zip(content, content[1:]):
         if sa == sb and len(sa) >= 8:
             findings.append(f"第{lb}行 紧邻复读：整行与上一行完全相同「{sa[:20]}」")
@@ -362,6 +614,8 @@ def prose_net_findings(text: str) -> list[str]:
     # 已豁免的毒句式再次当硬信号推回。
     if not re.search(r"去味(：|:)跳过", "\n".join(re.split(r"\r?\n", text)[:6])):
         findings.extend(toxic_phrase_findings(text))
+    # 语言网不受「去味:跳过」影响；该标记只豁免毒句式。
+    findings.extend(language_leak_findings(text, whitelist_entries))
     return findings
 
 
@@ -448,15 +702,25 @@ def _wordcount_finding(abs_path: Path, text: str) -> str | None:
 def _discover_all_books(root: Path) -> list[Path]:
     books: list[Path] = []
     seen: set[str] = set()
-    for pattern in ("**/追踪", "**/正文", "**/正文.md"):
-        for hit in root.glob(pattern):
-            if any(part.startswith(".") for part in hit.relative_to(root).parts):
-                continue
-            book = hit.parent
-            key = str(book.resolve())
-            if key not in seen:
-                seen.add(key)
-                books.append(book)
+    for hit in _walk_project_entries(root):
+        try:
+            is_marker = (
+                hit.name in {"追踪", "正文"}
+                and hit.is_dir()
+                and not hit.is_symlink()
+            )
+            is_body_file = (
+                hit.name == "正文.md" and hit.is_file() and not hit.is_symlink()
+            )
+        except OSError:
+            continue
+        if not is_marker and not is_body_file:
+            continue
+        book = hit.parent
+        key = str(book.resolve())
+        if key not in seen:
+            seen.add(key)
+            books.append(book)
     return books
 
 
@@ -593,7 +857,18 @@ def _shell_words(segment: str) -> list[str]:
     current = ""
     started = False
     quote = ""
+    escaped = False
     for ch in segment:
+        if escaped:
+            current += ch
+            escaped = False
+            started = True
+            continue
+        if ch == "\\" and quote != "'":
+            current += ch
+            escaped = True
+            started = True
+            continue
         if quote:
             if ch == quote:
                 quote = ""
@@ -622,7 +897,16 @@ def _shell_segments(command: str) -> list[str]:
     segments: list[str] = []
     current = ""
     quote = ""
+    escaped = False
     for ch in command:
+        if escaped:
+            current += ch
+            escaped = False
+            continue
+        if ch == "\\" and quote != "'":
+            current += ch
+            escaped = True
+            continue
         if quote:
             current += ch
             if ch == quote:
@@ -647,7 +931,16 @@ def _before_shell_redirection(segment: str) -> str:
     """去掉首个引号外重定向及其后内容；2> 里的 fd 数字也一并去掉。"""
     current = ""
     quote = ""
+    escaped = False
     for ch in segment:
+        if escaped:
+            current += ch
+            escaped = False
+            continue
+        if ch == "\\" and quote != "'":
+            current += ch
+            escaped = True
+            continue
         if quote:
             current += ch
             if ch == quote:
@@ -663,38 +956,461 @@ def _before_shell_redirection(segment: str) -> str:
     return current
 
 
-def extract_prose_targets_from_command(command: str) -> list[str]:
+def _read_shell_word(value: str, start: int) -> tuple[str, int]:
+    word = ""
+    quote = ""
+    escaped = False
+    started = False
+    index = start
+    while index < len(value):
+        ch = value[index]
+        if escaped:
+            word += ch
+            escaped = False
+            started = True
+            index += 1
+            continue
+        if ch == "\\" and quote != "'":
+            word += ch
+            escaped = True
+            started = True
+            index += 1
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+            else:
+                word += ch
+            started = True
+            index += 1
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+            started = True
+            index += 1
+            continue
+        if ch in (" ", "\t", "\r", "\n", ";", "&", "|", "<", ">", "(", ")"):
+            break
+        word += ch
+        started = True
+        index += 1
+    return (word if started else "", index)
+
+
+def _read_heredoc_delimiter(value: str, start: int) -> tuple[str, int]:
+    word = ""
+    quote = ""
+    escaped = False
+    started = False
+    index = start
+    while index < len(value):
+        ch = value[index]
+        if escaped:
+            word += ch
+            escaped = False
+            started = True
+            index += 1
+            continue
+        if ch == "\\" and quote != "'":
+            next_char = value[index + 1:index + 2]
+            if quote == '"' and next_char not in ("$", "`", '"', "\\", "\n"):
+                word += ch
+            else:
+                escaped = True
+            started = True
+            index += 1
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+            else:
+                word += ch
+            started = True
+            index += 1
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+            started = True
+            index += 1
+            continue
+        if ch in (" ", "\t", "\r", "\n", ";", "&", "|", "<", ">", "(", ")"):
+            break
+        word += ch
+        started = True
+        index += 1
+    return (word if started else "", index)
+
+
+def _heredoc_declarations(line: str) -> list[tuple[str, bool]]:
+    declarations: list[tuple[str, bool]] = []
+    quote = ""
+    escaped = False
+    index = 0
+    while index < len(line):
+        ch = line[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            index += 1
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+            index += 1
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+            index += 1
+            continue
+        if not (
+            ch == "<"
+            and index + 1 < len(line)
+            and line[index + 1] == "<"
+            and (index == 0 or line[index - 1] != "<")
+            and (index + 2 >= len(line) or line[index + 2] != "<")
+        ):
+            index += 1
+            continue
+        cursor = index + 2
+        strip_tabs = False
+        if cursor < len(line) and line[cursor] == "-":
+            strip_tabs = True
+            cursor += 1
+        while cursor < len(line) and line[cursor] in (" ", "\t"):
+            cursor += 1
+        delimiter, cursor = _read_heredoc_delimiter(line, cursor)
+        if delimiter:
+            declarations.append((delimiter, strip_tabs))
+        index = max(index + 1, cursor)
+    return declarations
+
+
+def _mask_heredoc_bodies(command: str) -> str:
+    pending: list[tuple[str, bool]] = []
+    output: list[str] = []
+    for line in command.split("\n"):
+        if pending:
+            delimiter, strip_tabs = pending[0]
+            comparable = re.sub(r"^\t+", "", line) if strip_tabs else line
+            if comparable == delimiter:
+                pending.pop(0)
+                output.append(line)
+            else:
+                output.append(" " * len(line))
+            continue
+        pending.extend(_heredoc_declarations(line))
+        output.append(line)
+    return "\n".join(output)
+
+
+def _command_word_index(words: list[str]) -> int:
+    index = 0
+    while index < len(words):
+        while index < len(words) and (
+            re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[index])
+            or words[index] == "noglob"
+        ):
+            index += 1
+        if index < len(words) and words[index] == "command":
+            index += 1
+            while index < len(words):
+                option = words[index]
+                if option == "--":
+                    index += 1
+                    break
+                if option in ("-v", "-V") or re.match(r"^-[p]*[vV]", option):
+                    return len(words)
+                if option == "-p" or re.match(r"^-p+$", option):
+                    index += 1
+                    continue
+                break
+            continue
+        if index < len(words) and words[index] == "env":
+            index += 1
+            while index < len(words):
+                option = words[index]
+                if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", option) or option in (
+                    "-i",
+                    "--ignore-environment",
+                ):
+                    index += 1
+                    continue
+                if option in ("-u", "--unset"):
+                    index += 2
+                    continue
+                if option.startswith("--unset=") or (re.match(r"^-u.+", option) and option != "-u"):
+                    index += 1
+                    continue
+                if option == "--":
+                    index += 1
+                break
+            continue
+        break
+    return index
+
+
+def _nested_shell_command(args: list[str]) -> str:
+    value_options = {"-o", "+o", "-O", "+O"}
+    index = 0
+    while index < len(args):
+        option = args[index]
+        if option == "--":
+            return ""
+        if option == "-c" or (re.match(r"^-[^-]+$", option) and "c" in option[1:]):
+            return args[index + 1] if index + 1 < len(args) else ""
+        if option in value_options:
+            index += 2
+            continue
+        if not option.startswith(("-", "+")):
+            break
+        index += 1
+    return ""
+
+
+def _command_substitutions(command: str) -> list[str]:
+    substitutions: list[str] = []
+    quote = ""
+    escaped = False
+    index = 0
+    while index < len(command):
+        ch = command[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            index += 1
+            continue
+        if quote == "'":
+            if ch == "'":
+                quote = ""
+            index += 1
+            continue
+        if ch == '"':
+            quote = "" if quote == '"' else '"'
+            index += 1
+            continue
+        if not quote and ch == "'":
+            quote = "'"
+            index += 1
+            continue
+        if ch == "$" and command[index + 1:index + 2] == "(" and command[index + 2:index + 3] != "(":
+            depth = 1
+            inner_quote = ""
+            inner_escaped = False
+            end = index + 2
+            while end < len(command):
+                inner = command[end]
+                if inner_escaped:
+                    inner_escaped = False
+                    end += 1
+                    continue
+                if inner == "\\" and inner_quote != "'":
+                    inner_escaped = True
+                    end += 1
+                    continue
+                if inner_quote:
+                    if inner == inner_quote:
+                        inner_quote = ""
+                    end += 1
+                    continue
+                if inner in ('"', "'"):
+                    inner_quote = inner
+                elif inner == "(":
+                    depth += 1
+                elif inner == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                end += 1
+            if depth == 0:
+                substitutions.append(command[index + 2:end])
+                index = end + 1
+                continue
+        if ch == "`":
+            end = index + 1
+            tick_escaped = False
+            while end < len(command):
+                inner = command[end]
+                if tick_escaped:
+                    tick_escaped = False
+                elif inner == "\\":
+                    tick_escaped = True
+                elif inner == "`":
+                    break
+                end += 1
+            if end < len(command):
+                substitutions.append(command[index + 1:end])
+                index = end + 1
+                continue
+        index += 1
+    return substitutions
+
+
+def _redirect_targets(command: str) -> list[str]:
+    targets: list[str] = []
+    quote = ""
+    escaped = False
+    index = 0
+    while index < len(command):
+        ch = command[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            index += 1
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+            index += 1
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+            index += 1
+            continue
+        if ch != ">":
+            index += 1
+            continue
+        cursor = index + (2 if command[index + 1:index + 2] == ">" else 1)
+        if command[cursor:cursor + 1] in ("|", "&"):
+            cursor += 1
+        while command[cursor:cursor + 1] in (" ", "\t"):
+            cursor += 1
+        target, cursor = _read_shell_word(command, cursor)
+        if "正文" in target:
+            targets.append(target)
+        index = max(index + 1, cursor)
+    return targets
+
+
+def _write_operands(command: str, args: list[str]) -> list[str]:
+    operands: list[str] = []
+    value_options = (
+        {"-d", "--date", "-r", "--reference", "-t", "--time"}
+        if command == "touch"
+        else set()
+    )
+    options = True
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if options and arg == "--":
+            options = False
+            index += 1
+            continue
+        if options and arg in value_options:
+            index += 2
+            continue
+        if options and any(
+            option.startswith("--") and arg.startswith(option + "=")
+            for option in value_options
+        ):
+            index += 1
+            continue
+        if options and arg.startswith("-") and arg != "-":
+            index += 1
+            continue
+        operands.append(arg)
+        index += 1
+    return operands
+
+
+def _command_basename(value: str) -> str:
+    return re.split(r"[\\/]", value or "")[-1]
+
+
+def _join_posix(directory: str, name: str) -> str:
+    """目录形态目标一律用 "/" 拼：Path 在 Windows 产出反斜杠，会破坏三端 parity 的逐字比较。"""
+    return re.sub(r"[\\/]+$", "", directory) + "/" + name
+
+
+def _copy_like_targets(command: str, args: list[str]) -> list[str]:
+    positionals: list[str] = []
+    target_directory = ""
+    directory_only = False
+    options = True
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if options and arg == "--":
+            options = False
+            index += 1
+            continue
+        if options and arg in ("-t", "--target-directory"):
+            target_directory = args[index + 1] if index + 1 < len(args) else ""
+            index += 2
+            continue
+        if options and arg.startswith("--target-directory="):
+            target_directory = arg[len("--target-directory="):]
+            index += 1
+            continue
+        if options and command == "install" and arg in ("-d", "--directory"):
+            directory_only = True
+            index += 1
+            continue
+        if options and arg.startswith("-") and arg != "-":
+            index += 1
+            continue
+        positionals.append(arg)
+        index += 1
+    if directory_only or not positionals:
+        return []
+    if target_directory:
+        return [_join_posix(target_directory, _command_basename(source)) for source in positionals]
+    if len(positionals) < 2:
+        return []
+    destination = positionals[-1]
+    normalized = destination.replace("\\", "/")
+    if normalized.endswith("/") or normalized.rsplit("/", 1)[-1] == "正文":
+        return [_join_posix(destination, _command_basename(source)) for source in positionals[:-1]]
+    return [destination]
+
+
+def extract_prose_targets_from_command(command: str, depth: int = 0) -> list[str]:
     # Only treat a 正文 path as a write target when it is the destination of an actual
     # write op (redirection / tee / touch / cp|mv dest). Scanning the whole command would
     # flag any heredoc body, doc string, or grep pattern that merely *mentions*
     # 正文/第N章.md and wrongly deny the edit.
-    # 目标 token 三形态（引号段优先）：双引号段 / 单引号段 / 裸词。此前只有一个把引号排除在字符类外
-    # 的裸词式，带空格的引号目标（> "my book/正文/第1章.md"）整条命令抽不到目标就静默放行。
-    # 裸词类只排 ASCII 空白（空格/Tab/CR/LF，shell 真正的分词符）：\s 在 python 与 js 都含 U+3000，
-    # 而全角空格不分词，用 \s 会把「第003章　开局.md」截成「第003章」而漏拦（本项目章名分隔符
-    # [_\- 　] 自带全角空格）。反斜杠转义空格（my\ book）仍不认——resolve_target 把 \ 归一成路径
-    # 分隔符（Windows 路径），在此解转义会反过来毁掉 book\正文\第1章.md。
-    bare = "[^ \t\r\n\"'<>|;&()]"
-    token = "\"([^\"]*正文[^\"]*)\"|'([^']*正文[^']*)'|['\"]?(" + bare + "*正文" + bare + "*)['\"]?"
     targets: list[str] = []
-    for m in re.finditer(r">>?\s*(?:" + token + ")", command):  # > dest, >> dest, cat >dest
-        targets.append(m.group(1) or m.group(2) or m.group(3))
-    # Use an explicit start/separator class, not \b: \b is Unicode-aware in Python re but ASCII-only
-    # in JS, so an ASCII boundary keeps this identical to opencode plugin.ts (parity).
-    for m in re.finditer(r"(?:^|[\s;&|(){}<>])(?:tee(?:\s+-a)?|touch)\s+(?:" + token + ")", command):
-        targets.append(m.group(1) or m.group(2) or m.group(3))
+    scannable = _mask_heredoc_bodies(command)
+    if depth < 8:
+        for nested in _command_substitutions(scannable):
+            targets.extend(extract_prose_targets_from_command(nested, depth + 1))
+    targets.extend(_redirect_targets(scannable))
     # cp/mv: the write destination is the last positional arg of the segment. Parse it (regex can't
     # tell a 正文 source from a 正文 dest, and a trailing 2>/dev/null / >log / || breaks end-anchoring).
-    for raw_segment in _shell_segments(command):
+    for raw_segment in _shell_segments(scannable):
         seg = _before_shell_redirection(raw_segment)
         # 引号感知分词（同 JS 核 shellWords）：str.split() 会按 U+3000 和引号内空格切碎目标，
         # 末位取到 book/正文/第1章.md —— 判到另一本书上（那本有细纲就直接放行）。
         words = _shell_words(seg)
-        if len(words) >= 2 and words[0] in ("cp", "mv"):
-            positionals = [w for w in words[1:] if not w.startswith("-")]
-            if positionals and "正文" in positionals[-1]:
-                targets.append(positionals[-1])
-    return [t for t in targets if t]
+        command_index = _command_word_index(words)
+        command_name = _command_basename(words[command_index]) if command_index < len(words) else ""
+        command_args = words[command_index + 1:]
+        if command_name in ("sh", "bash", "dash", "ksh", "zsh"):
+            nested = _nested_shell_command(command_args)
+            if nested:
+                targets.extend(extract_prose_targets_from_command(nested, depth + 1))
+        if command_name in ("tee", "touch"):
+            targets.extend(
+                destination
+                for destination in _write_operands(command_name, command_args)
+                if "正文" in destination
+            )
+        if command_name in ("cp", "mv", "install"):
+            targets.extend(
+                destination
+                for destination in _copy_like_targets(command_name, command_args)
+                if "正文" in destination
+            )
+    return list(dict.fromkeys(target for target in targets if target))
 
 
 def extract_apply_patch_targets(command: str) -> list[str]:
@@ -835,6 +1551,24 @@ def prose_block_reason(root: Path, abs_path: Path) -> str | None:
                 prev_text = prev_file.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 prev_text = None
+            if prev_text is not None:
+                # 中文语言漂移不是去 AI 味风格取舍；去味跳过标记不得豁免，确需保留只走精确白名单。
+                language_hits = [
+                    record for record in language_leak_records(
+                        prev_text, read_deslop_whitelist(root, prev_file)
+                    ) if record["blocking"]
+                ]
+                if language_hits:
+                    shown = [record["finding"] for record in language_hits[:6]]
+                    more = len(language_hits) - len(shown)
+                    reason = (
+                        f"⛔ 写正文被拦截：上一章（{prev_file.name}）有 {len(language_hits)} 处未清中文语言漂移欠账，"
+                        f"先改成中文再写第 {num} 章；确需保留的外语逐项写入项目根 .deslop-whitelist 后重试。\n"
+                        + "\n".join(shown)
+                    )
+                    if more > 0:
+                        reason += f"\n（另有 {more} 处，请执行正文确定性扫描查看全部命中）"
+                    return reason
             if prev_text is not None and not re.search(r"去味(：|:)跳过", "\n".join(re.split(r"\r?\n", prev_text)[:6])):
                 hits = [ln for ln in toxic_phrase_findings(prev_text) if ln.startswith("第")]
                 if hits:
@@ -1071,7 +1805,7 @@ def compact_summary(event: str) -> None:
 
 def stop_event() -> None:
     # Codex 无 PostToolUse，正文内容网在回合结束的 Stop 事件兜底：对本回合 git 改动过的正文
-    # 复扫硬信号（截断/拒绝语/工程词/复读）。非阻塞、无发现静默；解析失败一律 {continue:True}。
+    # 复扫硬信号（截断/拒绝语/工程词/中文语言漂移/复读）。非阻塞、无发现静默；解析失败一律 {continue:True}。
     # Stop hooks require JSON on stdout.
     try:
         root = project_root()
@@ -1081,7 +1815,7 @@ def stop_event() -> None:
                 text = abs_path.read_text(encoding="utf-8")
             except Exception:
                 continue
-            findings = prose_net_findings(text)
+            findings = prose_net_findings(text, read_deslop_whitelist(root, abs_path))
             wc = _wordcount_finding(abs_path, text)
             if wc:
                 findings.append(wc)

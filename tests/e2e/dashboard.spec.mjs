@@ -325,6 +325,7 @@ test("CRLF 稿件里的孤立 CR 不会反向触发整篇 LF 重写", async ({ p
   await page.locator(`.file-row[data-path='${filePath}']`).click();
   const editor = page.locator("#editorInput");
   await expect(page.locator("#editorTitle")).toHaveText("文风.md");
+  await expect(editor).toBeEnabled();
   await expect(editor).toHaveValue(/第三行。$/);
   // Keyboard-level Enter is timing-sensitive in headless Chromium. `fill`
   // still exercises the real input handler while making the appended newline

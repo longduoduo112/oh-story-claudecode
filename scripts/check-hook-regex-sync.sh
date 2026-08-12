@@ -210,6 +210,34 @@ for needle in "${TOXIC_SYNC[@]}"; do
   done
 done
 
+# 中文正文语言网 js↔py 同步锁：保护区、blocking 阈值、分类文案、精确白名单与跨章旧债
+# 必须两端同时变化。JS 的 \b 是 ASCII 边界、Python 的 \b 是 Unicode 边界，故边界表达不做
+# 源码逐字比较；共同的模式主体 + fixture 行为 parity 足以锁住规格。
+LANGUAGE_SYNC=(
+  "[A-Za-z]+(?:['’][A-Za-z]+)?"
+  "[A-Za-z]+(?:['’][A-Za-z]+)?(?:[ \t]+[A-Za-z]+(?:['’][A-Za-z]+)?){2,}"
+  '[A-Z][a-z]{2,}[ \t]+[a-z][ \t]+\d{1,4}'
+  '(?:[A-Z][、,，/／]){1,}[A-Z]'
+  '(?:[A-Za-z0-9_-]+\.)+[A-Za-z][A-Za-z0-9]{0,11}'
+  '\]\s*\[([A-Za-z0-9_.-]+)\]'
+  '纯英文句段泄漏'
+  '完整英文台词泄漏'
+  '连续英文短语泄漏'
+  '裸英文词泄漏'
+  '英文专名/短词疑似泄漏'
+  '中文正文必须改成中文；确需逐字保留时写入 .deslop-whitelist 精确登记。'
+  '处未清中文语言漂移欠账'
+  '.deslop-whitelist'
+)
+for needle in "${LANGUAGE_SYNC[@]}"; do
+  for file in "$JS_CORE" "$PY_HOOK"; do
+    if ! grep -Fq -- "$needle" "$file"; then
+      echo "FAIL: 中文语言网规范串缺失/漂移 — 「${needle}」未出现在 $(basename "$file")"
+      toxic_fail=1
+    fi
+  done
+done
+
 # 欠账门在 Claude bash 侧另有一份前置实现（guard-outline-before-prose.sh：上一章发现 +
 # 首 6 行豁免窗口 + 拦截文案，毒句式扫描本身走共享核 prose-toxic），豁免标记与门文案
 # 必须与 js/py 三处同步。
@@ -231,4 +259,4 @@ if [ "$toxic_fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "OK: 毒句式正则/常量/文案 js↔py 逐字同步（欠账门标记/文案含 bash 前置门三处同步）"
+echo "OK: 毒句式 + 中文语言网正则/常量/文案 js↔py 逐字同步（欠账门标记/文案含 bash 前置门同步）"

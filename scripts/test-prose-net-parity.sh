@@ -1,8 +1,7 @@
 #!/bin/bash
 # test-prose-net-parity.sh — 正文兜底「轻量确定性网」四端 parity 守卫
-# 网在四处各有实现：① Claude check-prose-after-write.sh 内嵌 python；② Codex
-# story_codex_hook.py；③ OpenCode plugin.ts；④ ZCode story_zcode_hook.js。
-# （③④ 的纯逻辑现共用各自的 story_hook_core.js companion，字节一致。）
+# 网的 canonical JS 核由 Claude/OpenCode/ZCode 三端共用并保持字节一致；Codex 侧保留同构
+# Python 实现，以 fixture 逐字 parity 锁定行为。
 # 四份必须同检同放。本测试五层保证：
 #   A. 规范串一致（CI 安全、零运行时依赖）：每条 net 正则/常量/阈值的规范文本必须在四份里都出现，
 #      改一处漏改另一处即 fail——直接锚定漂移（参照 check-hook-regex-sync.sh 的做法）。
@@ -31,9 +30,10 @@ ZCODE="$ROOT/skills/story-setup/references/zcode/hooks/story_zcode_hook.js"
 ZCODE_CORE="$ROOT/skills/story-setup/references/zcode/hooks/story_hook_core.js"
 OPENCODE_CORE="$ROOT/skills/story-setup/references/opencode/story_hook_core.js"
 CLAUDE_CORE="$ROOT/skills/story-setup/references/templates/hooks/story_hook_core.js"
+CLAUDE_CLI="$ROOT/skills/story-setup/references/templates/hooks/story_hook_cli.js"
 CLAUDE_COMMIT="$ROOT/skills/story-setup/references/templates/hooks/validate-story-commit.sh"
 CLAUDE_GAPS="$ROOT/skills/story-setup/references/templates/hooks/detect-story-gaps.sh"
-for f in "$CLAUDE" "$CODEX" "$OPENCODE" "$ZCODE" "$ZCODE_CORE" "$OPENCODE_CORE" "$CLAUDE_CORE" "$CLAUDE_COMMIT" "$CLAUDE_GAPS"; do
+for f in "$CLAUDE" "$CODEX" "$OPENCODE" "$ZCODE" "$ZCODE_CORE" "$OPENCODE_CORE" "$CLAUDE_CORE" "$CLAUDE_CLI" "$CLAUDE_COMMIT" "$CLAUDE_GAPS"; do
   [ -f "$f" ] || { echo "FAIL: missing impl: $f" >&2; exit 1; }
 done
 
@@ -109,6 +109,27 @@ run_functional() {
   "repeat": "他握紧拳头一步步走过去缓缓逼近。\n他握紧拳头一步步走过去缓缓逼近。\n他终于停下了。",
   "placeholder": "他打开门。\n（此处省略三百字打斗描写）他赢了。",
   "english_ai": "他说。\nI cannot continue writing this scene for you.",
+  "language_pure": "他把灯关了。\nHe opened the door and walked away.\n他没有回头。",
+  "language_dialogue_one": "他堵在门口。\n“Sorry.”\n她抬眼看他。",
+  "language_dialogue_ascii_one": "他堵在门口。\n\"Yes.\"\n她抬眼看他。",
+  "language_mixed": "他盯着那扇门，this should never happen again，然后按灭了灯。\n走廊黑了。",
+  "language_bare": "他看见 watcher 伏在暗处。\n他没有声张。",
+  "language_quote_scope": "“她已经走了。”他想 this should never happen again。\n他追了出去。",
+  "language_titlecase_advisory": "门牌背后刻着 Alice。\n他用指腹擦掉了灰。",
+  "language_dialogue_no_punct": "他堵在门口。\n“Go”\n她抬眼看他。",
+  "language_oneword_sentence": "他堵在门口。\nSorry.\n她没理他。",
+  "language_hyphen_not_model": "他说 it is well-known，然后走了。\n没人追他。",
+  "language_protected": "他打开 https://example.com/a，发信到 ops@example.com，下载 report.pdf，再键入 `npm install foo`，核对 DB-40。\n屏幕亮了。",
+  "language_science_protected": "报告列着 Ara h 2、A-03、A-218、F17-Q、LABADMIN、V0、PA66、R66-7、QP-07、PDF、KB、IP、A、B、C包 和 A客户/B客户。\n他把报告合上了。",
+  "language_fenced_protected": "```text\nthis should never be scanned\n```\n他把终端合上了。",
+  "language_long_fence_protected": "````text\nconst label = English words here;\n```\nThe room was quiet and nobody moved.\n````\n他把终端合上了。",
+  "language_markdown_reference_protected": "正文见 [说明][docs]。\n[docs]: https://example.com/doc\n她继续往前走。",
+  "language_markdown_reference_label": "正文见 [watcher][docs]。\n[docs]: https://example.com/doc\n她继续往前走。",
+  "language_unicode_path_protected": "文件在 /Users/张三/open-door。\n她继续往前走。",
+  "language_upper_sentence": "她抬起头。\nGET OUT NOW.\n墙上的红漆还没干。",
+  "language_single_acronym_ok": "屏幕只显示一行。\nPDF\n他把文件关了。",
+  "language_dialogue_acronym_ok": "他只回了两个字母：“OK.”\n她没再追问。",
+  "language_deslop_skip_not_exempt": "# 第1章\n<!-- 去味:跳过 -->\n他看见 watcher 伏在暗处。\n他把门关上了。",
   "parallel": "要么生，要么死。\n要么战，要么逃。\n要么赢，要么输。\n他做出了选择。",
   "danmaku": "前方高能！\n前方高能！预警。\n这一段我哭了。\n作者加更！",
   "toxic_voice": "他开口了。\n声音不高，第一句却稳稳压住了整个大厅。",
@@ -208,6 +229,63 @@ JS
   grep -q '^terminal_ascii_quote_ok | $' "$tmp/py.txt" || { echo "FAIL: 以 ASCII 收引号收尾的对话被误判疑似截断" >&2; return 3; }
   grep -q '^truncate | 第2行 疑似截断' "$tmp/py.txt" || { echo "FAIL: 真截断（结尾无标点）未被检出" >&2; return 3; }
 
+  # 中文正文语言网：纯英文句段/完整英文台词/混合长短语/裸词均命中；每次按命中 offset
+  # 判断引号作用域，不能因本行别处有中文引号就把叙述里的英文降级。保护区与合法领域串须静默。
+  grep -q '^language_pure | 第2行 纯英文句段泄漏' "$tmp/py.txt" || { echo "FAIL: 纯英文正文句段未命中" >&2; return 3; }
+  grep -q '^language_dialogue_one | 第2行 完整英文台词泄漏：「Sorry」' "$tmp/py.txt" || { echo "FAIL: 单词英文台词 Sorry 未按 blocking 命中" >&2; return 3; }
+  grep -q '^language_dialogue_ascii_one | 第2行 完整英文台词泄漏：「Yes」' "$tmp/py.txt" || { echo "FAIL: ASCII 引号内单词英文台词未按 blocking 命中" >&2; return 3; }
+  grep -q '^language_mixed | 第1行 连续英文短语泄漏' "$tmp/py.txt" || { echo "FAIL: 中文行内连续英文短语未命中" >&2; return 3; }
+  grep -q '^language_bare | 第1行 裸英文词泄漏：「watcher」' "$tmp/py.txt" || { echo "FAIL: 中文叙述里的裸英文词未命中" >&2; return 3; }
+  grep -q '^language_quote_scope | 第1行 连续英文短语泄漏' "$tmp/py.txt" || { echo "FAIL: 同行别处引号污染了英文命中的作用域" >&2; return 3; }
+  grep -q '^language_titlecase_advisory | 第1行 英文专名/短词疑似泄漏：「Alice」' "$tmp/py.txt" || { echo "FAIL: 未登记 TitleCase 专名未给出 advisory" >&2; return 3; }
+  grep -q '^language_dialogue_no_punct | 第2行 完整英文台词泄漏：「Go」' "$tmp/py.txt" || { echo "FAIL: 无句末标点的单词英文台词 Go 未按 blocking 命中" >&2; return 3; }
+  grep -q '^language_oneword_sentence | 第2行 纯英文句段泄漏：「Sorry」' "$tmp/py.txt" || { echo "FAIL: 叙述层单词英文句未按 blocking 命中" >&2; return 3; }
+  grep -q '^language_hyphen_not_model | .*裸英文词泄漏：「well」' "$tmp/py.txt" || { echo "FAIL: 普通连字符英文词被误当型号保护，导致英文句绕过 blocking" >&2; return 3; }
+  grep -q '^language_protected | $' "$tmp/py.txt" || { echo "FAIL: URL/邮箱/inline code/扩展名/型号保护区被误报" >&2; return 3; }
+  grep -q '^language_science_protected | $' "$tmp/py.txt" || { echo "FAIL: 科学名称/型号/大写缩写/客户路径合法串被误报" >&2; return 3; }
+  grep -q '^language_fenced_protected | $' "$tmp/py.txt" || { echo "FAIL: fenced code 中英文被语言网误报" >&2; return 3; }
+  grep -q '^language_long_fence_protected | $' "$tmp/py.txt" || { echo "FAIL: 四反引号代码围栏被更短围栏提前关闭，误扫围栏内英文" >&2; return 3; }
+  grep -q '^language_markdown_reference_protected | $' "$tmp/py.txt" || { echo "FAIL: Markdown reference id/definition 被当成可见英文正文" >&2; return 3; }
+  grep -q '^language_markdown_reference_label | 第1行 裸英文词泄漏：「watcher」' "$tmp/py.txt" || { echo "FAIL: Markdown reference 可见 label 被连同 id 误遮罩" >&2; return 3; }
+  grep -q '^language_unicode_path_protected | $' "$tmp/py.txt" || { echo "FAIL: Unicode 目录/无扩展名路径被误报英文泄漏" >&2; return 3; }
+  grep -q '^language_upper_sentence | 第2行 纯英文句段泄漏：「GET OUT NOW」' "$tmp/py.txt" || { echo "FAIL: 全大写英文句被无限缩写豁免" >&2; return 3; }
+  grep -q '^language_single_acronym_ok | $' "$tmp/py.txt" || { echo "FAIL: 单个大写缩写 PDF 被误报英文句" >&2; return 3; }
+  grep -q '^language_dialogue_acronym_ok | $' "$tmp/py.txt" || { echo "FAIL: 完整台词中的单个大写缩写 OK 被误报" >&2; return 3; }
+  grep -q '^language_deslop_skip_not_exempt | 第3行 裸英文词泄漏' "$tmp/py.txt" || { echo "FAIL: 去味:跳过 误把中文语言漂移一起豁免" >&2; return 3; }
+
+  # .deslop-whitelist：从正文向上读取最近文件；单 token 大小写精确、短句按规范化空白与
+  # 外围引号/句末标点后精确匹配，不得做子串（AI 不能豁免 Aiden，I love you 不能豁免更长句）。
+  local whitelist_root="$tmp/whitelist-root"
+  local whitelist_file="$whitelist_root/book/正文/第1章.md"
+  mkdir -p "$whitelist_root/book/正文"
+  printf '%s\n' 'wrong-root-entry' > "$whitelist_root/.deslop-whitelist"
+  printf '%s\n' '# 精确白名单' 'watcher # 行尾注释' 'I love you' 'AI' > "$whitelist_root/book/.deslop-whitelist"
+  printf '%s\n' '他看见 watcher 伏在暗处。' '他说：“I love you.”' 'Aiden 站在门口。' '她回答：“I love you forever.”' '他把门关上了。' > "$whitelist_file"
+  python3 - "$CODEX" "$whitelist_root" "$whitelist_file" > "$tmp/whitelist-py.txt" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+spec=importlib.util.spec_from_file_location("h",sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+root=Path(sys.argv[2]); target=Path(sys.argv[3]); text=target.read_text(encoding="utf-8")
+out=m.prose_net_findings(text,m.read_deslop_whitelist(root,target))
+sys.stdout.buffer.write(("\n".join(out)+"\n").encode("utf-8"))
+PY
+  node - "$CLAUDE_CORE" "$whitelist_root" "$whitelist_file" > "$tmp/whitelist-js.txt" <<'JS'
+const fs=require('node:fs'),core=require(process.argv[2]),root=process.argv[3],target=process.argv[4]
+console.log(core.proseNetFindings(fs.readFileSync(target,'utf8'),core.readDeslopWhitelist(root,target)).join('\n'))
+JS
+  { node "$CLAUDE_CLI" prose-net "$whitelist_root" "$whitelist_file"; printf '\n'; } > "$tmp/whitelist-claude.txt"
+  local foreign_cwd="$tmp/foreign-project"
+  mkdir -p "$foreign_cwd"
+  printf '%s\n' 'Aiden' 'I love you forever' > "$foreign_cwd/.deslop-whitelist"
+  { (cd "$foreign_cwd" && node "$CLAUDE_CLI" prose-net "$whitelist_root" "$whitelist_file"); printf '\n'; } > "$tmp/whitelist-foreign-cwd.txt"
+  diff "$tmp/whitelist-py.txt" "$tmp/whitelist-js.txt" >/dev/null || { echo "FAIL: 白名单语言网 JS/Python 逐字 parity 失配" >&2; diff "$tmp/whitelist-py.txt" "$tmp/whitelist-js.txt" >&2 || true; return 3; }
+  diff "$tmp/whitelist-py.txt" "$tmp/whitelist-claude.txt" >/dev/null || { echo "FAIL: Claude prose-net 未携 root 加载最近白名单" >&2; diff "$tmp/whitelist-py.txt" "$tmp/whitelist-claude.txt" >&2 || true; return 3; }
+  diff "$tmp/whitelist-py.txt" "$tmp/whitelist-foreign-cwd.txt" >/dev/null || { echo "FAIL: 调用者 cwd 的其他项目白名单污染了被扫正文项目" >&2; diff "$tmp/whitelist-py.txt" "$tmp/whitelist-foreign-cwd.txt" >&2 || true; return 3; }
+  grep -q 'Aiden' "$tmp/whitelist-py.txt" || { echo "FAIL: 白名单 AI 被错误当成子串豁免 Aiden" >&2; return 3; }
+  grep -q 'I love you forever' "$tmp/whitelist-py.txt" || { echo "FAIL: 白名单短句被错误当成子串豁免更长英文台词" >&2; return 3; }
+  grep -q 'watcher' "$tmp/whitelist-py.txt" && { echo "FAIL: 精确 token 白名单 watcher 未生效" >&2; return 3; }
+  grep -q '：「I love you」' "$tmp/whitelist-py.txt" && { echo "FAIL: 规范化句末标点后的精确短句白名单未生效" >&2; return 3; }
+
   # 转译 TS：擦除类型即可（net 函数只用 RegExp/String/Set/Array）。优先 node 原生类型擦除
   # （node ≥ 22.6 的 --experimental-strip-types），否则用本机已装的 esbuild 二进制。
   # 不走 `npx --yes esbuild`：CI 全平台 node 20，逐次联网下载既慢又脆——B 是开发期确认，
@@ -264,11 +342,27 @@ run_cmd_parity() {
   cat > "$tmp/cmd.json" <<'EOF'
 {
   "redirect": "echo x > book/正文/第1章.md",
+  "redirect_clobber": "echo x >| book/正文/第1章.md",
+  "redirect_both": "echo x >& book/正文/第1章.md",
+  "redirect_fd_dup": "echo book/正文/第1章.md >&2",
   "append": "cat a >> 正文.md",
   "tee": "echo x | tee book/正文/第2章.md",
   "tee_a": "printf y | tee -a 正文.md",
+  "tee_double_dash": "printf y | tee -- book/正文/第2章.md",
+  "tee_multi": "printf y | tee notes.md book/正文/第2章.md",
   "touch": "touch book/正文/第3章.md",
+  "touch_multi": "touch notes.md book/正文/第3章.md",
+  "touch_reference": "touch -r book/正文/第1章.md notes.md",
   "cp": "cp src.md book/正文/第4章.md",
+  "cp_command_wrapper": "command cp src.md book/正文/第4章.md",
+  "cp_command_p_wrapper": "command -p cp src.md book/正文/第4章.md",
+  "cp_command_double_dash_wrapper": "command -- cp src.md book/正文/第4章.md",
+  "cp_env_unset_short": "env -u FOO cp src.md book/正文/第4章.md",
+  "cp_env_unset_long": "env --unset FOO cp src.md book/正文/第4章.md",
+  "cp_absolute_binary": "/bin/cp src.md book/正文/第4章.md",
+  "cp_destination_directory": "cp draft/第4章.md book/正文/",
+  "cp_target_directory": "cp --target-directory=book/正文 draft/第4章.md",
+  "install": "install draft.md book/正文/第4章.md",
   "mv2": "mv 正文.md",
   "cp_flag": "cp -f a.md 正文.md",
   "mention": "grep -n book/正文/第1章.md notes.md",
@@ -277,6 +371,16 @@ run_cmd_parity() {
   "tee_quoted_space": "printf x | tee 'my book/正文/第1章_x.md'",
   "cp_quoted_space": "cp draft.md \"my book/正文/第1章_x.md\"",
   "cp_quoted_operator": "cp draft.md \"book|archive/正文/第11章.md\"",
+  "literal_quoted_redirect": "echo '> book/正文/第7章.md'",
+  "heredoc_mention": "cat <<EOF\n> book/正文/第7章.md\nEOF",
+  "multiple_heredoc_mention": "cat <<A <<B\nfirst\nA\n> book/正文/第7章.md\nB",
+  "escaped_heredoc_mention": "cat <<\\EOF\n> book/正文/第7章.md\nEOF",
+  "escaped_heredoc_then_redirect": "cat <<\\EOF\nliteral\nEOF\necho x > book/正文/第7章.md",
+  "escaped_quote_tee_mention": "printf '%s\\n' \"literal \\\" | tee book/正文/第7章.md\"",
+  "nested_shell_redirect": "sh -c 'echo x > book/正文/第7章.md'",
+  "nested_shell_combined_flags": "bash -lc 'echo x > book/正文/第7章.md'",
+  "quoted_command_substitution_redirect": "echo \"$(echo x > book/正文/第7章.md)\"",
+  "quoted_backtick_substitution_redirect": "echo \"`echo x > book/正文/第7章.md`\"",
   "patch_add": "*** Begin Patch\n*** Add File: book/正文/第5章.md\n+正文\n*** End Patch",
   "patch_move": "*** Begin Patch\n*** Update File: draft.md\n*** Move to: book/正文/第6章.md\n+正文\n*** End Patch",
   "patch_move_delete": "*** Begin Patch\n*** Delete File: draft.md\n*** Move to: book/正文/第7章.md\n*** End Patch",
@@ -330,6 +434,58 @@ JS
     || { echo "FAIL: cp 的引号目标被按空白切碎，末位取到了另一本书的路径" >&2; return 3; }
   grep -q 'cp_quoted_operator :: pros=\[book|archive/正文/第11章.md\]' "$tmp/cpy.txt" \
     || { echo "FAIL: cp 引号目标里的 | 被误当 shell 管道切段，正文守卫会静默放行" >&2; return 3; }
+  grep -q 'tee_double_dash :: pros=\[book/正文/第2章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: tee -- 的正文目标未被提取" >&2; return 3; }
+  grep -q 'tee_multi :: pros=\[book/正文/第2章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: tee 的第二个正文输出目标未被提取" >&2; return 3; }
+  grep -q 'touch_multi :: pros=\[book/正文/第3章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: touch 的第二个正文目标未被提取" >&2; return 3; }
+  grep -q 'touch_reference :: pros=\[\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: touch -r 的参考源被误判成写入目标" >&2; return 3; }
+  grep -q 'literal_quoted_redirect :: pros=\[\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 引号内的重定向示例被误判成真实写入" >&2; return 3; }
+  grep -q 'heredoc_mention :: pros=\[\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: heredoc 正文中的路径提及被误判成真实写入" >&2; return 3; }
+  grep -q 'multiple_heredoc_mention :: pros=\[\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 多 heredoc 的后续正文被误判成真实写入" >&2; return 3; }
+  grep -q 'escaped_heredoc_mention :: pros=\[\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 反斜杠引用 heredoc 正文中的路径提及被误判成真实写入" >&2; return 3; }
+  grep -q 'escaped_heredoc_then_redirect :: pros=\[book/正文/第7章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 反斜杠引用 heredoc 吞掉了其后的真实正文写入" >&2; return 3; }
+  grep -q 'escaped_quote_tee_mention :: pros=\[\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 转义引号内的 tee 示例被误判成真实写入" >&2; return 3; }
+  grep -q 'nested_shell_redirect :: pros=\[book/正文/第7章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: sh -c 内的真实正文重定向绕过了守卫" >&2; return 3; }
+  grep -q 'nested_shell_combined_flags :: pros=\[book/正文/第7章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: bash -lc 内的真实正文重定向绕过了守卫" >&2; return 3; }
+  grep -q 'quoted_command_substitution_redirect :: pros=\[book/正文/第7章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 双引号内的 \$(...) 正文写入绕过了守卫" >&2; return 3; }
+  grep -q 'quoted_backtick_substitution_redirect :: pros=\[book/正文/第7章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 双引号内的反引号正文写入绕过了守卫" >&2; return 3; }
+  grep -q 'cp_command_wrapper :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: command cp 的正文目标未被提取" >&2; return 3; }
+  grep -q 'cp_command_p_wrapper :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: command -p cp 的正文目标未被提取" >&2; return 3; }
+  grep -q 'cp_command_double_dash_wrapper :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: command -- cp 的正文目标未被提取" >&2; return 3; }
+  grep -q 'cp_env_unset_short :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: env -u 包装的 cp 正文目标未被提取" >&2; return 3; }
+  grep -q 'cp_env_unset_long :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: env --unset 包装的 cp 正文目标未被提取" >&2; return 3; }
+  grep -q 'cp_absolute_binary :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: 绝对路径 cp 的正文目标未被提取" >&2; return 3; }
+  grep -q 'cp_destination_directory :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: cp 到正文目录时未按源文件名还原落盘目标" >&2; return 3; }
+  grep -q 'cp_target_directory :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: cp --target-directory 的正文目标未被提取" >&2; return 3; }
+  grep -q 'install :: pros=\[book/正文/第4章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: install 的正文目标未被提取" >&2; return 3; }
+  grep -q 'redirect_clobber :: pros=\[book/正文/第1章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: >| 正文重定向绕过了守卫" >&2; return 3; }
+  grep -q 'redirect_both :: pros=\[book/正文/第1章.md\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: >& 文件 正文重定向绕过了守卫" >&2; return 3; }
+  grep -q 'redirect_fd_dup :: pros=\[\]' "$tmp/cpy.txt" \
+    || { echo "FAIL: >&2 文件描述符复制被误判成正文写入" >&2; return 3; }
   # 防空转（apply_patch 搬家形态）：`*** Move to:` 是 Update/Delete File 段的子指令，落盘路径是
   # 目的地。只认 Add/Update File 时「Update draft.md + Move to 书/正文/第N章.md」抽到的是源
   # draft.md → 细纲门整条空过、写后兜底网扫的是已不存在的源（两端同错，diff 也看不出来）。
@@ -481,7 +637,15 @@ JS
   printf '%s\n' '# 第1章 旧' '<!-- 去味：跳过 -->' '声音不大，却带着一股狠劲。' > "$blk/long4/正文/第1章_旧.md"
   : > "$blk/long5/大纲/细纲_第2章.md"
   { printf '%s\n' '# 第1章 旧' '声音不大，却带着一股狠劲。'; printf '\xff\n'; } > "$blk/long5/正文/第1章_旧.md"
-  for book in long long2 long3 long4 long5; do
+  mkdir -p "$blk/long7/正文" "$blk/long7/大纲" "$blk/long8/正文" "$blk/long8/大纲" \
+    "$blk/long9/正文" "$blk/long9/大纲" "$blk/long10/正文" "$blk/long10/大纲"
+  for book in long7 long8 long9 long10; do : > "$blk/$book/大纲/细纲_第2章.md"; done
+  printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$blk/long7/正文/第1章_旧.md"
+  printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$blk/long8/正文/第1章_旧.md"
+  printf '%s\n' 'watcher' > "$blk/long8/.deslop-whitelist"
+  printf '%s\n' '# 第1章 旧' '他回答：“Go.”' > "$blk/long9/正文/第1章_旧.md"
+  printf '%s\n' '# 第1章 旧' '报告列着 Ara h 2、F17-Q、LABADMIN、V0、PA66、R66-7、QP-07、PDF、KB、IP 和 A客户/B客户。' > "$blk/long10/正文/第1章_旧.md"
+  for book in long long2 long3 long4 long5 long7 long8 long9 long10; do
     mkdir -p "$blk/$book/追踪"
     printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$blk/$book/追踪/_tracking-state.json"
     printf '%s\n' '> 状态修订：0' > "$blk/$book/追踪/上下文.md"
@@ -501,7 +665,7 @@ import importlib.util, sys
 from pathlib import Path
 spec = importlib.util.spec_from_file_location("ch", sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 root = Path(sys.argv[2])
-for rel in ["long/正文/第1章_起.md", "long/正文/第2章_承.md", "short/正文.md", "short2/正文.md", "long2/正文/第2章_新.md", "long3/正文/第2章_新.md", "long4/正文/第2章_新.md", "long5/正文/第2章_新.md", "long6/正文/第2章_新.md", "bare/正文/第1章_起.md"]:
+for rel in ["long/正文/第1章_起.md", "long/正文/第2章_承.md", "short/正文.md", "short2/正文.md", "long2/正文/第2章_新.md", "long3/正文/第2章_新.md", "long4/正文/第2章_新.md", "long5/正文/第2章_新.md", "long6/正文/第2章_新.md", "long7/正文/第2章_新.md", "long8/正文/第2章_新.md", "long9/正文/第2章_新.md", "long10/正文/第2章_新.md", "bare/正文/第1章_起.md"]:
     reason = m.prose_block_reason(root, root / rel)
     sys.stdout.buffer.write((f"{rel} :: {reason if reason else '-'}\n").encode("utf-8"))
 PY
@@ -509,7 +673,7 @@ PY
 const path = require("node:path")
 const core = require(process.argv[2])
 const root = process.argv[3]
-for (const rel of ["long/正文/第1章_起.md", "long/正文/第2章_承.md", "short/正文.md", "short2/正文.md", "long2/正文/第2章_新.md", "long3/正文/第2章_新.md", "long4/正文/第2章_新.md", "long5/正文/第2章_新.md", "long6/正文/第2章_新.md", "bare/正文/第1章_起.md"]) {
+for (const rel of ["long/正文/第1章_起.md", "long/正文/第2章_承.md", "short/正文.md", "short2/正文.md", "long2/正文/第2章_新.md", "long3/正文/第2章_新.md", "long4/正文/第2章_新.md", "long5/正文/第2章_新.md", "long6/正文/第2章_新.md", "long7/正文/第2章_新.md", "long8/正文/第2章_新.md", "long9/正文/第2章_新.md", "long10/正文/第2章_新.md", "bare/正文/第1章_起.md"]) {
   const reason = core.proseBlockReason(root, path.join(root, rel))
   console.log(`${rel} :: ${reason || "-"}`)
 }
@@ -528,7 +692,116 @@ JS
   grep -q 'long4/正文/第2章_新.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 全角冒号豁免标记「去味：跳过」未被欠账门认可" >&2; return 3; }
   grep -q 'long5/正文/第2章_新.md :: ⛔' "$tmp/bpy.txt" || { echo "FAIL: 上一章含坏字节时两端应替换解码继续扫（不得整体放行）" >&2; return 3; }
   grep -q 'long6/正文/第2章_新.md :: ⛔.*必须先提交第1章追踪事务' "$tmp/bpy.txt" || { echo "FAIL: state 的 last_committed_chapter 落后正文时未拦住下一章" >&2; return 3; }
+  grep -q 'long7/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" || { echo "FAIL: 去味:跳过 错误豁免了上一章英文旧债" >&2; return 3; }
+  grep -q 'long8/正文/第2章_新.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 上一章英文已精确白名单登记仍被旧债门误拦" >&2; return 3; }
+  grep -q 'long9/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" \
+    && grep -q '完整英文台词泄漏：「Go」' "$tmp/bpy.txt" \
+    || { echo "FAIL: 上一章单词英文台词未进入 blocking 旧债门" >&2; return 3; }
+  grep -q 'long10/正文/第2章_新.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 合法科学名称/型号/缩写被上一章语言旧债门误拦" >&2; return 3; }
   grep -q 'bare/正文/第1章_起.md :: ⛔' "$tmp/bpy.txt" || { echo "FAIL: 新书无 大纲/追踪/设定 脚手架时首章守卫 fail open" >&2; return 3; }
+
+  # E2b: Claude 历史薄壳的双轨追踪门。其他三端保持严格核语义；Claude 只对
+  # legacy/无 sentinel + 缺 state 的“state 缺失”单一理由兼容放行。sentinel>=28 或
+  # state 已在场时，Claude CLI 必须与 Codex 严格实现逐字一致。旧项目的缺细纲/毒句
+  # 仍须拦截，避免把“豁免一条理由”误实现成整个 prose guard fail-open。
+  local gate="$tmp/deployment-gate"
+  local gate_cases="no_sentinel legacy invalid current future current_quoted current_import state_valid state_bad state_toxic current_existing legacy_outline legacy_toxic legacy_language legacy_language_whitelist"
+  local gate_name gate_root gate_target gate_prev
+  for gate_name in $gate_cases; do
+    gate_root="$gate/$gate_name"
+    mkdir -p "$gate_root/book/正文" "$gate_root/book/大纲"
+    : > "$gate_root/book/大纲/细纲_第2章.md"
+    gate_prev="$gate_root/book/正文/第1章_旧.md"
+    printf '%s\n' '# 第1章 旧' '他把门关上了。' > "$gate_prev"
+  done
+  printf '%s\n' 'agents_version: 27' > "$gate/legacy/.story-deployed"
+  printf '%s\n' 'agents_version: invalid' > "$gate/invalid/.story-deployed"
+  printf '%s\n' 'agents_version: 28' > "$gate/current/.story-deployed"
+  printf '%s\n' 'agents_version: 29' > "$gate/future/.story-deployed"
+  printf '%s\n' 'agents_version: "28"' > "$gate/current_quoted/.story-deployed"
+  printf '%s\n' 'agents_version: 28' > "$gate/current_import/.story-deployed"
+  mkdir -p "$gate/current_import/拆文库/book"
+  printf '%s\n' 'agents_version: 27' > "$gate/state_bad/.story-deployed"
+  printf '%s\n' 'agents_version: 28' > "$gate/current_existing/.story-deployed"
+  printf '%s\n' 'agents_version: 27' > "$gate/legacy_outline/.story-deployed"
+  printf '%s\n' 'agents_version: 27' > "$gate/legacy_toxic/.story-deployed"
+  printf '%s\n' 'agents_version: 27' > "$gate/legacy_language/.story-deployed"
+  printf '%s\n' 'agents_version: 27' > "$gate/legacy_language_whitelist/.story-deployed"
+  gate_prev="$gate/legacy_language/book/正文/第1章_旧.md"
+  printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$gate_prev"
+  gate_prev="$gate/legacy_language_whitelist/book/正文/第1章_旧.md"
+  printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$gate_prev"
+  printf '%s\n' 'watcher' > "$gate/legacy_language_whitelist/.deslop-whitelist"
+  rm -f "$gate/legacy_outline/book/大纲/细纲_第2章.md"
+  gate_prev="$gate/legacy_toxic/book/正文/第1章_旧.md"
+  printf '%s\n' '# 第1章 旧' '声音不大，却带着一股狠劲。' > "$gate_prev"
+  gate_prev="$gate/state_toxic/book/正文/第1章_旧.md"
+  printf '%s\n' '# 第1章 旧' '声音不大，却带着一股狠劲。' > "$gate_prev"
+  mkdir -p "$gate/state_valid/book/追踪" "$gate/state_bad/book/追踪" "$gate/state_toxic/book/追踪"
+  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$gate/state_valid/book/追踪/_tracking-state.json"
+  printf '%s\n' '> 状态修订：0' > "$gate/state_valid/book/追踪/上下文.md"
+  printf '%s\n' '{not-json' > "$gate/state_bad/book/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$gate/state_toxic/book/追踪/_tracking-state.json"
+  printf '%s\n' '> 状态修订：0' > "$gate/state_toxic/book/追踪/上下文.md"
+  gate_target="$gate/current_existing/book/正文/第2章_新.md"
+  printf '%s\n' '# 第2章 已有' > "$gate_target"
+
+  python3 - "$CODEX" "$gate" $gate_cases > "$tmp/gate-codex.txt" <<'PY'
+import importlib.util, json, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("ch", sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+base = Path(sys.argv[2])
+for name in sys.argv[3:]:
+    root = base / name
+    reason = m.prose_block_reason(root, root / "book" / "正文" / "第2章_新.md") or ""
+    sys.stdout.buffer.write((f"{name} :: " + json.dumps(reason, ensure_ascii=False) + "\n").encode("utf-8"))
+PY
+  node - "$CLAUDE_CLI" "$gate" $gate_cases > "$tmp/gate-claude.txt" <<'JS'
+const { spawnSync } = require("node:child_process")
+const path = require("node:path")
+const cli = process.argv[2]
+const base = process.argv[3]
+for (const name of process.argv.slice(4)) {
+  const root = path.join(base, name)
+  const target = path.join(root, "book", "正文", "第2章_新.md")
+  const result = spawnSync(process.execPath, [cli, "prose-block-reason", root, target], { encoding: "utf8" })
+  if (result.status !== 0) throw new Error(`Claude CLI failed for ${name}: ${result.stderr}`)
+  console.log(`${name} :: ${JSON.stringify(result.stdout)}`)
+}
+JS
+  grep -E '^(current|future|current_quoted|current_import|state_valid|state_bad|state_toxic|current_existing) ::' "$tmp/gate-codex.txt" > "$tmp/gate-codex-strict.txt"
+  grep -E '^(current|future|current_quoted|current_import|state_valid|state_bad|state_toxic|current_existing) ::' "$tmp/gate-claude.txt" > "$tmp/gate-claude-strict.txt"
+  if ! diff "$tmp/gate-codex-strict.txt" "$tmp/gate-claude-strict.txt" >/dev/null; then
+    echo "FAIL: v28+ 或 state 在场时 Claude 双轨门与 Codex 严格核不一致：" >&2
+    diff "$tmp/gate-codex-strict.txt" "$tmp/gate-claude-strict.txt" >&2 || true
+    return 3
+  fi
+  grep -q '^no_sentinel :: ""$' "$tmp/gate-claude.txt" || { echo "FAIL: Claude 无 sentinel 项目缺 state 未走兼容放行" >&2; return 3; }
+  grep -q '^legacy :: ""$' "$tmp/gate-claude.txt" || { echo "FAIL: Claude agents_version 27 项目缺 state 未走兼容放行" >&2; return 3; }
+  grep -q '^invalid :: ""$' "$tmp/gate-claude.txt" || { echo "FAIL: Claude 无效 sentinel 应按 legacy 兼容，不得意外启用新门" >&2; return 3; }
+  grep -q '^current_import :: ""$' "$tmp/gate-claude.txt" || { echo "FAIL: Claude v28 误伤了共享核定义的 story-import 受控窗口" >&2; return 3; }
+  grep -q '^legacy :: .*_tracking-state.json 缺失' "$tmp/gate-codex.txt" || { echo "FAIL: 跨端基线不再严格，无法证明 Claude legacy 是显式兼容例外" >&2; return 3; }
+  grep -q '^legacy_outline :: .*缺少细纲' "$tmp/gate-claude.txt" || { echo "FAIL: Claude legacy 兼容误吞了缺细纲阻断" >&2; return 3; }
+  grep -q '^legacy_toxic :: .*毒句式欠账' "$tmp/gate-claude.txt" || { echo "FAIL: Claude legacy 兼容误吞了毒句式欠账门" >&2; return 3; }
+  grep -q '^legacy_language :: .*中文语言漂移欠账' "$tmp/gate-claude.txt" || { echo "FAIL: Claude legacy 兼容误吞了英文旧债，或去味标记错误豁免语言网" >&2; return 3; }
+  grep -q '^legacy_language_whitelist :: ""$' "$tmp/gate-claude.txt" || { echo "FAIL: Claude legacy 语言旧债门未读取精确白名单" >&2; return 3; }
+  legacy_toxic_reason="$(sed -n 's/^legacy_toxic :: //p' "$tmp/gate-claude.txt")"
+  strict_toxic_reason="$(sed -n 's/^state_toxic :: //p' "$tmp/gate-codex.txt")"
+  [ "$legacy_toxic_reason" = "$strict_toxic_reason" ] || { echo "FAIL: Claude legacy 补跑的毒句阻断文案/判定已与共享严格核漂移" >&2; return 3; }
+
+  # 真正执行 Claude bash guard（不只测 CLI）：legacy/无 state 仍要在首建下一章前调用
+  # 语言旧债门；同一份去味跳过标记不得豁免语言。
+  local claude_guard="$(dirname "$CLAUDE")/guard-outline-before-prose.sh"
+  local legacy_payload='{"tool_name":"Write","tool_input":{"file_path":"book/正文/第2章_新.md"}}'
+  local legacy_guard_out legacy_guard_status
+  set +e
+  legacy_guard_out="$(cd "$gate/legacy_language" && CLAUDE_PROJECT_DIR="$gate/legacy_language" CLAUDE_TOOL_INPUT="$legacy_payload" bash "$claude_guard" 2>&1)"
+  legacy_guard_status=$?
+  set -e
+  if [ "$legacy_guard_status" -ne 2 ] || ! printf '%s' "$legacy_guard_out" | grep -q '中文语言漂移欠账'; then
+    echo "FAIL: Claude legacy bash guard 未实际阻断上一章英文旧债：$legacy_guard_out" >&2
+    return 3
+  fi
 
   # E3: 追踪状态判定 parity。覆盖缺失、坏 JSON、旧 schema、派生 revision 不一致、
   #     缺修订号、缺章号、提交落后和有效 state 放行，避免 Codex Python 与三端 JS core 漂移。
@@ -618,7 +891,7 @@ run_functional
 rc=$?
 set -e
 case "$rc" in
-  0) echo "功能 parity：codex python 网 == opencode TS 网 == zcode JS 网（39 fixtures 逐字相等，含毒句式正反例/AI 自指/截断收尾与豁免标记）。" ;;
+  0) echo "功能 parity：codex python 网 == opencode TS 网 == zcode JS 网（60 fixtures 逐字相等，含中文语言网/保护区/毒句式/AI 自指/截断与豁免边界）。" ;;
   2) echo "功能 parity：跳过（无 TS 运行时；规范串检查已给 CI 安全保证）。" ;;
   *) fails=$((fails + 1)) ;;
 esac
@@ -628,7 +901,7 @@ run_cmd_parity
 rc_cmd=$?
 set -e
 case "$rc_cmd" in
-  0) echo "命令函数 parity：codex python == zcode JS（31 fixtures：正文抽取/apply-patch/git commit 侦测逐字相等，含引号内操作符/空格/全角空格目标、apply_patch 搬家与上下文伪指令、ReDoS 预算）。" ;;
+  0) echo "命令函数 parity：codex python == zcode JS（扩展 fixtures：正文抽取/apply-patch/git commit 侦测逐字相等，含包装器/命令替换/多 heredoc/转义引号、apply_patch 搬家与 ReDoS 预算）。" ;;
   1) echo "命令函数 parity：跳过（无 node/python3 运行时）。" ;;
   *) fails=$((fails + 1)) ;;
 esac
@@ -647,7 +920,7 @@ run_uncored_parity
 rc_uncored=$?
 set -e
 case "$rc_uncored" in
-  0) echo "未归核面 parity：codex python == JS core（staged warnings 大小写变体/文案 + 大纲阻断 9 组判定含毒句式欠账门/无脚手架 fail-closed/文案逐字相等）。" ;;
+  0) echo "未归核面 parity：codex python == JS core（staged warnings + 大纲/毒句阻断）；Claude 双轨追踪门已锁 v28+ 严格 parity 与 legacy 单一兼容例外。" ;;
   1) echo "未归核面 parity：跳过（无 node/python3/git 运行时）。" ;;
   *) fails=$((fails + 1)) ;;
 esac

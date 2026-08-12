@@ -24,6 +24,7 @@ Detect high-risk AI-flavor prose patterns that need human rewrite:
   - 音量反差腔 (声音不高/不大…却…, 实战漏网句式)
   - 否定排比 (没有X，没有Y…连排 / 没X…只是Y 先否定后肯定, 实战漏网句式)
   - 工整并列 (至于X不X，怎么X / 同动词「不V A，不V B」，含台词，advisory)
+  - 感官主体错位 (霉味/潮气/声音/光等感官对象误作「醒来/听见/看见」的感知主体，advisory)
   - 反序对比 (是A，不是B — not-is 的反序变种, 实战漏网句式)
   - 预告式总结收尾 (文末窗口 没人知道/才刚刚开始/正朝着…压了过去, 实战漏网句式)
   - 章尾状态总结体 (文末窗口 这一夜注定/这一切都结束了/新的人生才刚刚开始/命运的齿轮)
@@ -31,7 +32,7 @@ Detect high-risk AI-flavor prose patterns that need human rewrite:
   - 对话密度统计 (info，独立成行对话段占比，非问题项，不影响退出码，仅供节奏判断参考)
 
 Each finding carries severity: blocking by default for generation/deslop cleanup (not-is-comparison / em-dash / voice-contrast / negation-parade / reverse-not-is / trailer-ending / trailer-summary). This is a local style/readability gate, not an AIGC detector score; functional human text can be marked for review instead of hard-edited for a detector.
-或 advisory (period-stutter / long-paragraph / micro-action-tic / action-list-tic / abstract-summary-tic / cliche-density-tic / metaphor-density-tic / reasoning-chain-tic / system-notice-formality-tic / overcompressed-prose-tic / low-connective-density-tic / quote-emphasis-tic / formulaic-parallelism，是提示，justified 的长推理/氛围段可保留)。
+或 advisory (period-stutter / long-paragraph / micro-action-tic / action-list-tic / abstract-summary-tic / cliche-density-tic / metaphor-density-tic / reasoning-chain-tic / system-notice-formality-tic / overcompressed-prose-tic / low-connective-density-tic / quote-emphasis-tic / formulaic-parallelism / sensory-subject-mismatch，是提示，justified 的长推理/氛围段或有意拟人可保留)。
 --fail-on=blocking 只在出现 blocking finding 时退出 1；默认 --fail-on=all 有任何 blocking/advisory finding 即退出 1（info 级 dialogue-density-stat 是确定性统计输出，不计入退出码）。
 
 The script reports findings only. It never rewrites text, because the safe fix is
@@ -199,6 +200,27 @@ const CROSS_NEGATION_END = /^只是[^。！？!?\n]{1,32}[。！？!?]?$/;
 // 台词：自然点单「不放辣，不放葱」靠对象最短长度排除；更长的同动词清单交语义审查判断功能。
 const DECISION_FRAME_PATTERN = /至于([\u3400-\u9fff]{1,3})不\1[，,]\s*怎么\1/g;
 const REPEATED_NEGATIVE_VERB_PATTERN = /不([\u3400-\u9fff]{1,2})([\u3400-\u9fff]{2,8})[，,]\s*不\1([\u3400-\u9fff]{2,8})/g;
+
+// 感官主体错位：霉味/潮气/声音/光线通常是「被感知对象」，不是会醒来、
+// 睁眼或听/看/闻/感到什么的有生感知主体。只收“感官名词 + 有限副词 + 感知谓词”
+// 的紧邻高置信形状，不跨过「钻进鼻腔，他醒了」这类物理路径去连后面的真实主体。
+// 倒装只收不及物的醒来/睁眼分支；「先听见的是声音」里“声音”是正常宾语，不能报。
+// 引号内台词/逐字引用、跨行中文引号块、书名号、Markdown inline code 与引用行豁免。
+// 文学拟人仍有合法场景，初期只做 advisory。
+const SENSORY_OBJECT_SOURCE = '(?:血腥味|腐臭味|土腥味|霉味|潮味|腥味|药味|烟味|焦味|糊味|腐味|臭味|香味|气味|味道|潮气|湿气|水汽|雾气|寒气|热气|冷气|香气|脚步声|呼吸声|说话声|敲门声|声音|声响|响声|回声|哭声|笑声|喊声|叫声|歌声|琴声|风声|雨声|水声|铃声|钟声|雷声|枪声|光线|灯光|阳光|日光|月光|星光|火光|烛光|晨光|霞光|荧光|微光|亮光|(?<![时目眼荣阿小])光)';
+const SENSORY_SUBJECT_PREFIX_SOURCE = '(?:(?:(?:这|那)(?:一)?|一|两|三|几)(?:股|缕|阵|丝|道|束|片|团|层|抹)?)?';
+const SENSORY_SUBJECT_MODIFIER_SOURCE = '(?:(?:浓重|浓烈|刺鼻|难闻|熟悉|淡淡|潮湿|阴冷|冰冷|灼热|微弱|昏暗|昏黄|惨白|刺眼|低沉|尖锐|遥远|轻微)的)?';
+const SENSORY_SUBJECT_NOMINAL_SOURCE = `${SENSORY_SUBJECT_PREFIX_SOURCE}${SENSORY_SUBJECT_MODIFIER_SOURCE}(?:${SENSORY_OBJECT_SOURCE})`;
+const SENSORY_SUBJECT_ADVERB_SOURCE = '(?:(?:最先|率先|早早|一下子|忽然|突然|慢慢|缓缓|终于|仿佛|好像|似乎|悄然|逐渐|已经|猛地|竟然|偏偏|先|也|又|才|就|便|还|都|竟|偏)[地得]?\\s*)';
+const SENSORY_SUBJECT_PREDICATE_SOURCE = '(?:醒(?:了)?过来了?|醒来了?|醒了|苏醒了?|睁(?:开(?:了)?|了)?(?:双)?眼(?:睛)?|听(?:见|到|清|懂|出)了?|看(?:见|到|清|懂|出)了?|闻(?:到|见|出)了?|嗅(?:到|见|出)了?|感(?:到|觉到|受到|知到)了?|察觉(?:到)?了?|意识到了?)';
+const SENSORY_SUBJECT_WAKE_PREDICATE_SOURCE = '(?:醒(?:了)?过来了?|醒来了?|醒了|苏醒了?|睁(?:开(?:了)?|了)?(?:双)?眼(?:睛)?)';
+const SENSORY_SUBJECT_DIRECT_PATTERN = new RegExp(`(?:${SENSORY_SUBJECT_NOMINAL_SOURCE})(?:\\s*(?:和|与|跟|同|及|、)\\s*(?:${SENSORY_SUBJECT_NOMINAL_SOURCE}))?\\s*(?:${SENSORY_SUBJECT_ADVERB_SOURCE}){0,3}${SENSORY_SUBJECT_PREDICATE_SOURCE}`, 'g');
+const SENSORY_SUBJECT_INVERTED_PATTERN = new RegExp(`(?:(?:最先|率先|最早|先|竟然|突然)\\s*)?${SENSORY_SUBJECT_WAKE_PREDICATE_SOURCE}的[，,]?(?:竟然?|偏偏)?是(?:${SENSORY_SUBJECT_NOMINAL_SOURCE})`, 'g');
+const SENSORY_SUBJECT_ALLOWED_PREV = new Set(['', ' ', '\t', '的', '，', ',', '。', '！', '!', '？', '?', '；', ';', '：', ':', '*', '_']);
+const SENSORY_SUBJECT_TOPIC_QUESTION_PREDICATE = /(?:听(?:见|到|清|懂|出)了?|看(?:见|到|清|懂|出)了?|闻(?:到|见|出)了?|嗅(?:到|见|出)了?|感(?:到|觉到|受到|知到)了?|察觉(?:到)?了?|意识到了?)$/;
+const SENSORY_MULTILINE_REFERENCE_PAIRS = new Map([['“', '”'], ['‘', '’'], ['「', '」'], ['『', '』'], ['《', '》'], ['〈', '〉']]);
+const SENSORY_REFERENCE_MAX_SPAN_LINES = 12;
+const SENSORY_INLINE_CODE_PATTERN = /`+[^`\n]*`+/g;
 
 // 反序对比腔（实战漏网 C）：「是真嗓子，不是修音修出来的」——not-is-comparison 的反序变种。
 // 复用 not-is 的排除基建：引号内剥离（maskQuoted）、「是的/是啊」确认语（isAffirmationTagAt）；
@@ -405,6 +427,7 @@ function scanProsePatterns(proseLines) {
   findings.push(...findVoiceContrast(proseLines));
   findings.push(...findNegationParade(proseLines));
   findings.push(...findFormulaicParallelism(proseLines));
+  findings.push(...findSensorySubjectMismatch(proseLines));
   findings.push(...findReverseNotIs(proseLines));
   findings.push(...findTrailerEnding(proseLines));
   findings.push(...findQuoteEmphasisTic(proseLines));
@@ -542,6 +565,94 @@ function findFormulaicParallelism(proseLines) {
   }
 
   return findings;
+}
+
+// 感官对象误作感知主体：紧邻正序 + 「先醒过来的是霉味」式倒装。
+// 引用专用掩码与原文等长，因此命中位置可直接映射回原文。
+function findSensorySubjectMismatch(proseLines) {
+  const findings = [];
+  const referenceState = { close: null };
+
+  for (let proseIndex = 0; proseIndex < proseLines.length; proseIndex += 1) {
+    const { text, lineNo } = proseLines[proseIndex];
+    // 先更新跨行引用状态，再跳过结构行；否则引号开/闭落在 Markdown 行时会泄漏。
+    const masked = maskSensoryReferences(text, referenceState, proseLines, proseIndex);
+    const trimmed = text.trim();
+    if (!trimmed || isDivider(trimmed) || isStructural(trimmed)) continue;
+    if (isDialogueParagraph(trimmed) && quotedRanges(trimmed).length === 0) continue;
+    const occupied = [];
+
+    for (const [pattern, needsSubjectBoundary, needsRightBoundary, isDirect] of [
+      [SENSORY_SUBJECT_DIRECT_PATTERN, true, false, true],
+      [SENSORY_SUBJECT_INVERTED_PATTERN, false, true, false],
+    ]) {
+      pattern.lastIndex = 0;
+      let match;
+      while ((match = pattern.exec(masked)) !== null) {
+        const start = match.index;
+        const end = start + match[0].length;
+        // 「她借着月光看清」/「她闻到一股霉味感到恶心」里的感官名词是前一动词的宾语；
+        // 数量词、修饰语与并列对象已纳入整个名词短语，边界检查不会从短语中间重新起算。
+        if (needsSubjectBoundary && !SENSORY_SUBJECT_ALLOWED_PREV.has(masked[start - 1] || '')) continue;
+        // 倒装的感官对象在句尾，必须是完整词；「光头/灯光师」不得命中「光/灯光」前缀。
+        if (needsRightBoundary && /[\u3400-\u9fffA-Za-z0-9]/.test(masked[end] || '')) continue;
+        // 「药味闻到了吗？」「脚步声听见了吗？」是话题化宾语 + 零主语问句，不是感官对象在执行感知。
+        if (isDirect && isSensoryTopicQuestion(masked, match[0], end)) continue;
+        if (occupied.some(([otherStart, otherEnd]) => start < otherEnd && otherStart < end)) continue;
+        occupied.push([start, end]);
+        findings.push({
+          line: lineNo,
+          column: start + 1,
+          type: 'sensory-subject-mismatch',
+          severity: 'advisory',
+          message: '感官主体可能错位：霉味/潮气/声音/光等通常是被感知对象，不是会“醒来/睁眼/听见/看见/闻到/感到”的主体；改成钻进/响起/渗进等物理路径，再落到角色反应。若是有意拟人，通读确认后可保留。',
+          excerpt: compact(text.slice(start, end)),
+        });
+      }
+    }
+  }
+
+  return findings;
+}
+
+// 不改全局 maskQuoted 的单行契约：这一规则单独支持跨行中文引号/书名号，
+// 但只有有限前瞻内确实存在配对闭引号时才跨行。未闭合开引号不得吞掉后文。
+// 同时继续复用全局同行引号对，并掩掉 Markdown inline code 样例。
+function maskSensoryReferences(text, state, proseLines, proseIndex) {
+  const chars = text.split('');
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (state.close !== null) {
+      chars[index] = '？';
+      if (char === state.close) state.close = null;
+      continue;
+    }
+    const close = SENSORY_MULTILINE_REFERENCE_PAIRS.get(char);
+    if (close) {
+      chars[index] = '？';
+      const closesOnThisLine = text.indexOf(close, index + 1) >= 0;
+      if (closesOnThisLine || sensoryReferenceClosesAhead(proseLines, proseIndex, close)) {
+        state.close = close;
+      }
+    }
+  }
+
+  let masked = maskQuoted(chars.join(''));
+  masked = masked.replace(SENSORY_INLINE_CODE_PATTERN, (match) => '？'.repeat(match.length));
+  return masked;
+}
+
+function sensoryReferenceClosesAhead(proseLines, proseIndex, close) {
+  const end = Math.min(proseLines.length, proseIndex + SENSORY_REFERENCE_MAX_SPAN_LINES + 1);
+  for (let index = proseIndex + 1; index < end; index += 1) {
+    if (proseLines[index].text.includes(close)) return true;
+  }
+  return false;
+}
+
+function isSensoryTopicQuestion(masked, matchText, end) {
+  if (!SENSORY_SUBJECT_TOPIC_QUESTION_PREDICATE.test(matchText)) return false;
+  return /^\s*(?:[*_]{1,3}\s*)?[吗么吧](?:[？?!！。.]|$)/.test(masked.slice(end));
 }
 
 // 反序对比腔（实战漏网 C）：「是A，不是B」。排除基建复用 not-is-comparison：

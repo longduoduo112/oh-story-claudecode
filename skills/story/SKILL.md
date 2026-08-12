@@ -1,6 +1,6 @@
 ---
 name: story
-description: "网络小说工具箱主入口。根据用户需求自动路由到扫榜、拆文、写作、去AI味、封面、导入与审查 skill，并可启动本地 Dashboard 浏览拆文库和写作项目。触发方式：/story、$story、/story dashboard、$story dashboard、/网文、「我想写小说」「帮我写书」「写网文」「打开工作台」「检查更新」「有新版本吗」。"
+description: "网络小说工具箱主入口。根据用户需求自动路由到扫榜、拆文、写作、去AI味、封面、导入与审查 skill，并可启动本地 Dashboard 浏览拆文库和写作项目。触发方式：/story、$story、/story dashboard、$story dashboard、/网文、「我想写小说」「帮我写书」「写网文」「英文小说」「中文改英文」「native 化」「海外发行」「打开工作台」「检查更新」。"
 metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-claudecode"}}
 ---
 # story：网文工具箱路由
@@ -13,6 +13,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 | 用户意图 | 关键词示例 | 路由到 |
 |---|---|---|
+| 英文/海外写作 | 英文小说、英文短故事、英语连载、中文小说改英文、中文改英文、native 化、海外平台、海外发行 | **优先** `/story-globalize`；缺失时按下方语言门停止 |
 | 写长篇 | 开书、写大纲、长篇、连载 | `/story-long-write` |
 | 写短篇 | 短篇、盐言、一万字 | `/story-short-write` |
 | 长篇拆文 | 拆文、分析这本书、黄金三章 | `/story-long-analyze` |
@@ -69,15 +70,17 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## 路由流程
 
-1. 分析用户请求，提取意图关键词
-2. 匹配上表，找到对应的 skill
-3. 如果能明确匹配，直接调用对应 skill（Claude/OpenCode 可用 `Skill("skill-name")` 或 slash command；Codex 用 `$skill-name` / `/skills`；OpenClaw 用 `/skill skill-name` 或自然语言点名）
-4. 如果无法匹配，询问用户想做什么（从上表中选择）
-5. 如果用户说"我想写小说"但未指定长篇/短篇，询问篇幅类型后再路由
+1. **语言/海外意图先行**：先检查“英文小说 / 英文短故事 / 英语连载 / 中文改英文 / native 化 / 海外平台或发行”。一旦命中，不再被“长篇 / 短篇 / 连载 / 去 AI 味”等中文流程覆盖，优先路由 `story-globalize`。
+2. **英文发行 Gate**：先确认当前运行时已加载 `story-globalize` Skill，或存在可读的 `story-globalize/SKILL.md`。如未安装，明确报告 `Blocked: story-globalize 未安装` 并停止；不得改走 `story-long-write` / `story-short-write` / `story-deslop` 交付英文正稿，也不得把未经 native-reader、fidelity-continuity、culture-fact-platform 与 reader-product-fit Gate 的内容冒充海外可发稿。
+3. 分析其他用户请求，提取意图关键词。
+4. 匹配上表，找到对应的 skill。
+5. 如果能明确匹配，直接调用对应 skill（Claude/OpenCode 可用 `Skill("skill-name")` 或 slash command；Codex 用 `$skill-name` / `/skills`；OpenClaw 用 `/skill skill-name` 或自然语言点名）。
+6. 如果无法匹配，询问用户想做什么（从上表中选择）。
+7. 如果用户说"我想写小说"但未指定长篇/短篇，询问篇幅类型后再路由。
 
 ## 查询降级
 
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 25` 不一致时（标记缺失、字段缺失/非整数、小于或大于 25）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 25）` 并提示重新运行 `/story-setup` 后新开会话；大于 25 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 29` 不一致时（标记缺失、字段缺失/非整数、小于或大于 29）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 29）` 并提示重新运行 `/story-setup` 后新开会话；大于 29 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 「查故事资料」「查资料」走 agent 前先做轻量可用性检查（路由只做这一层，不承担全局部署策略）：当前不在子代理上下文、Agent/Task 工具可用、且 `.claude/agents/{story-explorer|story-researcher}.md`、`.opencode/agents/{story-explorer|story-researcher}.md` 或 `.codex/agents/{story-explorer|story-researcher}.toml` 存在 → 可尝试 spawn。任一不满足，或 Codex 运行时返回 `unknown agent_type` / 未暴露 custom-agent registry，则降级，不硬失败：
 

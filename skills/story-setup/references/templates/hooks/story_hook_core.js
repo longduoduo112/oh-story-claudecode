@@ -37,7 +37,8 @@ function firstLine(file) {
 }
 
 function findFirst(base, maxDepth, predicate) {
-  if (maxDepth < 0) return null
+  // maxDepth 与 `find -maxdepth N` 一致：root 的直属条目深度为 1，深度 N 的条目可见，N+1 不可见。
+  if (maxDepth <= 0) return null
   let entries = []
   try {
     entries = fs.readdirSync(base, { withFileTypes: true })
@@ -49,7 +50,7 @@ function findFirst(base, maxDepth, predicate) {
     const full = path.join(base, entry.name)
     if (predicate(full, entry)) return full
   }
-  if (maxDepth === 0) return null
+  if (maxDepth === 1) return null
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue
     const found = findFirst(path.join(base, entry.name), maxDepth - 1, predicate)
@@ -61,9 +62,15 @@ function findFirst(base, maxDepth, predicate) {
 function discoverActiveBook(root) {
   const declared = firstLine(path.join(root, ".active-book"))
   if (declared) {
-    const candidate = resolveTarget(root, declared)
-    const rel = path.relative(root, candidate)
-    if (!rel.startsWith("..") && existingDir(candidate)) return candidate
+    const candidate = existingDir(resolveTarget(root, declared))
+    if (candidate) {
+      // root 也要按 realpath 比：existingDir 已把 candidate 解到真实路径，若这里用未解析的
+      // root，项目根位于 symlink 下（macOS /tmp、/var，或软链的家目录/工作目录）时 rel 会
+      // 假性以 ".." 开头，合法的 .active-book 被静默丢弃。bash 用 pwd -P、python 用
+      // root.resolve()，此处对齐两端。
+      const rel = path.relative(existingDir(root) || path.resolve(root), candidate)
+      if (!rel.startsWith("..") && !path.isAbsolute(rel)) return candidate
+    }
   }
   const tracking = findFirst(root, 4, (_full, entry) => entry.isDirectory() && entry.name === "追踪")
   if (tracking) return path.dirname(tracking)
@@ -76,7 +83,7 @@ function discoverActiveBook(root) {
 function discoverAllBooks(root) {
   const books = new Map()
   function walk(base, depth) {
-    if (depth < 0) return
+    if (depth <= 0) return
     let entries = []
     try { entries = fs.readdirSync(base, { withFileTypes: true }) } catch { return }
     for (const entry of entries) {
@@ -88,12 +95,13 @@ function discoverAllBooks(root) {
         books.set(path.dirname(full), path.dirname(full))
       }
     }
+    if (depth === 1) return
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue
       walk(path.join(base, entry.name), depth - 1)
     }
   }
-  walk(root, 8)
+  walk(root, 4)
   return [...books.values()]
 }
 
@@ -193,36 +201,397 @@ function continuityFindings(root) {
   return messages
 }
 
-function extractProseTargets(command) {
-  const targets = []
-  // 目标 token 三形态（引号段优先）：双引号段 / 单引号段 / 裸词。此前只有一个把引号排除在字符类外
-  // 的裸词式，带空格的引号目标（> "my book/正文/第1章.md"）整条命令抽不到目标就静默放行。
-  // 裸词类只排 ASCII 空白（空格/Tab/CR/LF，shell 真正的分词符）：\s 在 js 与 python 都含 U+3000，
-  // 而全角空格不分词，用 \s 会把「第003章　开局.md」截成「第003章」而漏拦（本项目章名分隔符
-  // [_\- 　] 自带全角空格）。反斜杠转义空格（my\ book）仍不认——resolveTarget 把 \ 归一成路径
-  // 分隔符（Windows 路径），在此解转义会反过来毁掉 book\正文\第1章.md。
-  const bare = `[^ \\t\\r\\n"'<>|;&()]`
-  const token = `"([^"]*正文[^"]*)"|'([^']*正文[^']*)'|["']?(${bare}*正文${bare}*)["']?`
-  for (const source of [`>>?\\s*(?:${token})`, `(?:^|[\\s;&|(){}<>])(?:tee(?:\\s+-a)?|touch)\\s+(?:${token})`]) {
-    const regex = new RegExp(source, "gm")
-    let match
-    while ((match = regex.exec(command)) !== null) {
-      const target = match[1] || match[2] || match[3]
-      if (target) targets.push(target)
+function readShellWord(value, start) {
+  let word = ""
+  let quote = ""
+  let escaped = false
+  let started = false
+  let index = start
+  for (; index < value.length; index++) {
+    const ch = value[index]
+    if (escaped) {
+      word += ch
+      escaped = false
+      started = true
+      continue
+    }
+    if (ch === "\\" && quote !== "'") {
+      word += ch
+      escaped = true
+      started = true
+      continue
+    }
+    if (quote) {
+      if (ch === quote) quote = ""
+      else word += ch
+      started = true
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      started = true
+      continue
+    }
+    if ([" ", "\t", "\r", "\n", ";", "&", "|", "<", ">", "(", ")"].includes(ch)) break
+    word += ch
+    started = true
+  }
+  return { word: started ? word : "", next: index }
+}
+
+function readHeredocDelimiter(value, start) {
+  let word = ""
+  let quote = ""
+  let escaped = false
+  let started = false
+  let index = start
+  for (; index < value.length; index++) {
+    const ch = value[index]
+    if (escaped) {
+      word += ch
+      escaped = false
+      started = true
+      continue
+    }
+    if (ch === "\\" && quote !== "'") {
+      const next = value[index + 1] || ""
+      if (quote === '"' && !["$", "`", '"', "\\", "\n"].includes(next)) {
+        word += ch
+      } else {
+        escaped = true
+      }
+      started = true
+      continue
+    }
+    if (quote) {
+      if (ch === quote) quote = ""
+      else word += ch
+      started = true
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      started = true
+      continue
+    }
+    if ([" ", "\t", "\r", "\n", ";", "&", "|", "<", ">", "(", ")"].includes(ch)) break
+    word += ch
+    started = true
+  }
+  return { word: started ? word : "", next: index }
+}
+
+function heredocDeclarations(line) {
+  const declarations = []
+  let quote = ""
+  let escaped = false
+  for (let index = 0; index < line.length; index++) {
+    const ch = line[index]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (ch === "\\" && quote !== "'") {
+      escaped = true
+      continue
+    }
+    if (quote) {
+      if (ch === quote) quote = ""
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+    if (ch !== "<" || line[index + 1] !== "<" || line[index - 1] === "<" || line[index + 2] === "<") continue
+    let cursor = index + 2
+    let stripTabs = false
+    if (line[cursor] === "-") {
+      stripTabs = true
+      cursor++
+    }
+    while (line[cursor] === " " || line[cursor] === "\t") cursor++
+    const parsed = readHeredocDelimiter(line, cursor)
+    if (parsed.word) declarations.push({ delimiter: parsed.word, stripTabs })
+    index = Math.max(index, parsed.next - 1)
+  }
+  return declarations
+}
+
+function maskHeredocBodies(command) {
+  const pending = []
+  return String(command).split("\n").map((line) => {
+    if (pending.length) {
+      const current = pending[0]
+      const comparable = current.stripTabs ? line.replace(/^\t+/, "") : line
+      if (comparable === current.delimiter) {
+        pending.shift()
+        return line
+      }
+      return " ".repeat(line.length)
+    }
+    pending.push(...heredocDeclarations(line))
+    return line
+  }).join("\n")
+}
+
+function commandWordIndex(words) {
+  let index = 0
+  while (index < words.length) {
+    while (index < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index]) || words[index] === "noglob")) index++
+    if (words[index] === "command") {
+      index++
+      while (index < words.length) {
+        const option = words[index]
+        if (option === "--") { index++; break }
+        if (option === "-v" || option === "-V" || /^-[p]*[vV]/.test(option)) return words.length
+        if (option === "-p" || /^-p+$/.test(option)) { index++; continue }
+        break
+      }
+      continue
+    }
+    if (words[index] === "env") {
+      index++
+      while (index < words.length) {
+        const option = words[index]
+        if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(option) || ["-i", "--ignore-environment"].includes(option)) {
+          index++
+          continue
+        }
+        if (option === "-u" || option === "--unset") {
+          index += 2
+          continue
+        }
+        if (option.startsWith("--unset=") || (/^-u.+/.test(option) && option !== "-u")) {
+          index++
+          continue
+        }
+        if (option === "--") index++
+        break
+      }
+      continue
+    }
+    break
+  }
+  return index
+}
+
+function nestedShellCommand(args) {
+  const valueOptions = new Set(["-o", "+o", "-O", "+O"])
+  for (let index = 0; index < args.length; index++) {
+    const option = args[index]
+    if (option === "--") return ""
+    if (option === "-c" || (/^-[^-]+$/.test(option) && option.slice(1).includes("c"))) {
+      return args[index + 1] || ""
+    }
+    if (valueOptions.has(option)) {
+      index++
+      continue
+    }
+    if (!option.startsWith("-") && !option.startsWith("+")) break
+  }
+  return ""
+}
+
+function commandSubstitutions(command) {
+  const value = String(command)
+  const substitutions = []
+  let quote = ""
+  let escaped = false
+  for (let index = 0; index < value.length; index++) {
+    const ch = value[index]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (ch === "\\" && quote !== "'") {
+      escaped = true
+      continue
+    }
+    if (quote === "'") {
+      if (ch === "'") quote = ""
+      continue
+    }
+    if (ch === '"') {
+      quote = quote === '"' ? "" : '"'
+      continue
+    }
+    if (!quote && ch === "'") {
+      quote = "'"
+      continue
+    }
+    if (ch === "$" && value[index + 1] === "(" && value[index + 2] !== "(") {
+      let depth = 1
+      let innerQuote = ""
+      let innerEscaped = false
+      let end = index + 2
+      for (; end < value.length; end++) {
+        const inner = value[end]
+        if (innerEscaped) { innerEscaped = false; continue }
+        if (inner === "\\" && innerQuote !== "'") { innerEscaped = true; continue }
+        if (innerQuote) {
+          if (inner === innerQuote) innerQuote = ""
+          continue
+        }
+        if (inner === '"' || inner === "'") { innerQuote = inner; continue }
+        if (inner === "(") depth++
+        else if (inner === ")" && --depth === 0) break
+      }
+      if (depth === 0) {
+        substitutions.push(value.slice(index + 2, end))
+        index = end
+      }
+      continue
+    }
+    if (ch === "`") {
+      let end = index + 1
+      let tickEscaped = false
+      for (; end < value.length; end++) {
+        const inner = value[end]
+        if (tickEscaped) { tickEscaped = false; continue }
+        if (inner === "\\") { tickEscaped = true; continue }
+        if (inner === "`") break
+      }
+      if (end < value.length) {
+        substitutions.push(value.slice(index + 1, end))
+        index = end
+      }
     }
   }
-  for (const raw of shellSegments(command)) {
+  return substitutions
+}
+
+function redirectTargets(command) {
+  const value = String(command)
+  const targets = []
+  let quote = ""
+  let escaped = false
+  for (let index = 0; index < value.length; index++) {
+    const ch = value[index]
+    if (escaped) { escaped = false; continue }
+    if (ch === "\\" && quote !== "'") { escaped = true; continue }
+    if (quote) {
+      if (ch === quote) quote = ""
+      continue
+    }
+    if (ch === '"' || ch === "'") { quote = ch; continue }
+    if (ch !== ">") continue
+    let cursor = index + (value[index + 1] === ">" ? 2 : 1)
+    if (value[cursor] === "|" || value[cursor] === "&") cursor++
+    while (value[cursor] === " " || value[cursor] === "\t") cursor++
+    const parsed = readShellWord(value, cursor)
+    if (parsed.word.includes("正文")) targets.push(parsed.word)
+    index = Math.max(index, parsed.next - 1)
+  }
+  return targets
+}
+
+function writeOperands(command, args) {
+  const operands = []
+  const valueOptions = command === "touch"
+    ? new Set(["-d", "--date", "-r", "--reference", "-t", "--time"])
+    : new Set()
+  let options = true
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (options && arg === "--") {
+      options = false
+      continue
+    }
+    if (options && valueOptions.has(arg)) {
+      i++
+      continue
+    }
+    if (options && [...valueOptions].some((option) => option.startsWith("--") && arg.startsWith(`${option}=`))) continue
+    if (options && arg.startsWith("-") && arg !== "-") continue
+    operands.push(arg)
+  }
+  return operands
+}
+
+function commandBasename(value) {
+  const parts = String(value || "").split(/[\\/]/)
+  return parts[parts.length - 1]
+}
+
+// 目录形态的落盘目标一律用 "/" 拼：path.join 在 Windows 产出反斜杠，会让三端 parity 的
+// 逐字比较在 Windows 上错开（resolveTarget 之后也会把 \ 归一成 /，这里先统一即可）。
+function joinPosix(directory, name) {
+  return `${String(directory).replace(/[\\/]+$/, "")}/${name}`
+}
+
+function copyLikeTargets(command, args) {
+  const positionals = []
+  let targetDirectory = ""
+  let directoryOnly = false
+  let options = true
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (options && arg === "--") {
+      options = false
+      continue
+    }
+    if (options && (arg === "-t" || arg === "--target-directory")) {
+      targetDirectory = args[++i] || ""
+      continue
+    }
+    if (options && arg.startsWith("--target-directory=")) {
+      targetDirectory = arg.slice("--target-directory=".length)
+      continue
+    }
+    if (options && command === "install" && (arg === "-d" || arg === "--directory")) {
+      directoryOnly = true
+      continue
+    }
+    if (options && arg.startsWith("-") && arg !== "-") continue
+    positionals.push(arg)
+  }
+  if (directoryOnly || !positionals.length) return []
+  if (targetDirectory) {
+    return positionals.map((source) => joinPosix(targetDirectory, commandBasename(source)))
+  }
+  if (positionals.length < 2) return []
+  const destination = positionals[positionals.length - 1]
+  const normalized = destination.replace(/\\/g, "/")
+  if (normalized.endsWith("/") || normalized.split("/").pop() === "正文") {
+    return positionals.slice(0, -1).map((source) => joinPosix(destination, commandBasename(source)))
+  }
+  return [destination]
+}
+
+function extractProseTargets(command, depth = 0) {
+  const targets = []
+  const scannable = maskHeredocBodies(command)
+  if (depth < 8) {
+    for (const nested of commandSubstitutions(scannable)) {
+      targets.push(...extractProseTargets(nested, depth + 1))
+    }
+  }
+  targets.push(...redirectTargets(scannable))
+  for (const raw of shellSegments(scannable)) {
     const segment = beforeShellRedirection(raw)
     // 引号感知分词（同 shellWords）：/\s+/ 会把 cp draft.md "my book/正文/第1章.md" 的目标切碎，
     // 末位取到 book/正文/第1章.md —— 判到另一本书上（那本有细纲就直接放行）。
     const words = shellWords(segment)
-    if (words.length >= 2 && (words[0] === "cp" || words[0] === "mv")) {
-      const positional = words.slice(1).filter((word) => !word.startsWith("-"))
-      const destination = positional[positional.length - 1]
-      if (destination && destination.includes("正文")) targets.push(destination)
+    const commandIndex = commandWordIndex(words)
+    const commandName = commandBasename(words[commandIndex])
+    const commandArgs = words.slice(commandIndex + 1)
+    if (["sh", "bash", "dash", "ksh", "zsh"].includes(commandName)) {
+      const nested = nestedShellCommand(commandArgs)
+      if (nested) targets.push(...extractProseTargets(nested, depth + 1))
+    }
+    if (commandName === "tee" || commandName === "touch") {
+      for (const destination of writeOperands(commandName, commandArgs)) {
+        if (destination.includes("正文")) targets.push(destination)
+      }
+    }
+    if (commandName === "cp" || commandName === "mv" || commandName === "install") {
+      for (const destination of copyLikeTargets(commandName, commandArgs)) {
+        if (destination.includes("正文")) targets.push(destination)
+      }
     }
   }
-  return targets
+  return [...new Set(targets.filter(Boolean))]
 }
 
 // apply_patch 目标抽取。只认 Add/Update 会漏掉 `*** Move to:`——它是 Update File 段的子指令
@@ -326,6 +695,19 @@ function proseBlockReason(root, absolute) {
     if (prevFile) {
       let prevText = null
       try { prevText = fs.readFileSync(prevFile, "utf8") } catch {}
+      if (prevText !== null) {
+        // 中文语言漂移不属于「去 AI 味风格取舍」，<!-- 去味:跳过 --> 不得豁免。
+        // 有意保留外语只能通过 .deslop-whitelist 的 token/短句精确登记放行。
+        const languageHits = languageLeakRecords(prevText, readDeslopWhitelist(root, prevFile))
+          .filter((record) => record.blocking)
+        if (languageHits.length) {
+          const shown = languageHits.slice(0, 6).map((record) => record.finding)
+          const more = languageHits.length - shown.length
+          let reason = `⛔ 写正文被拦截：上一章（${path.basename(prevFile)}）有 ${languageHits.length} 处未清中文语言漂移欠账，先改成中文再写第 ${chapter} 章；确需保留的外语逐项写入项目根 .deslop-whitelist 后重试。\n${shown.join("\n")}`
+          if (more > 0) reason += `\n（另有 ${more} 处，请执行正文确定性扫描查看全部命中）`
+          return reason
+        }
+      }
       if (prevText !== null && !/去味(：|:)跳过/.test(prevText.split(/\r?\n/).slice(0, 6).join("\n"))) {
         const hits = toxicPhraseFindings(prevText).filter((line) => line.startsWith("第"))
         if (hits.length) {
@@ -353,21 +735,251 @@ const SOFT_PATTERNS = [
   [/^(Sure|Certainly|Here'?s|As an AI|I (?:cannot|can't|am unable|apologize))/, "英文 AI 腔"],
   [/我(无法|不能)(继续(写|创作|生成|下去|输出)?|生成(内容|文本|正文)?|创作|续写|写作|完成(这个|本)?(章|篇|创作|请求)?)/, "生成拒绝语"],
 ]
-// 裸英文词泄漏：中文正文里冒出的小写英文常用词，基本都是内部代号/占位没换成中文名
-// （实测样本：「那里土气眼还压着没说破的东西，watcher 伏在暗里」——watcher 本该是个中文名字）。
-// 判据要两层，缺一就误报：① 整行以中文为主（≥50%），纯英文行/代码块不判；② 词是独立的
-// 全小写字母串且 ≥4 位，前后不接字母数字、不跟在 . / _ - 之后。
-// 已完本长篇 84 章 + 短故事 17 篇共 101 个正文文件实测零误报——语料里的拉丁串全是
-// PDF/USB/IT 这类大写缩写、DB-40/HZ-03/R66-7 这类编号道具、.pptx/.md 扩展名，一个不中。
-const BARE_LATIN_WORD = /(?<![A-Za-z0-9./_-])[a-z]{4,}(?![A-Za-z0-9._-])/
-const CJK_CHAR = /[\u4e00-\u9fff]/g
+// 中文正文语言网。与 Codex Python hook 同构，fixture 逐字 parity 由
+// scripts/test-prose-net-parity.sh 锁定。这张网只在已被宿主判定为「中文正文路径」的
+// 文件上运行；英文发行稿不走普通长/短篇正文管道。
+//
+// 确定性 blocking：纯英文句段、完整英文台词、连续 >=3 个普通英文词且字母总数
+// >=12、叙述中独立全小写 >=4 词。完整英文台词（包括无句号的“Go”）
+// 始终 blocking；确属专名/引文时必须用精确白名单表达意图。
+// URL/邮箱/Markdown link target/inline code/代码块/路径与扩展名/缩写/型号先等长遮罩，
+// 不会被英文词规则二次拾取。有意保留的英文必须在 .deslop-whitelist 一行一项精确登记。
+const LANGUAGE_WORD_RE = /[A-Za-z]+(?:['’][A-Za-z]+)?/g
+const LANGUAGE_SEQUENCE_RE = /[A-Za-z]+(?:['’][A-Za-z]+)?(?:[ \t]+[A-Za-z]+(?:['’][A-Za-z]+)?){2,}/g
+const LANGUAGE_SENTENCE_RE = /[^。！？!?;；\n]+[。！？!?;；]?/g
+const LANGUAGE_CJK_RE = /[\u3400-\u9fff]/
+const LANGUAGE_QUOTE_PAIRS = [["「", "」"], ["『", "』"], ["“", "”"], ["‘", "’"], ['"', '"'], ["'", "'"]]
+const LANGUAGE_OUTER_QUOTES = /^[\s「」『』“”‘’"']+|[\s「」『』“”‘’"']+$/g
+const LANGUAGE_TRAILING_PUNCT = /[。.！？!?,，；;：:…]+$/
 
-function bareLatinLeak(line) {
-  if (line.length < 8) return null
-  const cjk = (line.match(CJK_CHAR) || []).length
-  if (cjk / line.length < 0.5) return null
-  const m = line.match(BARE_LATIN_WORD)
-  return m ? m[0] : null
+function normalizedLanguagePhrase(value) {
+  let text = String(value || "").trim().replace(LANGUAGE_OUTER_QUOTES, "").trim()
+  text = text.replace(LANGUAGE_TRAILING_PUNCT, "").trim()
+  return text.replace(/[ \t\r\n　]+/g, " ")
+}
+
+function parseDeslopWhitelist(text) {
+  const entries = []
+  for (const raw of String(text || "").split(/\r?\n/)) {
+    if (/^\s*#/.test(raw)) continue
+    const value = raw.replace(/\s+#.*$/, "").trim()
+    if (value) entries.push(value)
+  }
+  return entries
+}
+
+function readDeslopWhitelist(root, absolute = "") {
+  if (!root) return []
+  // macOS 的 /var -> /private/var、用户工作区软链等会让「root 已 realpath、tool path
+  // 仍是软链路径」。只用 path.resolve 会把合法正文误判为越界，回退 root 后漏读书目级
+  // .deslop-whitelist。已存在目录两边都用 realpath 后再比较。
+  const boundary = existingDir(root) || path.resolve(root)
+  const absoluteDir = absolute ? path.dirname(path.resolve(absolute)) : boundary
+  let current = existingDir(absoluteDir) || absoluteDir
+  const relative = path.relative(boundary, current)
+  if (relative.startsWith("..") || path.isAbsolute(relative)) current = boundary
+  while (true) {
+    const candidate = path.join(current, ".deslop-whitelist")
+    try { return parseDeslopWhitelist(fs.readFileSync(candidate, "utf8")) } catch {}
+    if (current === boundary) break
+    const parent = path.dirname(current)
+    if (parent === current) break
+    const rel = path.relative(boundary, parent)
+    if (rel.startsWith("..") || path.isAbsolute(rel)) break
+    current = parent
+  }
+  return []
+}
+
+function languageWhitelisted(entries, candidate, singleToken = false) {
+  const raw = String(candidate || "").trim()
+  if (!raw) return false
+  if (singleToken) return entries.some((entry) => entry === raw)
+  const normalized = normalizedLanguagePhrase(raw)
+  return entries.some((entry) => normalizedLanguagePhrase(entry) === normalized)
+}
+
+function maskLanguageProtected(line) {
+  const chars = String(line).split("")
+  const mask = (start, end) => { for (let i = start; i < end; i++) chars[i] = " " }
+  const apply = (regex, range = null) => {
+    regex.lastIndex = 0
+    let match
+    while ((match = regex.exec(line)) !== null) {
+      const [start, end] = range ? range(match) : [match.index, match.index + match[0].length]
+      mask(start, end)
+      if (match[0].length === 0) regex.lastIndex++
+    }
+  }
+  apply(/`+[^`\n]*`+/g)
+  apply(/\b(?:https?:\/\/|ftp:\/\/|www\.)[^\s<>"‘’'「」『』“”（）()]+/gi)
+  apply(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g)
+  apply(/\]\(\s*(?:<[^>\r\n]+>|[^)\s\r\n]+)(?:\s+["'][^"'\r\n]*["'])?\s*\)/g, (m) => {
+    const open = m[0].indexOf("(")
+    return [m.index + open + 1, m.index + m[0].length - 1]
+  })
+  // Reference-style link 的第二个 id 不是可见正文；第一个 label 仍然会被扫描。
+  apply(/\]\s*\[([A-Za-z0-9_.-]+)\]/g, (m) => {
+    const offset = m[0].lastIndexOf(m[1])
+    return [m.index + offset, m.index + offset + m[1].length]
+  })
+  // 绝对/相对路径的目录段允许 Unicode，末级也不强制有扩展名。
+  apply(/(?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|\/)(?:[^\s/\\<>"'“”‘’「」『』【】()（）,，。；;：:!！?？、]+[\\/])*[^\s/\\<>"'“”‘’「」『』【】()（）,，。；;：:!！?？、]+/g)
+  apply(/(?<![A-Za-z0-9])(?:[^\s/\\<>"'“”‘’「」『』【】()（）,，。；;：:!！?？、]+[\\/])+[^\s/\\<>"'“”‘’「」『』【】()（）,，。；;：:!！?？、]+(?![A-Za-z0-9])/g)
+  apply(/(?<![A-Za-z0-9])(?:[A-Za-z0-9_-]+\.)+[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])/g)
+  apply(/(?<![A-Za-z0-9])\.[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])/g)
+  // 过敏原/生物科学标准名（Ara h 2 / Can f 1 / Fel d 1）是「属名缩写 + 小写亚型 + 数字」，
+  // 不能把中间的 TitleCase/短词拆成语言泄漏。
+  apply(/\b[A-Z][a-z]{2,}[ \t]+[a-z][ \t]+\d{1,4}\b/g)
+  apply(/\b[A-Z](?=[\u3400-\u9fff])/g)
+  apply(/(?<![A-Za-z0-9])(?:[A-Z][、,，/／]){1,}[A-Z](?=(?:[一二三四五六七八九十百两千0-9]+(?:个)?)?(?:包|组|类|客户|方案|版本|档|编号|记录|样本|文件))/g)
+  apply(/(?:字母|文件名(?:后面|末尾)|后缀|代号|编号)[ \t]*(?:是|为|有|写着|标成|：|:)?[ \t]*[A-Z](?![A-Za-z0-9])/g)
+  apply(/\b(?=[A-Za-z0-9_-]*[A-Za-z])(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*\b/g)
+  apply(/\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b/g)
+  return chars.join("")
+}
+
+function languageQuoteSpans(line) {
+  const spans = []
+  for (const [open, close] of LANGUAGE_QUOTE_PAIRS) {
+    let cursor = 0
+    while (cursor < line.length) {
+      const start = line.indexOf(open, cursor)
+      if (start < 0) break
+      const end = line.indexOf(close, start + open.length)
+      if (end < 0) break
+      spans.push([start, end + close.length, start + open.length, end])
+      cursor = end + close.length
+    }
+  }
+  return spans.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+}
+
+function languageContainingQuote(spans, start, end) {
+  return spans.find((span) => start >= span[2] && end <= span[3]) || null
+}
+
+function languageWords(value) {
+  return [...String(value).matchAll(LANGUAGE_WORD_RE)]
+}
+
+function languageOnly(value) {
+  const withoutWords = String(value).replace(LANGUAGE_WORD_RE, "")
+  return !LANGUAGE_CJK_RE.test(value) && !/[A-Za-z]/.test(withoutWords) &&
+    !withoutWords.replace(/[\s\d　「」『』“”‘’"'()[\]{}（）【】<>。.！？!?,，；;：:…—~*_=+-]/g, "")
+}
+
+function languageExcerpt(value) {
+  return normalizedLanguagePhrase(value).slice(0, 40)
+}
+
+function languageRecord(lineNo, start, end, type, excerpt, blocking) {
+  const advice = blocking
+    ? "中文正文必须改成中文；确需逐字保留时写入 .deslop-whitelist 精确登记。"
+    : "请核对是否为设定中的专名/短词；非有意保留就改成中文，保留则写入 .deslop-whitelist 精确登记。"
+  return {
+    line: lineNo,
+    start,
+    end,
+    blocking,
+    finding: `第${lineNo}行 ${type}：「${excerpt}」——${advice}`,
+  }
+}
+
+function languageLeakRecords(text, whitelistEntries = []) {
+  const entries = Array.isArray(whitelistEntries) ? whitelistEntries : []
+  const records = []
+  let fenceChar = ""
+  let fenceLength = 0
+  String(text).split("\n").forEach((raw, index) => {
+    const trimmed = raw.trim()
+    const fence = trimmed.match(/^(`{3,}|~{3,})/)
+    if (fence) {
+      const marker = fence[1]
+      if (!fenceChar) {
+        fenceChar = marker[0]
+        fenceLength = marker.length
+      } else if (marker[0] === fenceChar && marker.length >= fenceLength && new RegExp(`^${fenceChar}{${fenceLength},}[ \\t]*$`).test(trimmed)) {
+        fenceChar = ""
+        fenceLength = 0
+      }
+      return
+    }
+    if (fenceChar || skippableLine(trimmed)) return
+    // Markdown reference definition 是文档元数据，不是可见正文。
+    if (/^\s{0,3}\[[^\]\n]+\]:\s*(?:<[^>\n]+>|\S+)/.test(raw)) return
+    const lineNo = index + 1
+    const masked = maskLanguageProtected(raw)
+    const quotes = languageQuoteSpans(raw)
+    const occupied = []
+    const overlaps = (start, end) => occupied.some(([left, right]) => start < right && end > left)
+    const add = (record) => { records.push(record); occupied.push([record.start, record.end]) }
+
+    // 完整英文台词是硬提醒，不因「在引号里」而跳过。按每个命中的自身 offset
+    // 判引号作用域，避免本行别处有引号就把叙述里的英文一起降级。
+    for (const span of quotes) {
+      const visible = masked.slice(span[2], span[3])
+      const words = languageWords(visible)
+      if (!words.length || !languageOnly(visible)) continue
+      const candidate = raw.slice(span[2], span[3])
+      if (languageWhitelisted(entries, candidate, false)) continue
+      if (words.length === 1 && /^[A-Z]{2,}$/.test(words[0][0])) continue
+      add(languageRecord(lineNo, span[2], span[3], "完整英文台词泄漏", languageExcerpt(candidate), true))
+    }
+
+    LANGUAGE_SENTENCE_RE.lastIndex = 0
+    let sentence
+    while ((sentence = LANGUAGE_SENTENCE_RE.exec(masked)) !== null) {
+      const start = sentence.index
+      const end = start + sentence[0].length
+      if (overlaps(start, end)) continue
+      const words = languageWords(sentence[0])
+      if (!words.length || !languageOnly(sentence[0])) continue
+      const candidate = raw.slice(start, end)
+      if (languageWhitelisted(entries, candidate, words.length === 1)) continue
+      if (words.length === 1 && /^[A-Z]{2,}$/.test(words[0][0])) continue
+      const singleSentence = words.length === 1 && /[。！？.!?][ \t]*$/.test(candidate)
+      if (words.length >= 2 || singleSentence || /^[a-z]{4,}$/.test(words[0][0])) {
+        const type = words.length >= 2 || singleSentence ? "纯英文句段泄漏" : "裸英文词泄漏"
+        add(languageRecord(lineNo, start, end, type, languageExcerpt(candidate), true))
+      } else {
+        add(languageRecord(lineNo, start, end, "英文专名/短词疑似泄漏", languageExcerpt(candidate), false))
+      }
+    }
+
+    LANGUAGE_SEQUENCE_RE.lastIndex = 0
+    let sequence
+    while ((sequence = LANGUAGE_SEQUENCE_RE.exec(masked)) !== null) {
+      const start = sequence.index
+      const end = start + sequence[0].length
+      if (overlaps(start, end)) continue
+      const letters = (sequence[0].match(/[A-Za-z]/g) || []).length
+      if (letters < 12 || languageWhitelisted(entries, sequence[0], false)) continue
+      add(languageRecord(lineNo, start, end, "连续英文短语泄漏", languageExcerpt(sequence[0]), true))
+    }
+
+    LANGUAGE_WORD_RE.lastIndex = 0
+    let word
+    while ((word = LANGUAGE_WORD_RE.exec(masked)) !== null) {
+      const start = word.index
+      const end = start + word[0].length
+      if (overlaps(start, end) || languageWhitelisted(entries, word[0], true)) continue
+      // 大写缩写在中文行中合法（PDF/KB/IP/LABADMIN）；但不能在保护阶段抹掉，否则
+      // GET OUT NOW. 这类纯英文句/完整台词也会变成空白而绕过。纯句段已在上面整体拦截。
+      if (/^[A-Z]{2,}$/.test(word[0])) continue
+      const quote = languageContainingQuote(quotes, start, end)
+      if (/^[a-z]{4,}$/.test(word[0])) {
+        add(languageRecord(lineNo, start, end, quote ? "英文专名/短词疑似泄漏" : "裸英文词泄漏", word[0], !quote))
+      } else {
+        add(languageRecord(lineNo, start, end, "英文专名/短词疑似泄漏", word[0], false))
+      }
+    }
+  })
+  return records
+}
+
+function languageLeakFindings(text, whitelistEntries = []) {
+  return languageLeakRecords(text, whitelistEntries).map((record) => record.finding)
 }
 
 const HARD_PATTERNS = [
@@ -505,7 +1117,7 @@ function toxicPhraseFindings(text) {
   return findings
 }
 
-function proseNetFindings(text) {
+function proseNetFindings(text, whitelistEntries = []) {
   const findings = []
   const content = []
   text.split("\n").forEach((raw, index) => {
@@ -534,8 +1146,6 @@ function proseNetFindings(text) {
       }
     }
     if (hit) return
-    const bare = bareLatinLeak(line)
-    if (bare) findings.push(`第${lineNo}行 裸英文词泄漏：「${bare}」——中文正文里的小写英文词多是没换成中文名的内部代号/占位；改成角色或事物在故事内的中文称呼。`)
   })
   for (let i = 1; i < content.length; i++) {
     const previous = content[i - 1][1]
@@ -552,6 +1162,8 @@ function proseNetFindings(text) {
   if (!/去味(：|:)跳过/.test(text.split(/\r?\n/).slice(0, 6).join("\n"))) {
     findings.push(...toxicPhraseFindings(text))
   }
+  // 语言网不受「去味:跳过」影响；该标记只豁免毒句式。
+  findings.push(...languageLeakFindings(text, whitelistEntries))
   return findings
 }
 
@@ -616,7 +1228,7 @@ function proseAfterWrite(root, absolute) {
     const bytes = fs.statSync(absolute).size
     if (bytes < 200) findings.push(`【落盘】正文仅 ${bytes} 字节，疑似未写完/落盘失败（quota/超时中断？），请核对并补写。`)
     const text = fs.readFileSync(absolute, "utf8")
-    findings.push(...proseNetFindings(text))
+    findings.push(...proseNetFindings(text, readDeslopWhitelist(root, absolute)))
     const wordcount = wordcountFinding(absolute, text)
     if (wordcount) findings.push(wordcount)
   } catch {
@@ -638,7 +1250,20 @@ function shellWords(segment) {
   let current = ""
   let started = false
   let quote = ""
+  let escaped = false
   for (const ch of String(segment)) {
+    if (escaped) {
+      current += ch
+      escaped = false
+      started = true
+      continue
+    }
+    if (ch === "\\" && quote !== "'") {
+      current += ch
+      escaped = true
+      started = true
+      continue
+    }
     if (quote) {
       if (ch === quote) quote = ""
       else current += ch
@@ -666,7 +1291,18 @@ function shellSegments(command) {
   const segments = []
   let current = ""
   let quote = ""
+  let escaped = false
   for (const ch of String(command)) {
+    if (escaped) {
+      current += ch
+      escaped = false
+      continue
+    }
+    if (ch === "\\" && quote !== "'") {
+      current += ch
+      escaped = true
+      continue
+    }
     if (quote) {
       current += ch
       if (ch === quote) quote = ""
@@ -691,7 +1327,18 @@ function shellSegments(command) {
 function beforeShellRedirection(segment) {
   let current = ""
   let quote = ""
+  let escaped = false
   for (const ch of String(segment)) {
+    if (escaped) {
+      current += ch
+      escaped = false
+      continue
+    }
+    if (ch === "\\" && quote !== "'") {
+      current += ch
+      escaped = true
+      continue
+    }
     if (quote) {
       current += ch
       if (ch === quote) quote = ""
@@ -823,6 +1470,10 @@ module.exports = {
   HARD_PATTERNS,
   skippableLine,
   proseNetFindings,
+  parseDeslopWhitelist,
+  readDeslopWhitelist,
+  languageLeakRecords,
+  languageLeakFindings,
   maskQuotedSpans,
   toxicPhraseFindings,
 }

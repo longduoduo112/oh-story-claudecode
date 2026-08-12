@@ -2,10 +2,10 @@
 
 ## 当前版本
 
-- `setup_skill_version: 1.2.8`
-- `agents_version: 25`
+- `setup_skill_version: 1.2.12`
+- `agents_version: 29`
 
-`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `25`，都视为待更新部署。直接重新运行 `/story-setup`（Codex 用 `$story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `25`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v25 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
+`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `29`，都视为待更新部署。直接重新运行 `/story-setup`（Codex 用 `$story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `29`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v29 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
 
 ## 升级策略
 
@@ -33,7 +33,7 @@
 
 这些文件可能含用户自定义内容：
 - `CLAUDE.md` — 按 marker/section 合并，用户独有 section 保留
-- `.claude/settings.local.json` — hooks 按 command 去重 append，其他配置保留
+- `.claude/settings.local.json` — 按 command 识别 story hooks；受管 command 迁移到当前模板的 event/matcher/timeout/if，其他用户 hook 与配置保留
 - `AGENTS.md` — ZCode/OpenCode/Codex/OpenClaw/generic 按 marker/section 合并
 - `.zcode/config.json` — 仅按事件、matcher 和 process args 去重合并 oh-story Hooks，其他字段保留
 
@@ -43,14 +43,31 @@
 - `{书名}/设定/`、`大纲/`、`追踪/`
 - `.active-book`
 
-## v25 当前契约
+## v29 当前契约
+
+- **生成前语言锁**：普通长篇、短篇中文写作流程显式锁定 `zh`，narrative-writer 和 solo/direct 回退路径都不得自行切成英文；用户明确要求英文或海外发行时改走 `en` / globalize 语言契约。
+- **交付前中文深扫**：`check-degeneration.js --language=zh` 同时阻断突发的完整英文句段与裸小写英文词，按命中位置判断对话，并在扫描前保护 URL、邮箱、行内/围栏代码、路径、扩展名与型号；合法外文人名、术语或对白继续复用项目根 `.deslop-whitelist` 做精确豁免。
+- **写后与跨章旧债门**：多端写后 Hook 在正文落盘后立即报出英文泄漏；长篇写下一章前再扫上一章的英文旧债。命中 blocking 必须先返修、复扫通过，不得带病交付或继续向后写。
+
+- 新部署项目（`.story-deployed.agents_version >= 28`）走普通长篇写作时，若尚无 `追踪/_tracking-state.json`，Claude 正文守卫会 fail-closed，要求先完成 `tracking_commit.py init`；旧版或无 sentinel 的存量项目仍保留缺 state 放行，避免升级前被突然卡死。已有 `拆文库/{书名}` 的 `story-import` 迁移仍使用共享核的受控放行窗口，不能借此绕过普通写作的初始化门；state 已存在时，schema、修订一致性和跨章顺序继续走四端共享核。
+- chapter-extractor 的新任务优先返回严格 JSON，由 `render_chapter_summary.py` 校验 schema、枚举、单主题、情节点编号、引用数量和概要长度后原子渲染 Markdown；旧摘要不追溯重写。
+- 正文检测器新增“感官对象误作感知主体” advisory，覆盖“霉味先醒过来”等高置信主谓失配，同时保留对话、直接引用、合法拟人与物理路径表达的语境复核。
+- 长短篇榜单采集统一捕获一个 run clock：报告同时写无歧义的 UTC 抓取时刻和与文件名一致的本地报告日期，不再让两处各自取时。
 
 - 正式更新统一从 GitHub Release 的固定资产 `oh-story-release.zip` 安装；直接指向浮动仓库源的安装只属于 Dev 渠道。
 - 部署包按 14 个 skill 自检，已部署项目需重跑 `/story-setup` 刷新 hooks、agents、rules 与 reference bundle，并新开会话。
+- Claude Code 的正文前置守卫现在也注册到 Bash：常见的重定向、`tee`、`touch`、`cp`、`mv`、`install` 写入正文时复用共享 JS 核识别目标并执行大纲/追踪门；只读命令里的引号示例与 heredoc 正文提及不拦，并按 hook `cwd` 解析相对路径。该面是**静态 best-effort 识别，不是 shell 沙箱**：环境变量间接路径、运行时生成命令与未列出的任意写文件程序无法可靠静态判定；这类写入应改用 Write/Edit。Bash 命令面依赖 node，node/共享核异常时显式告警后 fail-open；Write/Edit/MultiEdit 的纯 bash 兜底不受影响。
+- `.claude/settings.local.json` 由 `merge-claude-settings.py` 按稳定 command 身份迁移受管注册，matcher、timeout 与 if 能随升级刷新；用户 hook、未知顶层字段及混合 block 中的用户项保留，重复执行字节幂等。
+- Claude Bash、Codex Python 与共享 JS 的书目录发现统一限制为项目下 4 层，并剪枝隐藏目录、`node_modules`；`.active-book` 只有在 realpath 确证逃出项目根时才拒绝，避免符号链接逃逸，也不因中文路径 realpath 失败误丢合法声明。
+- 七猫大热榜支持 `--period day|month|all`，起点补齐字数、总推荐、签约与收费模式；四个长篇采集器对非法参数联网前失败，起点/七猫简介统一截断 100 字。
+- Stage 6 只读 `_progress.md` 章节边界；chapter-extractor 的占位符、单标签、空值与标签归属规则同时写入 skill spawn prompt 和三端 agent 模板。
+- 500 章以上拆文按 10-20 章处理批次分派子 Agent，主线程只合并每批不超过 8K tokens 的降维结果；语义分块只负责组织叙事弧，不再充当上下文读取单位。
+- 分批 `story-review` 使用 `.story-review/state.md` 原子记录范围、批次和未解决 findings；该文件不属于追踪事实，solo 仍不得修改 `追踪/`。
+- narrative-writer 与共享去 AI 味参考补齐普通名词引号强调规则，并保留对话、逐字引用、书名/代号、场内载体、术语与有语境支撑的讽刺例外。
 
 - `story-import` 只把作者已有小说重建为写作工程：`拆文库/{导入书名}/` 迁移到正文/设定/大纲/追踪，不再自动登记成主/副对标，也不再复制到项目 `对标/`。只有用户明确选择、且来源为独立 `拆文库/{对标书名}/` 的外部作品才同步到 `对标/{对标书名}/`。
 - 无外部对标时只跳过对标模块、节奏和文风召回；项目题材卡仍从本书题材信息生成，不再被对标分支误伤。对标主产物缺失继续 fail-fast，只有单个可选模块卡未命中时才局部跳过。
-- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v25 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
+- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v29 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
 - 写作与导入只接受当前拆文产物：`剧情/情绪模块.md` 与 `剧情/节奏.md` 缺失时 fail-fast，并给出重跑 Stage 3+ / 重新导入的修复动作。
 - 新建、补建、改纲的细纲只接受完整章节蓝图：缺少阶段位置、结构公式、禁止提前释放、内容概括、情节安排、人物关系、情节细化或结尾设定时，先补齐再写。旧版细纲缺这些字段不阻塞日更，回退消费旧字段（核心事件、情节点序列、目标情绪、章首/章尾钩子、字数目标）。
 - 细纲字段是本章「要发生什么」的内容规格，不规定正文形状：各字段都要在正文里兑现，但正文可合并、穿插、重排情节点，不按条目顺序一条一段平推。细纲「结尾 / 结尾设定」写本章最后落在什么动作、画面或台词上，不写状态判词。
@@ -64,7 +81,7 @@
 ## 升级步骤
 
 1. 在项目根目录重新运行 story-setup。
-2. 确认 `.story-deployed` 写入 `agents_version: 25` 与 `setup_skill_version: 1.2.8`。
+2. 确认 `.story-deployed` 写入 `agents_version: 29` 与 `setup_skill_version: 1.2.12`。
 3. 确认目标 CLI 的 agents、hooks/rules 和 reference bundle 都通过安装验证。
 4. 新开会话，使 custom agents 与 hooks 按当前文件重新注册。
 5. **长篇在写项目必做**：检查每本书的 `追踪/_tracking-state.json` 是否存在。不存在就是旧追踪结构，按下方「追踪模型迁移」重建，否则写下一章会被拦。
@@ -100,7 +117,27 @@
 
 ## 版本变更
 
-### v25（当前）
+### v29（当前）
+
+- `.story-deployed` 的 `agents_version` 升级到 `29`，`setup_skill_version` 升级到 `1.2.12`。
+- 部署中文正文的生成前语言锁、交付前深扫与写后/跨章旧债门；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v28
+
+- `.story-deployed` 的 `agents_version` 升级到 `28`，`setup_skill_version` 升级到 `1.2.11`。
+- 部署双轨追踪门、JSON 章节摘要稳定链路与感官主语审查规则；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v27
+
+- `.story-deployed` 的 `agents_version` 升级到 `27`，`setup_skill_version` 升级到 `1.2.10`。
+- 部署 Bash 正文守卫、收敛后的目录发现与 settings 迁移器，并同步 chapter-extractor、narrative-writer、跨批审查和去 AI 味 reference bundle；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v26
+
+- `.story-deployed` 的 `agents_version` 升级到 `26`，`setup_skill_version` 升级到 `1.2.9`。
+- 部署自然段落基准、精简后的 narrative-writer 与共享去 AI 味参考；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v25
 
 - `.story-deployed` 的 `agents_version` 升级到 `25`，`setup_skill_version` 升级到 `1.2.8`。
 - 正式升级改用固定 GitHub Release 资产；已部署项目重跑 `/story-setup` 并新开会话，以获取当前部署模板与 14-skill 路由。
