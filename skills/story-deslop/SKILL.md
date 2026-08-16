@@ -505,3 +505,7 @@ node scripts/normalize-punctuation.js <正文文件...>
 ## 中文正文语言验收 Gate（强制）
 
 正文初稿完成后，先按 `references/language-gate-loop.md` 运行 `scripts/language_gate.js`。发现中英文混杂时，必须把行号、原片段和所在行退回原正文写作者；修改后重新检查。只有 Gate 返回码为零，才可继续去味、退化检查、追踪提交或下一章。Gate 不自动翻译，也不自动添加白名单。
+
+## 对白归属标记漂移 Gate（强制）
+
+中文语言 Gate 通过后、去味验收前，长篇章节必须按 `references/dialogue-attribution-drift.md` 运行 `scripts/dialogue_drift_gate.js`。它检查本章“谁说/谁问”的密度、连续重复、动词族集中度以及相对前期和近期章节的漂移。返回非零时将指标和例句退回原正文写作者结合上下文修改，复检通过前不得提交追踪或开始下一章。不得通过堆砌“沉声道/冷声道”等同义标签刷过 Gate。

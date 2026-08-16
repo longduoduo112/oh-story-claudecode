@@ -61,3 +61,7 @@ Agent 间的协调关系由 `.codex/agents/*.toml` 的职责边界描述定义�
 ## 中文正文英文零容忍
 
 中文正文和台词中出现未授权拉丁字母词时一律 blocking，包括短词、专名、缩写和中英混合台词。只豁免 URL、邮箱、文件路径、代码等非正文结构以及 `.deslop-whitelist` 精确登记项；语言泄漏未清零不得交付。
+
+## 对白归属漂移 Gate
+
+长篇正文通过中文语言 Gate 后，必须运行 `node skills/story-deslop/scripts/dialogue_drift_gate.js --current <正文文件> --history-dir <正文目录>`。返回非零时，将指标、行号和例句退回原正文写作者修改并复检；通过前禁止追踪提交和下一章。禁止用“沉声道/冷声道”等同义标签机械替换。
