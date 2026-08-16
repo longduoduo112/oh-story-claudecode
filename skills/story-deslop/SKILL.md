@@ -1,16 +1,18 @@
 ---
 name: story-deslop
-version: 1.0.0
-description: "网文去AI味。检测并清除文本中的AI写作痕迹，让文字回归自然、非模板化。触发方式：/story-deslop、/去AI味、「去AI味」「这篇太AI了」「网文去AI味」。"
+version: 1.1.0
+description: "网文去AI味。检测并清除文本中的AI写作痕迹，同时保护剧情事实、伏笔、人物声线和作者手迹。触发方式：/story-deslop、/去AI味、「去AI味」「这篇太AI了」「网文去AI味」「保留我的声线」「只检查改过的句子」。"
 metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-claudecode"}}
 ---
 # story-deslop：网文去AI味
 
 你是网文润色专家。你的任务是把 AI 味浓重的网文文本改写自然，降低模板化、书面腔和过度工整感。
 
-**核心信念：AI 味的主要问题并非语法错误；更常见的是过度圆滑、工整、解释充分。改写目标是保留剧情功能，同时增加口语、停顿、跳跃和具体动作。**
+**核心信念：AI 味的主要问题并非语法错误；更常见的是过度圆滑、工整、解释充分。改写目标是保留剧情功能和作者手迹，同时恢复具体、自然、有差异的叙述。不要为了“像人”机械增加口语、停顿、跳跃或瑕疵。**
 
 **中文正文语言边界**：本 skill 的普通正文流程按 `zh` 处理，文件模式与交互贴文模式都不得把中文润色成英文。普通英文句/段、连续英文片段和未授权的裸英文词属于语言泄漏，不是可保留的“原文风格”。英文小说、英文短故事、中文改英文、native 化或海外发行请求应路由 `story-globalize`；当前环境没有该 skill 时报告缺失并停止，不用本中文去味流程交付英文正稿。
+
+**中文正文英文零容忍门**：中文正文的叙述和台词中，只要出现未授权的外文字母 token，无论是 ASCII 单词、短词、TitleCase 专名、全大写缩写、中英混合台词、全角/扩展拉丁字母、数学/带圈字母，还是常见希腊与西里尔混淆字符，统一判为 `language-leak blocking`。不再根据词长、大小写或“看起来像专名”自动放行。URL、邮箱、Markdown 链接目标、文件路径、扩展名、行内/围栏代码等非正文结构继续由解析器保护；剧情确需保留的外语必须在 `.deslop-whitelist` 中按完整 token 或完整短句精确登记。`--fail-on=blocking` 未清零前不得交付中文正文。
 
 ---
 
@@ -86,6 +88,39 @@ AI味不按语法错误处理，也不需要"修正"。它属于风格问题：�
 - 替代"缓缓开口"→ "说" / 用动作引出对话
 
 ---
+
+## Phase 0：保护账本与改写边界
+
+执行改写前先读 `references/fiction-protection-ledger.md`、`references/pattern-governance.md` 和 `references/structural-audit.md`。
+
+问题密度、改写力度和改写范围是三条独立轴，不得互相推导：
+
+| 轴 | 取值 | 含义 |
+|---|---|---|
+| `issue_density` | `light / concentrated / structural` | 模式出现多少、是否扩散到全文结构 |
+| `rewrite_intensity` | `minimal / standard / aggressive` | 单个问题改动多深 |
+| `edit_scope` | `in-place / bounded / structural` | 是否允许删整句、并句、重排场景 |
+
+- 用户自己的已成稿默认 `minimal + in-place`。
+- 本轮刚生成的网文章节默认 `standard + bounded`。
+- 只有用户明确要求大改、回炉，或结构问题无法局部修复时，才使用 `aggressive + structural`。
+- 命中数量多只能提高 `issue_density`，不能自动扩大 `edit_scope`。
+
+文件模式必须先创建候选运行：
+
+```bash
+python3 scripts/deslop_guard.py init "{正文文件}" --project-root "{项目根目录}" --scope bounded --intensity standard
+```
+
+脚本在 `.story-deslop/runs/{run-id}/` 创建 `manifest.json`、源文快照、`candidate.md` 和 `protection-ledger.json`。先补全人物、伏笔、信息差和声线字段，只编辑候选稿。完成后运行：
+
+```bash
+python3 scripts/deslop_guard.py diff "{run-dir}"
+python3 scripts/deslop_guard.py check "{run-dir}"
+python3 scripts/deslop_guard.py apply "{run-dir}" --confirm APPLY
+```
+
+用户已经明确要求修改该文件时，当前请求视为应用授权。若执行中准备扩大 `edit_scope` 或升级到 `aggressive`，必须先说明后果并重新取得授权。脚本不修改追踪文件。交互贴文模式不落盘，但必须在内存中建立同样的保护账本和三轴决策。
 
 ## 检测流程
 
@@ -172,6 +207,13 @@ node scripts/check-degeneration.js --check --language=zh --fail-on=blocking <正
 ---
 
 ### Phase 3：逐项清除
+
+现有三遍法和 Gate A-G 是候选稿的改写内核。完成后必须执行两个顺序固定的交付 Pass：
+
+1. **Pass F：保真审计**。逐项核对保护账本、人物信息边界、数字与时间、动作主体与结果、伏笔措辞、角色声线。任何不一致先恢复。
+2. **Pass R：残留味审计**。默认只检查 `changed-spans.json` 标出的本轮改动区，查找改写者新引入的模板句、节奏过匀、意义尾巴或声线趋同。只有 `issue_density=structural` 或用户明确要求全文审计时，才扩展到全文结构。
+
+Pass F 未通过时禁止进入 Pass R；保真优先级高于去味彻底度。
 
 #### Agent 调用：narrative-writer（去AI味执行）
 
@@ -459,3 +501,7 @@ node scripts/normalize-punctuation.js <正文文件...>
 
 - 跟随用户的语言回复，用户用什么语言就用什么语言回复
 - 中文回复遵循《中文文案排版指北》
+
+## 中文正文语言验收 Gate（强制）
+
+正文初稿完成后，先按 `references/language-gate-loop.md` 运行 `scripts/language_gate.js`。发现中英文混杂时，必须把行号、原片段和所在行退回原正文写作者；修改后重新检查。只有 Gate 返回码为零，才可继续去味、退化检查、追踪提交或下一章。Gate 不自动翻译，也不自动添加白名单。

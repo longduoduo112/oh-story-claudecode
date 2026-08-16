@@ -790,30 +790,50 @@ function findLanguageLeak(content, whitelist) {
     }
     flushRun();
 
-    // 剩余单词：全小写 ≥4 延续旧规则（叙述 blocking、混合中文台词 advisory）；TitleCase、
-    // mixed-case 与 1-3 字母短词统一 advisory，避免 Aiden/go 这类漏检又不强删合法专名。
+    // Unicode 外文字母先于 ASCII token 扫描：覆盖全角/扩展拉丁、希腊、西里尔、
+    // 罗马数字、带圈字母和数学字母。ASCII-only 片段留给下方既有规则处理。
+    const unicodeForeignRun = /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\u2160-\u2188\u24B6-\u24E9\u{1D400}-\u{1D7FF}]+/gu;
+    for (const match of masked.matchAll(unicodeForeignRun)) {
+      const value = match[0];
+      if (/^[\x00-\x7F]+$/.test(value)) continue;
+      const start = match.index;
+      const end = start + value.length;
+      if (isCovered(covered, start, end)) continue;
+      if (isWhitelistedToken(value, whitelist) || isWhitelistedPhrase(value, whitelist)) {
+        cover(covered, start, end);
+        continue;
+      }
+      findings.push(languageFinding(
+        lineNo,
+        columnAt(start),
+        'blocking',
+        `Unicode 外文字母泄漏：「${value}」出现在中文正文中；全角、扩展字母和常见混淆字符同样禁止，改成中文或在 .deslop-whitelist 精确登记。`,
+        trimmed.slice(Math.max(0, start - 10), Math.min(trimmed.length, end + 14)),
+      ));
+      cover(covered, start, end);
+    }
+
+    // 剩余单词：未授权 ASCII token 全部 blocking；TitleCase、
+    // mixed-case 与 1-3 字母短词同样 blocking；合法专名只能通过精确白名单授权。
     for (const token of tokens) {
       if (isCovered(covered, token.index, token.end)) continue;
-      if (
-        isWhitelistedToken(token.value, whitelist)
-        || (isUpperAcronym(token.value) && !isUppercaseEnglishWord(token.value))
-      ) continue;
+      if (isWhitelistedToken(token.value, whitelist)) continue;
       const inDialogue = isRangeQuoted(ranges, token.index, token.value.length);
       const lowercaseLong = /^[a-z]+(?:['’][a-z]+)?$/.test(token.value) && token.letters >= 4;
       if (lowercaseLong) {
         findings.push(languageFinding(
           lineNo,
           columnAt(token.index),
-          inDialogue ? 'advisory' : 'blocking',
-          `裸英文词泄漏：「${token.value}」出现在中文正文${inDialogue ? '的中英混合台词' : '叙述层'}；改成中文称呼，确需保留则在 .deslop-whitelist 中逐词精确登记。`,
+          'blocking',
+          `裸英文词泄漏：「${token.value}」出现在中文正文${inDialogue ? '的中英混合台词' : '叙述层'}；中英混写属于 blocking，改成中文称呼，确需保留则在 .deslop-whitelist 中逐词精确登记。`,
           trimmed.slice(Math.max(0, token.index - 10), Math.min(trimmed.length, token.end + 14)),
         ));
       } else {
         findings.push(languageFinding(
           lineNo,
           columnAt(token.index),
-          'advisory',
-          `英文专名/短词疑似泄漏：「${token.value}」；核对是否为已设定专名、缩写或角色有意用语，合法项可在 .deslop-whitelist 精确登记。`,
+          'blocking',
+          `英文专名/短词泄漏：「${token.value}」出现在中文正文中；不再默认豁免专名、缩写或短词，改成中文，确需保留则在 .deslop-whitelist 精确登记。`,
           trimmed.slice(Math.max(0, token.index - 10), Math.min(trimmed.length, token.end + 14)),
         ));
       }

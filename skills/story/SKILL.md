@@ -117,3 +117,17 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
    - 有新版 → 列出 当前 vA → 最新 vB + [Releases](https://github.com/qin1473692580-ux/oh-story-claudecode/releases)/[CHANGELOG](https://github.com/qin1473692580-ux/oh-story-claudecode/blob/main/CHANGELOG.md)（能拿到 release notes 就附本次要点），再用 AskUserQuestion 问「现在更新吗？」：
      - 选更新 → 跑 `npx skills add https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download/oh-story-release.zip -y -g`（`-g` 全局，去掉则只更当前目录）。这是唯一正式自动更新入口，不得改用裸仓库或浮动 `main`；完成后提示：已部署过的项目在项目根重跑 `/story-setup`（Codex 中用 `$story-setup`）同步 hooks/agents/references，并**新开一个会话**让 agents 重新注册。
      - 选先不 → 不动，告知随时可再来。
+
+---
+
+## 分支推演路由
+
+用户提到“分支推演”“路线比较”“推演几个走向”“这几条路哪条更好”，并且对象是长篇总纲、卷纲、剧情单元或细纲时，路由到 `story-long-write` 的 `references/branch-forecast.md`。不要路由为普通头脑风暴，也不要自动选择推荐方案或直接改正式大纲。
+
+用户说“多线剧情”但没有要求比较互斥未来时，仍按同一正史中的主线、感情线、阵营线和伏笔线处理，不启动分支推演。
+
+---
+
+## 作者声线保护路由
+
+用户要求“保留我的声线”“不要磨平”“只检查改过的句子”“别把人物都改成一个声音”时，路由到 `story-deslop` v1.1 的保护账本和改后审计流程。默认使用 `minimal + in-place`，除非用户明确授权扩大改写范围。

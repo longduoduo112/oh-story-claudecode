@@ -500,3 +500,30 @@ Rubric Source: file | embedded fallback
 
 - 跟随用户的语言回复，用户用什么语言就用什么语言回复。
 - 中文回复遵循《中文文案排版指北》。
+
+---
+
+## 题材契约审查（v0.8）
+
+项目存在 `设定/题材契约.json` 时，在题材与节奏审查前读取该文件；不存在时沿用现有 rubric，不因缺失契约阻塞旧项目。
+
+每条题材相关发现必须增加 `finding_type`：
+
+| `finding_type` | 判定条件 | 可用严重度 |
+|---|---|---|
+| `contract_violation` | 正文或大纲有明确证据违反项目题材契约、设定或已声明规则 | blocking / major / minor |
+| `continuity_error` | 数值、资源、能力、楼层、人物状态前后矛盾 | blocking / major |
+| `market_risk` | 未违反项目事实，但可能削弱目标平台或题材读者预期 | major / minor |
+| `preference` | 只是审查者个人更喜欢另一种写法 | suggestion only |
+
+客观问题必须同时引用“文本证据”和“契约字段”；无法指出明确契约字段时，不得标为 `contract_violation`。温馨奇幻不得只因没有生死危机或强悬念判为节奏失败，应先检查人物、关系、手艺、社区或生活空间是否发生状态变化。
+
+---
+
+## 去味语义模式治理 v1.1
+
+审查 `story-deslop/references/pattern-contracts.json` 中的候选语义模式时，默认按 advisory/S3 输出，必须同时给出文本证据、可能功能和排除条件。单次命中不得证明文本由 AI 生成，也不得直接升级为 blocking/S2。只有现有确定性脚本已经判 blocking，或项目明示规则被破坏时，才按原严重度流程处理。人物声线趋同、全文节拍同构、动作后解释和跨章反应循环属于语义审计，不自动改正文。
+
+## 中文正文英文零容忍审查
+
+中文作品中任何未精确授权的拉丁字母 token 均按语言泄漏处理，不因位于台词、词很短、首字母大写或全大写而降为 advisory。URL、邮箱、路径、代码和 `.deslop-whitelist` 精确登记项除外。检测脚本报告的 `language-leak blocking` 一律阻止通过，不计入 AI 味轻中重分档。
