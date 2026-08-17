@@ -85,7 +85,7 @@ class PackageFixture:
             ),
             ("README.md", b"fixture\n", "file"),
         ]
-        for index in range(13):
+        for index in range(16):
             name = "skill-{:02d}".format(index)
             entries.append(
                 (
@@ -347,7 +347,7 @@ class VerifyPackageTests(unittest.TestCase):
             return subprocess.CompletedProcess(
                 command,
                 0,
-                stdout="\x1b[?25l Found \x1b[32m14\x1b[0m skills\n",
+                stdout="\x1b[?25l Found \x1b[32m17\x1b[0m skills\n",
                 stderr="",
             )
 
@@ -357,7 +357,7 @@ class VerifyPackageTests(unittest.TestCase):
             runner=fake_runner,
         )
 
-        self.assertEqual(result.discovered_skills, 14)
+        self.assertEqual(result.discovered_skills, 17)
         self.assertEqual(len(calls), 1)
         command, kwargs = calls[0]
         self.assertEqual(command[:4], ["npx", "--yes", "skills@1.5.22", "add"])
@@ -371,9 +371,9 @@ class VerifyPackageTests(unittest.TestCase):
         fixture = self.fixture()
 
         def wrong_count(command, **kwargs):
-            return subprocess.CompletedProcess(command, 0, stdout="Found 13 skills\n", stderr="")
+            return subprocess.CompletedProcess(command, 0, stdout="Found 16 skills\n", stderr="")
 
-        with self.assertRaisesRegex(verify_package.VerificationError, "discovered 13 skills"):
+        with self.assertRaisesRegex(verify_package.VerificationError, "discovered 16 skills"):
             verify_package.verify_package(
                 fixture.zip_path,
                 install_smoke=True,
@@ -398,7 +398,7 @@ class VerifyPackageTests(unittest.TestCase):
 
         def should_not_run(command, **kwargs):
             calls.append(command)
-            return subprocess.CompletedProcess(command, 0, stdout="Found 14 skills\n", stderr="")
+            return subprocess.CompletedProcess(command, 0, stdout="Found 17 skills\n", stderr="")
 
         with self.assertRaisesRegex(verify_package.VerificationError, "escapes archive_root"):
             verify_package.verify_package(

@@ -24,7 +24,7 @@ import zipfile
 PROJECT_NAME = "oh-story"
 SCHEMA_VERSION = 1
 SKILLS_CLI_VERSION = "1.5.22"
-DEFAULT_EXPECTED_SKILLS = 14
+DEFAULT_EXPECTED_SKILLS = 17
 MAX_ARCHIVE_MEMBERS = 10_000
 MAX_MEMBER_SIZE = 256 * 1024 * 1024
 MAX_UNCOMPRESSED_SIZE = 1024 * 1024 * 1024
@@ -649,7 +649,7 @@ def _parser() -> argparse.ArgumentParser:
         "--expected-skills",
         type=_positive_integer,
         default=DEFAULT_EXPECTED_SKILLS,
-        help="expected discovery count for --install-smoke (default: 14)",
+        help="expected discovery count for --install-smoke (default: 17)",
     )
     return parser
 

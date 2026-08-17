@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "网络小说创作工具箱 — 扫榜、拆文、写作全流程 Claude Code skill，覆盖长篇与短篇网文",
-    "version": "0.7.10"
+    "version": "0.8.0"
   },
   "plugins": [
     {
@@ -46,6 +46,46 @@
       ],
       "skills": [
         "./skills/story-long-scan"
+      ]
+    },
+    {
+      "name": "story-explore",
+      "description": "作品内只读问答。查询进度、角色、伏笔、时间线和设定，返回可追溯产物引用。",
+      "source": "./",
+      "strict": false,
+      "version": "1.0.0",
+      "category": "novel-analysis",
+      "keywords": [
+        "explore",
+        "project-query",
+        "continuity",
+        "作品问答",
+        "伏笔",
+        "设定",
+        "chinese"
+      ],
+      "skills": [
+        "./skills/story-explore"
+      ]
+    },
+    {
+      "name": "story-research",
+      "description": "小说创作资料研究。查证公开事实，区分证据与写作推断，交付来源和不确定性。",
+      "source": "./",
+      "strict": false,
+      "version": "1.0.0",
+      "category": "novel-analysis",
+      "keywords": [
+        "research",
+        "sources",
+        "fact-check",
+        "资料研究",
+        "考证",
+        "来源",
+        "chinese"
+      ],
+      "skills": [
+        "./skills/story-research"
       ]
     },
     {
@@ -281,6 +321,26 @@
       ],
       "skills": [
         "./skills/story-cover"
+      ]
+    },
+    {
+      "name": "story-release-package",
+      "description": "将通过发布审查的作品整理为书名、简介、标签、章节清单和可追溯发布材料。",
+      "source": "./",
+      "strict": false,
+      "version": "1.0.0",
+      "category": "novel-publish",
+      "keywords": [
+        "release",
+        "package",
+        "metadata",
+        "发布材料",
+        "简介",
+        "标签",
+        "chinese"
+      ],
+      "skills": [
+        "./skills/story-release-package"
       ]
     }
   ]

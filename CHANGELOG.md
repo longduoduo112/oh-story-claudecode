@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.0（Dev 候选 · 2026-08-18）
+
+本版把作品查询、带来源资料研究和发布材料从通用路由拆成三个可单独调用、可独立授权的 Skill，使 Git 工具与 StoryOS 的完整能力目录保持同一顶层入口。
+
+### 三个独立能力
+
+- **story-explore**：只读查询一个授权作品的进度、角色、伏笔、时间线、设定和对标材料；输出产物版本引用，不写作、不访网。
+- **story-research**：只查证公开来源，区分事实、证据等级与写作推断；不使用浏览器 Cookie/CDP、不绕过付费墙、不外发未发布全文。
+- **story-release-package**：只把已通过发布级审查的 Artifact 整理成书名、简介、标签和章节清单；不生成封面、不导出、不登录或自动发布。
+- 三个 Skill 均增加安全/敌对输入回归用例，并为 Claude、OpenCode、Codex、ZCode、OpenClaw、Reasonix 与 generic 同步命令和路由。
+
+### 版本与部署
+
+- 公开产品版本升至 `0.8.0`；`setup_skill_version` 升至 `1.2.13`，`agents_version` 升至 `30`。
+- 仓库能力面从 14 个扩展为 17 个 Skill；已部署项目必须重跑 `/story-setup`（Codex 用 `$story-setup`）并新开会话。
+
 ## v0.7.10（Dev 候选 · 2026-08-12）
 
 本版修复中文小说写到中途突然切成英文句段、且旧规则因“所在行中文占比不足 50%”而放过的问题。修复不依赖单句提示，而是收成生成、交付、续写三层语言门。

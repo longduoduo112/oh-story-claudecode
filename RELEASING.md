@@ -14,9 +14,9 @@ https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download
 
 | 版本轴 | 当前权威 | 用途 | 何时变更 |
 |---|---|---|---|
-| 产品 SemVer | `skills/story/VERSION`，当前 `0.7.10` | GitHub Release、安装包和各 plugin manifest 的公开版本 | 每次正式发版；用 `scripts/manage-version.py` 同步所有公开版本面 |
-| `setup_skill_version` | `scripts/current-contract.json`，当前 `1.2.12` | `story-setup` 部署流程/哨兵协议的版本 | 只在该部署协议本身需要新版识别时改 |
-| `agents_version` | `scripts/current-contract.json`，当前 `29` | 已部署 hooks / agents / rules / references 是否过期的唯一运行时权威 | 只在部署包行为变更、需要用户重跑 `story-setup` 时改 |
+| 产品 SemVer | `skills/story/VERSION`，当前 `0.8.0` | GitHub Release、安装包和各 plugin manifest 的公开版本 | 每次正式发版；用 `scripts/manage-version.py` 同步所有公开版本面 |
+| `setup_skill_version` | `scripts/current-contract.json`，当前 `1.2.13` | `story-setup` 部署流程/哨兵协议的版本 | 只在该部署协议本身需要新版识别时改 |
+| `agents_version` | `scripts/current-contract.json`，当前 `30` | 已部署 hooks / agents / rules / references 是否过期的唯一运行时权威 | 只在部署包行为变更、需要用户重跑 `story-setup` 时改 |
 
 三条轴互相独立。发一个产品 patch 不代表必须改 `setup_skill_version` 或 `agents_version`；只改文档/打包管道时不要顺手 bump 后两者。
 
@@ -28,25 +28,25 @@ https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download
 - MAJOR：进入稳定主版后的破坏性改动。
 - dev 包由构建器在内存中派生 `X.Y.Z-dev.<UTC>+g<SHA>`，不回写源树，也不占用公开版本号。
 
-`v0.7.6` 及更早版本已经是历史发布身份，不得移动、重打或用新资产覆盖。本手册当前对应 **`v0.7.10`** 候选；后续版本继续按上述 SemVer 规则递增。
+`v0.7.6` 及更早版本已经是历史发布身份，不得移动、重打或用新资产覆盖。本手册当前对应 **`v0.8.0`** 候选；后续版本继续按上述 SemVer 规则递增。
 
 ## 发版前准备
 
 1. 从当前 `main` 准备发版候选提交，确保工作树干净。下一版执行：
 
    ```bash
-   python3 scripts/manage-version.py set 0.7.10
+   python3 scripts/manage-version.py set 0.8.0
    ```
 
    该命令只同步五个公开产品版本面，不改 `setup_skill_version` 或 `agents_version`。
 
-2. 在 `CHANGELOG.md` 新增顶层 `v0.7.10` 条目，并检查版本一致性：
+2. 在 `CHANGELOG.md` 新增顶层 `v0.8.0` 条目，并检查版本一致性：
 
    ```bash
    python3 scripts/manage-version.py check --require-changelog
    ```
 
-   当前 `v0.7.10` 候选修改了 `story-setup` 本体、agent 模板、多端 hook 和 reference bundle，已将 `setup_skill_version` 提升至 `1.2.12`、`agents_version` 提升至 `29`，并同步 `scripts/current-contract.json`、`SKILL.md`、`UPGRADING.md`、hook 与契约锚点。提交候选后用下列门禁确认；门禁会按实际 diff 判断，不要求无关发版乱 bump：
+   当前 `v0.8.0` 候选新增三个独立 Skill 并修改多端部署路由，已将 `setup_skill_version` 提升至 `1.2.13`、`agents_version` 提升至 `30`，并同步 `scripts/current-contract.json`、`SKILL.md`、`UPGRADING.md`、hook 与契约锚点。提交候选后用下列门禁确认；门禁会按实际 diff 判断，不要求无关发版乱 bump：
 
    ```bash
    python3 scripts/check-release-contract-bumps.py --base-tag v0.7.6
