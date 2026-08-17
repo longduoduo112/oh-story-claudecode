@@ -109,15 +109,17 @@ AI味不按语法错误处理，也不需要"修正"。它属于风格问题：�
 文件模式必须先创建候选运行：
 
 ```bash
-python3 scripts/deslop_guard.py init "{正文文件}" --project-root "{项目根目录}" --scope bounded --intensity standard
+for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+"$PYBIN" scripts/deslop_guard.py init "{正文文件}" --project-root "{项目根目录}" --scope bounded --intensity standard
 ```
 
-脚本在 `.story-deslop/runs/{run-id}/` 创建 `manifest.json`、源文快照、`candidate.md` 和 `protection-ledger.json`。先补全人物、伏笔、信息差和声线字段，只编辑候选稿。完成后运行：
+脚本在 `.story-deslop/runs/{run-id}/` 创建运行清单、源文快照、候选稿和保护账本。先补全人物、伏笔、信息差和声线字段，只编辑候选稿。完成后运行：
 
 ```bash
-python3 scripts/deslop_guard.py diff "{run-dir}"
-python3 scripts/deslop_guard.py check "{run-dir}"
-python3 scripts/deslop_guard.py apply "{run-dir}" --confirm APPLY
+for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+"$PYBIN" scripts/deslop_guard.py diff "{run-dir}"
+"$PYBIN" scripts/deslop_guard.py check "{run-dir}"
+"$PYBIN" scripts/deslop_guard.py apply "{run-dir}" --confirm APPLY
 ```
 
 用户已经明确要求修改该文件时，当前请求视为应用授权。若执行中准备扩大 `edit_scope` 或升级到 `aggressive`，必须先说明后果并重新取得授权。脚本不修改追踪文件。交互贴文模式不落盘，但必须在内存中建立同样的保护账本和三轴决策。
@@ -161,7 +163,7 @@ node scripts/check-degeneration.js --check --language=zh --fail-on=blocking <正
 
 - severity=blocking 的类别（`not-is-comparison` / `em-dash` / `voice-contrast` / `negation-parade` / `reverse-not-is` / `trailer-ending` / `trailer-summary`）并入 Gate B，属于写作/去 AI 味时优先处理的 blocking 类问题。
 - 其他 findings（碎句号、长段落、微动作、动作清单、抽象总结、套词、比喻密度、解释链、公文腔、过度精炼、低连接密度、引号强调滥用、`formulaic-parallelism` 工整并列）只作读感提示；完整类别和修法见 `references/anti-ai-writing.md`。其中工整并列会扫描台词，必须读语境判断，不能因为 hook 对台词低误报豁免就跳过。
-- `check-degeneration.js` 的 `language-leak` 语言 blocking（消息会细分纯英文句段、完整英文台词、连续短语或裸词）不计入 AI 味轻/中/重定档，但必须先改回中文并复扫。合法的大写缩写/型号、URL、邮箱、Markdown 链接目标、文件路径/扩展名、行内或围栏代码以及 `.deslop-whitelist` 精确登记项不属于泄漏。
+- `check-degeneration.js` 的 `language-leak` 语言 blocking（消息会细分纯英文句段、完整英文台词、连续短语或裸词）不计入 AI 味轻/中/重定档，但必须先改回中文并复扫。URL、邮箱、Markdown 链接目标、文件路径/扩展名和行内/围栏代码等非叙事结构由检测器保护；缩写、型号、剧情代号或其他叙事内外语只有在 `.deslop-whitelist` 精确登记后才不属于泄漏。
 - 处理方式：删掉否定铺垫，直接写后项；或改成角色动作、物件细节、身体反应来呈现。
 - 若用户只要检测，保留报告不改文。若执行去 AI 味，只改确实损害读感且无叙事功能的问题；功能性写法标 `[需复核]` 并保留。
 
@@ -478,6 +480,9 @@ node scripts/normalize-punctuation.js <正文文件...>
 |------|----------|
 | [references/banned-words.md](references/banned-words.md) | 检测和替换禁用词时 |
 | [references/anti-ai-writing.md](references/anti-ai-writing.md) | **去AI味完整指南**：预防+三遍法+范例 |
+| [references/pattern-contracts.json](references/pattern-contracts.json) | 语义模式审计时的机器可读候选契约 |
+| [references/dialogue-craft-moderate.md](references/dialogue-craft-moderate.md) | 重要对白场景的轻量对白卡与生成方法 |
+| [references/dialogue-attribution-drift.md](references/dialogue-attribution-drift.md) | 对白归属标记长程漂移的检测与回修边界 |
 | [scripts/normalize-punctuation.js](scripts/normalize-punctuation.js) | 文件模式落盘后做确定性标点收尾；默认保留引号风格 |
 | [scripts/check-ai-patterns.js](scripts/check-ai-patterns.js) | 文件模式「AI味扫描」预检与「确定性收尾」复扫（只看引号外叙述），只报告不改写 |
 | [scripts/check-degeneration.js](scripts/check-degeneration.js) | 文件模式预检与「确定性收尾」复扫；中文正文显式用 `--language=zh --fail-on=blocking` |

@@ -58,9 +58,9 @@ node - "$OUT" <<'NODE'
 const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const counts = report.findings.reduce((m, f) => ((m[f.type] = (m[f.type] || 0) + 1), m), {});
-const want = { 'verbatim-repeat': 2, 'placeholder-leak': 2, 'truncated': 1 };
-if (report.findings.length !== 5) {
-  throw new Error(`expected 5 positive findings, got ${report.findings.length}: ${JSON.stringify(report.findings.map((f) => `${f.type}@${f.line}`))}`);
+const want = { 'verbatim-repeat': 2, 'placeholder-leak': 2, 'language-leak': 1, 'truncated': 1 };
+if (report.findings.length !== 6) {
+  throw new Error(`expected 6 positive findings, got ${report.findings.length}: ${JSON.stringify(report.findings.map((f) => `${f.type}@${f.line}`))}`);
 }
 for (const [type, n] of Object.entries(want)) {
   if (counts[type] !== n) throw new Error(`expected ${n} ${type}, got ${counts[type] || 0}`);
@@ -138,8 +138,8 @@ NODE
 
 # --- 裸英文词泄漏（实测样本：「watcher 伏在暗里」）---
 # 中文正文里冒出的小写英文常用词基本是内部代号/占位没换成中文名。判据要两层：
-# 旧规则曾要求整行以中文为主；现在由文档级 language gate 判定。这里负例只锁住
-# PDF/DB-40/.pptx/LABADMIN，纯英文文档的 auto/en 放行与 zh 拦截在下方单独测试。
+# 旧规则曾要求整行以中文为主；现在由文档级 language gate 判定。未登记的
+# PDF/LABADMIN 也必须 blocking；只有文件名/扩展名等非叙事结构保护。
 BARE_POS="$TMP_DIR/bare-positive.md"
 BARE_NEG="$TMP_DIR/bare-negative.md"
 cat > "$BARE_POS" <<'PROSE'
@@ -174,12 +174,16 @@ set -e
 node - "$OUT" <<'NODE'
 const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const hits = report.findings.filter((f) => /裸英文词泄漏/.test(f.message));
-if (hits.length !== 0) {
-  throw new Error(`大写缩写/编号道具/扩展名/账号名都不得判为裸英文词，got ${JSON.stringify(hits.map((f) => f.excerpt))}`);
+const hits = report.findings.filter((f) => f.type === 'language-leak');
+const expectedLines = [1, 2, 4];
+if (hits.length !== expectedLines.length || !expectedLines.every((line) => hits.some((f) => f.line === line))) {
+  throw new Error(`PDF / DB-40 / LABADMIN 应 blocking，文件名应保护，got ${JSON.stringify(hits.map((f) => `${f.line}:${f.excerpt}`))}`);
+}
+if (!hits.every((f) => f.severity === 'blocking')) {
+  throw new Error(`未授权缩写与型号应全为 blocking: ${JSON.stringify(hits)}`);
 }
 NODE
-echo "  OK 裸英文词泄漏：PDF / DB-40 / .pptx / LABADMIN 0 误伤"
+echo "  OK 缩写/型号零容忍：PDF / DB-40 / LABADMIN blocking，.pptx 文件名保护"
 
 # --- 中文正文语言门禁：纯英文句段 / 完整英文台词 / 连续短语 / TitleCase / 短词 ---
 LANG_POS="$TMP_DIR/language-zh-positive.md"
@@ -215,10 +219,10 @@ const expected = new Map([
   [2, ['blocking', '纯英文句段泄漏']],
   [3, ['blocking', '纯英文句段泄漏']],
   [4, ['blocking', '完整英文台词泄漏']],
-  [5, ['advisory', '英文专名/短词疑似泄漏']],
-  [6, ['advisory', '英文专名/短词疑似泄漏']],
+  [5, ['blocking', '英文专名/短词泄漏']],
+  [6, ['blocking', '英文专名/短词泄漏']],
   [7, ['blocking', '裸英文词泄漏']],
-  [8, ['advisory', '裸英文词泄漏']],
+  [8, ['blocking', '裸英文词泄漏']],
   [9, ['blocking', '完整英文台词泄漏']],
   [10, ['blocking', '完整英文台词泄漏']],
   [11, ['blocking', '完整英文台词泄漏']],
@@ -234,7 +238,7 @@ for (const [line, [severity, label]] of expected) {
   }
 }
 NODE
-echo "  OK 中文语言门禁：纯英文句段/英文台词/连续短语 blocking，TitleCase/短词 advisory，引号 offset 精确"
+echo "  OK 中文语言门禁：英文句段/台词/短语/TitleCase 全部 blocking，引号 offset 精确"
 
 # --- .deslop-whitelist：Latin token / 完整短句只做大小写敏感的精确豁免，不做子串 ---
 WHITE_ROOT="$TMP_DIR/whitelist-project"
@@ -263,23 +267,23 @@ set -e
 node - "$OUT" <<'NODE'
 const fs = require('fs');
 const hits = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.filter((f) => f.type === 'language-leak');
-if (hits.length !== 3) {
-  throw new Error(`whitelist 精确匹配应只剩 Aiden / Open...now / shadowed 三项，got ${JSON.stringify(hits.map((f) => `${f.line}:${f.message}`))}`);
+if (hits.length !== 4) {
+  throw new Error(`whitelist 精确匹配应只剩 Aiden / Open...now / shadowed / OK 四项，got ${JSON.stringify(hits.map((f) => `${f.line}:${f.message}`))}`);
 }
 const aiden = hits.find((f) => f.line === 1);
-if (!aiden || aiden.severity !== 'advisory' || !aiden.message.includes('Aiden')) {
+if (!aiden || aiden.severity !== 'blocking' || !aiden.message.includes('Aiden')) {
   throw new Error(`白名单 AI 不得子串豁免 Aiden: ${JSON.stringify(aiden)}`);
 }
-if (hits.some((f) => f.line === 2 || f.line === 3 || f.line === 6 || f.line === 7)) {
-  throw new Error('精确登记的 Latin token / 完整英文短句与全大写缩写台词应豁免');
+if (hits.some((f) => f.line === 2 || f.line === 3 || f.line === 6)) {
+  throw new Error('精确登记的 Latin token / 完整英文短句应豁免');
 }
-if (!hits.some((f) => f.line === 4 && f.severity === 'blocking') || !hits.some((f) => f.line === 5 && f.severity === 'blocking')) {
-  throw new Error('完整短句/Latin token 的超集不得因子串命中白名单而豁免');
+if (![4, 5, 7].every((line) => hits.some((f) => f.line === line && f.severity === 'blocking'))) {
+  throw new Error('完整短句/Latin token 的超集与未登记缩写不得豁免');
 }
 NODE
 echo "  OK .deslop-whitelist：AI≠Aiden，token/完整短句精确豁免，超集不豁免"
 
-# --- 等长保护遮罩：URL/邮箱/Markdown target/inline code/路径/扩展名/数字与 _- 型号 ---
+# --- 等长保护遮罩：只保护 URL/邮箱/Markdown target/inline code/路径/文件名/数字 ---
 PROTECTED="$TMP_DIR/language-protected.md"
 cat > "$PROTECTED" <<'PROSE'
 她把结果发到 https://example.com/open/the-door?file=draft.txt。
@@ -287,13 +291,7 @@ cat > "$PROTECTED" <<'PROSE'
 正文见 [说明页](docs/open-the-door.md)，那里有原件。
 命令写成 `open the old door`，不要执行。
 文件在 /Users/demo/story/open-door/draft.txt，备份是 C:\draft\story_v28.md。
-她核对 draft.txt、.pptx、DB-40、GPT-4、story_v28、A13 和 2026-08-12。
-四月七日凌晨，周妍用 LABADMIN 账号上传。
-医生复核 Ara h 2、F17-Q、V0、PA66、R66-7、QP-07、PDF、KB 和 IP。
-她把 A客户/B客户 分开记录。
-她核对 A-03、B-02、B-04 与原料 A-218。
-封签下方，A、B、C三个编号还在，她又调出 A、B、C包。
-系统只写了一个字母：C，文件名后面有Q。
+她核对 draft.txt、.pptx 和 2026-08-12。
 PROSE
 set +e
 node "$SCRIPT" --language=zh --json "$PROTECTED" > "$OUT"
@@ -305,7 +303,36 @@ if (hits.length !== 0) {
   throw new Error(`保护区不得产生语言泄漏 finding: ${JSON.stringify(hits.map((f) => `${f.line}:${f.message}`))}`);
 }
 NODE
-echo "  OK 等长遮罩：URL/邮箱/Markdown target/代码/路径/扩展名/数字型号 0 误伤"
+echo "  OK 等长遮罩：URL/邮箱/Markdown target/代码/路径/文件名/数字 0 误伤"
+
+# 缩写、型号、科学名称、分组字母与剧情代号都是叙事内容，必须人工确认后登记白名单。
+NARRATIVE_LATIN="$TMP_DIR/narrative-latin.md"
+cat > "$NARRATIVE_LATIN" <<'PROSE'
+她核对 DB-40、GPT-4、story_v28 和 A13。
+医生复核 Ara h 2、F17-Q、V0、PA66、R66-7、QP-07、PDF、KB 和 IP。
+她把 A客户和 B客户分开记录。
+封签下方，A、B、C三个编号还在。
+系统只写了一个字母：C，文件名后面有Q。
+PROSE
+set +e
+node "$SCRIPT" --language=zh --fail-on=blocking --json "$NARRATIVE_LATIN" > "$OUT"
+narrative_latin_status=$?
+set -e
+if [ "$narrative_latin_status" -ne 1 ]; then
+  echo "FAIL: 未授权的缩写/型号/分组字母必须 blocking" >&2
+  exit 1
+fi
+node - "$OUT" <<'NODE'
+const fs = require('fs');
+const hits = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).findings.filter((f) => f.type === 'language-leak');
+for (const line of [1, 2, 3, 4, 5]) {
+  const lineHits = hits.filter((f) => f.line === line);
+  if (lineHits.length === 0 || !lineHits.every((f) => f.severity === 'blocking')) {
+    throw new Error(`line ${line} 应包含 blocking language-leak: ${JSON.stringify(lineHits)}`);
+  }
+}
+NODE
+echo "  OK 叙事内 Latin 零容忍：缩写/型号/分组字母必须白名单授权"
 
 # --- 边界回归：全大写句、无句号单词台词、短中文 auto 不得逃逸 ---
 LANG_EDGE="$TMP_DIR/language-edge.md"

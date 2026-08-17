@@ -36,9 +36,15 @@ node scripts/test-normalize-punctuation.js
 node scripts/test-scan-runtime.js
 bash scripts/test-ai-patterns.sh
 bash scripts/test-degeneration.sh
+bash scripts/test-language-gate.sh
+python3 scripts/test-deslop-guard.py
+bash scripts/test-dialogue-drift-gate.sh
 bash scripts/test-prose-backstop-hook.sh
 bash scripts/test-prose-net-parity.sh
 bash scripts/test-story-continuity.sh
+
+step "data analysis workflow contracts"
+python3 -m unittest discover -s skills/story-data-analyze/tests -p 'test_*.py' -v
 
 step "tracking and deployment contracts"
 python3 scripts/test-tracking-workflow-contracts.py

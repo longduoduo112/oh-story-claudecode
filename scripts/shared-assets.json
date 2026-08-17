@@ -20,6 +20,32 @@
       ]
     },
     {
+      "name": "prose-deslop-guard",
+      "source": "skills/story-deslop/scripts/deslop_guard.py",
+      "targets": [
+        "skills/story-long-write/scripts/deslop_guard.py",
+        "skills/story-short-write/scripts/deslop_guard.py"
+      ]
+    },
+    {
+      "name": "prose-language-gate",
+      "source": "skills/story-deslop/scripts/language_gate.js",
+      "targets": [
+        "skills/story-long-write/scripts/language_gate.js",
+        "skills/story-review/scripts/language_gate.js",
+        "skills/story-short-write/scripts/language_gate.js"
+      ]
+    },
+    {
+      "name": "prose-dialogue-drift-gate",
+      "source": "skills/story-deslop/scripts/dialogue_drift_gate.js",
+      "targets": [
+        "skills/story-long-write/scripts/dialogue_drift_gate.js",
+        "skills/story-review/scripts/dialogue_drift_gate.js",
+        "skills/story-short-write/scripts/dialogue_drift_gate.js"
+      ]
+    },
+    {
       "name": "prose-punctuation-normalizer",
       "source": "skills/story-deslop/scripts/normalize-punctuation.js",
       "targets": [
@@ -75,6 +101,68 @@
       "targets": [
         "skills/story-import/references/tracking-transaction.md",
         "skills/story-review/references/tracking-transaction.md"
+      ]
+    },
+    {
+      "name": "reference-fiction-protection-ledger",
+      "source": "skills/story-deslop/references/fiction-protection-ledger.md",
+      "targets": [
+        "skills/story-long-write/references/fiction-protection-ledger.md",
+        "skills/story-short-write/references/fiction-protection-ledger.md"
+      ]
+    },
+    {
+      "name": "reference-pattern-governance",
+      "source": "skills/story-deslop/references/pattern-governance.md",
+      "targets": [
+        "skills/story-long-write/references/pattern-governance.md",
+        "skills/story-short-write/references/pattern-governance.md"
+      ]
+    },
+    {
+      "name": "reference-structural-audit",
+      "source": "skills/story-deslop/references/structural-audit.md",
+      "targets": [
+        "skills/story-long-write/references/structural-audit.md",
+        "skills/story-short-write/references/structural-audit.md"
+      ]
+    },
+    {
+      "name": "reference-dialogue-craft-moderate",
+      "source": "skills/story-deslop/references/dialogue-craft-moderate.md",
+      "targets": [
+        "skills/story-long-write/references/dialogue-craft-moderate.md",
+        "skills/story-review/references/dialogue-craft-moderate.md",
+        "skills/story-setup/references/agent-references/dialogue-craft-moderate.md",
+        "skills/story-short-write/references/dialogue-craft-moderate.md"
+      ]
+    },
+    {
+      "name": "reference-dialogue-attribution-drift",
+      "source": "skills/story-deslop/references/dialogue-attribution-drift.md",
+      "targets": [
+        "skills/story-long-write/references/dialogue-attribution-drift.md",
+        "skills/story-review/references/dialogue-attribution-drift.md",
+        "skills/story-short-write/references/dialogue-attribution-drift.md"
+      ]
+    },
+    {
+      "name": "reference-dialogue-scene-card-schema",
+      "source": "skills/story-deslop/references/dialogue-scene-card.schema.json",
+      "targets": [
+        "skills/story-long-write/references/dialogue-scene-card.schema.json",
+        "skills/story-review/references/dialogue-scene-card.schema.json",
+        "skills/story-setup/references/agent-references/dialogue-scene-card.schema.json",
+        "skills/story-short-write/references/dialogue-scene-card.schema.json"
+      ]
+    },
+    {
+      "name": "reference-pattern-contracts",
+      "source": "skills/story-deslop/references/pattern-contracts.json",
+      "targets": [
+        "skills/story-long-write/references/pattern-contracts.json",
+        "skills/story-review/references/pattern-contracts.json",
+        "skills/story-short-write/references/pattern-contracts.json"
       ]
     },
     {

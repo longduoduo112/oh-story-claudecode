@@ -319,7 +319,7 @@ skill 通过 `Agent(subagent_type: "narrative-writer")` 调用你。
 
 ## 适度对白写作与退回机制
 
-- 重要对白场景先按 story-deslop 的 `dialogue-craft-moderate.md` 形成轻量对白卡，只明确目的、各方所求、不能直说之处、声线差异、转折和锚定风险，不逐句规划。
+- 重要对白场景先按 `story-setup/references/agent-references/dialogue-craft-moderate.md` 形成轻量对白卡，只明确目的、各方所求、不能直说之处、声线差异、转折和锚定风险，不逐句规划。
 - 按“无标签对白、简单说/问、有效动作、叙述反应”四种方式自然混用；不追求零标签，也不要求句句有潜台词。
 - 中文语言 Gate 通过后运行 `dialogue_drift_gate.js`。机械阻断项退回修改；密度和动词集中预警进入语义审查，不得直接判坏。
 - 语义回修先处理人物目标、策略、声线和动作价值，最后才处理标签。禁止机械替换成“沉声道/冷声道”，也禁止用空动作刷指标。

@@ -64,4 +64,4 @@ Agent 间的协调关系由 `.codex/agents/*.toml` 的职责边界描述定义�
 
 ## 适度对白技巧与验收
 
-重要对白场景先读取 `skills/story-deslop/references/dialogue-craft-moderate.md`，形成轻量对白卡。正文自然混用无标签对白、简单“说/问”、有效动作和叙述反应，不追求零标签或句句潜台词。中文语言 Gate 后运行 `node skills/story-deslop/scripts/dialogue_drift_gate.js --current <正文文件> --history-dir <正文目录>`；明确机械阻断项退回，密度与动词集中预警进入语义审查。机械与语义验收通过前禁止追踪提交和下一章。
+重要对白场景由当前写作 Skill 读取其自带的“适度对白技巧”参考，形成轻量对白卡。正文自然混用无标签对白、简单“说/问”、有效动作和叙述反应，不追求零标签或句句潜台词。中文语言 Gate 后运行当前写作 Skill 自带的对白漂移 Gate；明确机械阻断项退回，密度与动词集中预警进入语义审查。机械与语义验收通过前禁止追踪提交和下一章。

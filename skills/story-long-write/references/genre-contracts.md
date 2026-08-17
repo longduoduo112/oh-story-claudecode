@@ -4,12 +4,12 @@
 
 ## 内置契约
 
-| `genre_id` | 中文名 | 适用场景 | 正文卡 |
-|---|---|---|---|
-| `dungeon-core` | 地下城核心 | 固定核心、地下城建设、冒险者探索双视角 | `genre-prose-cards/地下城核心.md` |
-| `cozy-fantasy` | 温馨奇幻 | 低烈度风险、社区与手艺、关系和归属感推进 | `genre-prose-cards/温馨奇幻.md` |
-| `tower-climber` | 爬塔升级 | 每层独立规则、层级挑战、稳定中型剧情单元 | `genre-prose-cards/爬塔升级.md` |
-| `litrpg` | 数值冒险 | 属性、技能、装备与战斗结果需要可核对的数值因果 | `genre-prose-cards/数值冒险.md` |
+| `genre_id` | 中文名 | 适用场景 | 契约源 | 正文卡 |
+|---|---|---|---|---|
+| `dungeon-core` | 地下城核心 | 固定核心、地下城建设、冒险者探索双视角 | [dungeon-core.json](genre-contracts/dungeon-core.json) | `genre-prose-cards/地下城核心.md` |
+| `cozy-fantasy` | 温馨奇幻 | 低烈度风险、社区与手艺、关系和归属感推进 | [cozy-fantasy.json](genre-contracts/cozy-fantasy.json) | `genre-prose-cards/温馨奇幻.md` |
+| `tower-climber` | 爬塔升级 | 每层独立规则、层级挑战、稳定中型剧情单元 | [tower-climber.json](genre-contracts/tower-climber.json) | `genre-prose-cards/爬塔升级.md` |
+| `litrpg` | 数值冒险 | 属性、技能、装备与战斗结果需要可核对的数值因果 | [litrpg.json](genre-contracts/litrpg.json) | `genre-prose-cards/数值冒险.md` |
 
 契约源文件位于 `references/genre-contracts/*.json`，结构权威为 `references/genre-contract.schema.json`。
 
@@ -24,10 +24,11 @@
 可用命令：
 
 ```bash
-python3 skills/story-long-write/scripts/genre_contract.py list
-python3 skills/story-long-write/scripts/genre_contract.py resolve "爬塔"
-python3 skills/story-long-write/scripts/genre_contract.py materialize "爬塔" "{项目根目录}"
-python3 skills/story-long-write/scripts/genre_contract.py validate "{项目根目录}/设定/题材契约.json"
+for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+"$PYBIN" skills/story-long-write/scripts/genre_contract.py list
+"$PYBIN" skills/story-long-write/scripts/genre_contract.py resolve "爬塔"
+"$PYBIN" skills/story-long-write/scripts/genre_contract.py materialize "爬塔" "{项目根目录}"
+"$PYBIN" skills/story-long-write/scripts/genre_contract.py validate "{项目根目录}/设定/题材契约.json"
 ```
 
 `materialize` 默认拒绝覆盖已有项目契约；只有用户明确要求重建时才能使用 `--force`。

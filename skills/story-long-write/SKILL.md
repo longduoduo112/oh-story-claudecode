@@ -1,6 +1,6 @@
 ---
 name: story-long-write
-version: 1.1.0
+version: 1.1.1
 description: "长篇网文写作。从大纲到正文，辅助长篇网络小说的创作，包括世界观、人物、题材契约、情节线管理与分支推演。触发方式：/story-long-write、/写长篇、「帮我开书」「写大纲」「分支推演」「路线比较」「推演几个走向」「日更」「续写」「继续写」「修改第X章」「回炉」「重写第X章」。"
 metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-claudecode"}}
 ---
@@ -65,7 +65,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 **开书默认停靠**：用户只说"开书/写大纲/帮我开书"时，完成 Phase 1→3 与首批 10 章细纲后停止，报告已生成文件和下一步命令；除非用户同一句明确说"并写第1章/写 N 章/日更"，否则不要自动进入 Phase 4 正文。
 
-**正文批量上限**：写正文必须由用户显式给出章节范围或日更意图。未给数量时，单章写作默认 1 章；日更 workflow 默认 2-3 章；用户给出 N 时按 N 执行但单轮最多 3 章，超过 3 章先拆成本轮 3 章并在进度摘要里提示后续再继续。
+**正文连续任务与微批次**：写正文必须由用户显式给出章节范围、字数目标或日更意图。未给数量时，单章写作默认 1 章；普通日更默认只执行一个 2-3 章微批次。用户明确给出 N 章、章节区间或总字数目标时，把它作为本任务总目标，按每个微批次最多 3 章串行执行；每个微批次都完整提交逐章追踪并执行 Step 3/4 质检。目标尚未完成且没有真实阻塞时，必须在同一任务中自动进入下一微批次，不询问用户是否继续。**3 章只是内部质检粒度，不是任务总量上限。** 仅在用户中断、细纲/章节范围无法安全补齐、章节号冲突、追踪或质量门阻断、需要用户裁决结构性路线时暂停；暂停时报告已完成量、剩余量和阻塞证据。
 
 **匹配优先级**：同时命中多行时，按 大修 → 写指定章 → 分支推演 → 补纲/扩纲 → 日更续写 → 开书 的顺序匹配。用户明确要求比较多个走向时必须先停在推演结果，不得把任一方案自动视为已选；用户点名要"细纲/补纲/规划剧情"而未要正文时，优先入 补纲/扩纲，不入日更。日更续写的 AND 条件（项目已有正文+追踪）不满足时，提示用户"项目还没有正文，建议先开书/写第1章"。
 
@@ -272,7 +272,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 5. **标题预检**：写正文前从细纲读取章名；如与既有章节同名或明显重复，先按本章核心事件改名，并同步细纲标题与正文文件名。
 	6. **写作**：第 1 章如果以内心戏、设定认知或独处开场，必须先把内心变化外化为可见事件（决定、误判、对话、物件变化、外部压力），再按字数目标展开；不得用大段心理独白凑字。若第 1 章低于目标，或正文代入感/推进感偏薄，优先回到细纲补有用子事件、对话交锋或选择代价，不要补解释性内心戏；任务卡点只在角色本来有要办的事、且能卡出信息/关系/代价/选择/伏笔变化时使用，没有就不强补。
 	   - **正文元信息隔离**：`章节：第{N}章`、`上一章：正文/第{N-1}章_*.md`、`匹配第K章`、`细纲文件` 等只用于定位材料。标题行以外的正文不得出现 `第[一二三四五六七八九十百千万两0-9]+章|上一章|上章|前一章|本章|这一章|前文|后文|伏笔|细纲|读者|ch\d+ 等英文章号缩写` 这类写作工程词。需要承接前文时，改成角色能感知的事件锚点或相对时间，例如“比第一章那三秒开火更疼”必须写成“比那三秒开火更疼”。例外：角色在故事世界内真实阅读/讨论“第X章”文本，或真实身为作者/读者并谈论读者身份时，可保留相应词。
-	   - **生成前中文锁**：正文叙述、对话、心理和场景一律默认中文；外国人对话也先翻成中文并在场内注明语种。不得突然生成普通英文句/段、连续英文片段或未授权裸英文词。合法缩写/型号、URL、邮箱、文件路径/扩展名、行内或围栏代码，以及用户/设定明确要求并在 `.deslop-whitelist` 精确登记的外语可保留。
+	   - **生成前中文锁**：正文叙述、对话、心理和场景一律默认中文；外国人对话也先翻成中文并在场内注明语种。不得突然生成普通英文句/段、连续英文片段或未授权裸英文词。URL、邮箱、文件路径/扩展名和行内/围栏代码等非叙事结构由检测器保护；缩写、型号、剧情代号或其他外语必须经用户/设定明确授权并在 `.deslop-whitelist` 精确登记后才可保留。
 7. **正文执行**：
    - 先检查 narrative-writer agent：`.claude/agents/narrative-writer.md` → `.opencode/agents/` → `.codex/agents/`。
    - 如可用，spawn `Agent(subagent_type: "narrative-writer", prompt: ...)`，prompt 只传本章必需材料：
@@ -348,7 +348,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 **确定性收尾**：本批正文写完后，主会话对实际落盘文件运行 `node scripts/check-ai-patterns.js --check --fail-on=blocking 正文/第XXX章_*.md`。blocking 命中先回正文改写并复扫；advisory 逐条读原文判断，确属问题才改，功能性写法标 `[需复核]`。其中 `formulaic-parallelism` 必须连同对话一起复核，不能因为 hook 不阻断台词就略过。
 随后运行 `node scripts/normalize-punctuation.js 正文/第XXX章_*.md`（默认 `--quote-mode keep`）清理无功能省略号、破折号、双连字符和独立分隔线；盐言「」不受影响。narrative-writer agent 不运行这些脚本。
 
-**退化/英文泄漏防护**：正文落盘后运行 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文/第XXX章_*.md`。blocking（普通英文句/段、连续英文片段、未授权裸英文词、复读、截断、拒绝语、tier1 工程词泄漏）只重写受影响句/段或章节，最多 2 次；修复后复扫，仍失败就报告证据让用户定夺。合法缩写/型号、URL、邮箱、文件路径/扩展名、行内或围栏代码和 `.deslop-whitelist` 精确登记项不算泄漏。
+**退化/英文泄漏防护**：正文落盘后运行 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文/第XXX章_*.md`。blocking（普通英文句/段、连续英文片段、未授权裸英文词、复读、截断、拒绝语、tier1 工程词泄漏）只重写受影响句/段或章节，最多 2 次；修复后复扫，仍失败就报告证据让用户定夺。URL、邮箱、文件路径/扩展名和行内/围栏代码等非叙事结构不算泄漏；缩写、型号、剧情代号或外语必须在 `.deslop-whitelist` 精确登记。
 非语言 advisory 只提示可疑处，先看脚本给出的例外；故事内系统/界面用语、弹幕刷屏、重复台词等有功能则保留。语言类 advisory 只有用户/设定明确授权或 `.deslop-whitelist` 精确登记时才能保留。
 
 #### Agent 调用：consistency-checker（硬性必须，非可选）
@@ -465,7 +465,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 | 钩子强度下限（钩子检查时） | `scripts/check-hook-strength.js` |
 | 禁用词扫描 | `references/banned-words.md` |
 | AI句式脚本复扫 | `scripts/check-ai-patterns.js` |
-| 退化与中文语言门 | `scripts/check-degeneration.js --check --language=zh --fail-on=blocking`；保护型号、URL、邮箱、路径、代码与精确白名单 |
+| 退化与中文语言门 | `scripts/check-degeneration.js --check --language=zh --fail-on=blocking`；仅机械保护 URL、邮箱、路径、文件名、代码，其他外语需精确白名单 |
 | 去AI味 | `references/anti-ai-writing.md` |
 | 发布前导出为纯文本 | `scripts/export-for-platform.js`（只做格式转换，不做登录/发布，发布仍需作者本人在平台后台手动操作） |
 
@@ -497,7 +497,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## 去味保护协议 v1.1
 
-本轮新写章节进入去AI味独立审查前，若 `story-deslop/scripts/deslop_guard.py` 可用，先创建 `standard + bounded` 候选运行并补全小说保护账本。narrative-writer 只编辑候选稿，完成现有 Gate 后先做保真审计，再只对改动区做残留味审计；保护检查通过后才写回本轮章节。不得修改追踪派生文件，也不得因脚本命中自动扩大到整章结构重写。
+本轮新写章节进入去AI味独立审查前，先读 [小说保护账本](references/fiction-protection-ledger.md)、[模式治理](references/pattern-governance.md) 和 [结构审计](references/structural-audit.md)，再用 [本 Skill 自带的保真脚本](scripts/deslop_guard.py) 创建 `standard + bounded` 候选运行并补全小说保护账本。narrative-writer 只编辑候选稿，完成现有 Gate 后先做保真审计，再只对改动区做残留味审计；保护检查通过后才写回本轮章节。不得修改追踪派生文件，也不得因脚本命中自动扩大到整章结构重写。
 
 ## 中文正文英文零容忍门
 
@@ -505,4 +505,8 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## 本章语言验收 Gate（强制）
 
-每章初稿完成后立即运行 `../story-deslop/scripts/language_gate.js`。返回非零时，把报告中的行号、原片段和所在行退回本章正文写作者修改，并重复检查；在返回码为零前，禁止去味验收、追踪提交和下一章写作。不得用自动翻译、删除英文或新增白名单代替正文修改。
+每章初稿完成后立即运行 `node scripts/language_gate.js "{正文文件}"`。返回非零时，把报告中的行号、原片段和所在行退回本章正文写作者修改，并重复检查；在返回码为零前，禁止去味验收、追踪提交和下一章写作。不得用自动翻译、删除英文或新增白名单代替正文修改。
+
+## 适度对白技巧与漂移 Gate（强制）
+
+重要对白场景先按 [适度对白技巧](references/dialogue-craft-moderate.md) 建立轻量对白卡，并以 [对白卡 schema](references/dialogue-scene-card.schema.json) 约束字段；长程退化边界见 [对白归属标记漂移](references/dialogue-attribution-drift.md)。中文语言 Gate 通过后运行 `node scripts/dialogue_drift_gate.js --current "{正文文件}" --history-dir "{正文目录}"`；明确的连续逐句报幕必须退回，密度和动词集中预警只进入语义审查，不机械判坏。

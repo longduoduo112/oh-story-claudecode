@@ -67,7 +67,7 @@ const META_PLANNING_MARKER_RE = /内容概括|情节安排|预算合计|结尾�
 // 归 tier1。\b 前界保证 Bach13、Munch13 这类词不误伤。
 // 中文正文语言门禁。旧规则只扫「单行 CJK 占比 ≥50% + 全小写 ≥4 位」的裸词，会漏掉
 // 纯英文段、TitleCase 人名占位、go/to 等短词，以及英文占比一高就自动逃逸的整句。
-// 新规则先按整份正文判语言，再用等长遮罩保护 URL/邮箱/代码/路径/型号，最后按精确 offset
+// 新规则先按整份正文判语言，再用等长遮罩保护 URL/邮箱/代码/路径/文件名，最后按精确 offset
 // 判断命中是否真的位于引号内；同一行其他位置出现引号不再把整行误降级。
 const CJK_CHAR_RE = /[\u3400-\u9fff]/g;
 const LATIN_LETTER_RE = /[A-Za-z]/g;
@@ -76,16 +76,6 @@ const LATIN_TOKEN_RE = new RegExp(`(?<![A-Za-z0-9])${LATIN_TOKEN_SOURCE}(?![A-Za
 const LANGUAGE_MODES = new Set(['auto', 'zh', 'en']);
 const LANGUAGE_PHRASE_MIN_WORDS = 3;
 const LANGUAGE_PHRASE_MIN_LETTERS = 12;
-// 全大写句子不能利用“缩写保护”逃逸。只把高频自然语言词还原为
-// 普通英文 token；PDF/API/GPT 等真缩写仍保护。
-const UPPERCASE_ENGLISH_WORDS = new Set([
-  'A', 'AN', 'AND', 'ARE', 'BACK', 'BE', 'BEFORE', 'BUT', 'CLOSE', 'COME', 'DO',
-  'DOOR', 'GET', 'GO', 'HELP', 'HELLO', 'HOME', 'I', 'IS', 'LEAVE', 'ME', 'MIDNIGHT',
-  'MOVED', 'NO', 'NOBODY', 'NOW', 'OLD', 'OPEN', 'OR', 'OUT', 'PLEASE', 'QUIET',
-  'ROAD', 'ROOM', 'RUN', 'SHE', 'SORRY', 'STOP', 'TAKE', 'THE', 'THEY', 'WAIT',
-  'WAS', 'WE', 'YES', 'YOU',
-]);
-
 const META_CHAPTER_REF_RE = /\b(?:ch|chap|chapter)\.?\s?\d{1,4}\b/i;
 const META_TIER2_RE = /第[一二三四五六七八九十百千万两0-9]+章|本章|这一章|上一章|下一章|上章|下章|前一章|后一章|前文|后文|伏笔|读者|任务描述/;
 
@@ -549,22 +539,9 @@ function maskProtectedLatin(text) {
   maskMatches(/(?<![A-Za-z0-9])(?:[^\s/\\<>"'“”‘’「」『』【】()（）,，。；;：:!！?？、]+[\\/])+[^\s/\\<>"'“”‘’「」『』【】()（）,，。；;：:!！?？、]+(?![A-Za-z0-9])/g);
   maskMatches(/(?<![A-Za-z0-9])(?:[A-Za-z0-9_-]+\.)+[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])/g);
   maskMatches(/(?<![A-Za-z0-9])\.[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])/g);
-  // 过敏原/菌株等科学名称的窄形态（Ara h 2），以及 A客户/B客户 这类中文分组标签。
-  maskMatches(/(?<![A-Za-z0-9])[A-Z][a-z]{2,}\s+[a-z]\s+\d+(?![A-Za-z0-9])/g);
-  maskMatches(/(?<![A-Za-z0-9])[A-Z](?=[\u3400-\u9fff])/g);
-  // 真实正文会用 A、B、C包 / A、B、C三个编号 表示已定义分组；只在后面
-  // 紧跟明确分类词时保护整段，不把任意单字母全局放行。
-  maskMatches(/(?<![A-Za-z0-9])(?:[A-Z][、,，\/／]){1,}[A-Z](?=(?:[一二三四五六七八九十百两千0-9]+(?:个)?)?(?:包|组|类|客户|方案|版本|档|编号|记录|样本|文件))/g);
-  // “一个字母：C”与“文件名后面有Q”是显式字母/后缀语境；只遮罩该单字母。
-  maskMatches(
-    /(?:字母|文件名(?:后面|末尾)|后缀|代号|编号)\s*(?:是|为|有|写着|标成|：|:)?\s*([A-Z])(?![A-Za-z0-9])/g,
-    (match) => {
-      const offset = match[0].lastIndexOf(match[1]);
-      return [match.index + offset, match.index + offset + match[1].length];
-    },
-  );
-  // 数字、含数字的字母型号、下划线标识符与 DB-40/GPT-4 一类连字符型号。
-  maskMatches(/(?<![A-Za-z0-9])(?:[A-Za-z]+\d[A-Za-z0-9_-]*|\d+[A-Za-z][A-Za-z0-9_-]*|[A-Za-z0-9]+_[A-Za-z0-9_-]+|[A-Za-z]+-\d[A-Za-z0-9-]*)(?![A-Za-z0-9])/g);
+  // 只保护纯数字。缩写、型号、科学名称、分组字母和剧情代号
+  // 都属于叙事内容，不得由检测器猜测放行；用户确认保留时写入
+  // .deslop-whitelist。这与独立 language_gate.js 的零容忍边界一致。
   maskMatches(/(?<![A-Za-z0-9])\d+(?:[.,:/-]\d+)*%?(?![A-Za-z0-9])/g);
   return chars.join('');
 }
@@ -595,17 +572,8 @@ function latinTokens(text) {
   }));
 }
 
-function isUpperAcronym(token) {
-  return /^[A-Z]{2,}$/.test(token.replace(/['’]/g, ''));
-}
-
-function isUppercaseEnglishWord(token) {
-  return UPPERCASE_ENGLISH_WORDS.has(token.replace(/['’]/g, ''));
-}
-
 function isOrdinaryEnglishToken(token, whitelist) {
-  if (isWhitelistedToken(token.value, whitelist)) return false;
-  return !isUpperAcronym(token.value) || isUppercaseEnglishWord(token.value);
+  return !isWhitelistedToken(token.value, whitelist);
 }
 
 function isEnglishOnlySegment(text) {
@@ -666,8 +634,8 @@ function findLanguageLeak(content, whitelist) {
     const ranges = quotedRanges(trimmed);
     const covered = [];
 
-    // 完整英文台词：引号内容除标点外全为英文。单个 TitleCase 仍按“疑似专名”只提示，
-    // 全大写缩写（OK/PDF）保留；其余未精确登记的完整英文台词直接 blocking。
+    // 完整英文台词：引号内容除标点外全为英文。未精确登记的
+    // TitleCase、短词与全大写缩写同样 blocking。
     for (const range of ranges) {
       const segment = masked.slice(range.contentStart, range.contentEnd);
       if (!isEnglishOnlySegment(segment)) continue;
@@ -683,8 +651,8 @@ function findLanguageLeak(content, whitelist) {
         cover(covered, range.contentStart, range.contentEnd);
         continue;
       }
-      // 整个引号内只有英文时就是完整英文台词；“Go”即使没句号也不能被
-      // TitleCase 专名 advisory 规则放过。确属专名/引文时用精确白名单表达意图。
+      // 整个引号内只有英文时就是完整英文台词；“Go”即使没句号也不能逃逸。
+      // 确属专名/引文时用精确白名单表达意图。
       findings.push(languageFinding(
         lineNo,
         columnAt(range.contentStart),
@@ -749,7 +717,7 @@ function findLanguageLeak(content, whitelist) {
     const candidates = tokens.filter((token) => !isCovered(covered, token.index, token.end));
     let run = [];
     const flushRun = () => {
-      const uppercasePhrase = run.length >= 2 && run.every((token) => isUppercaseEnglishWord(token.value));
+      const uppercasePhrase = run.length >= 2 && run.every((token) => /^[A-Z]+$/.test(token.value));
       if (run.length < LANGUAGE_PHRASE_MIN_WORDS && !uppercasePhrase) {
         run = [];
         return;

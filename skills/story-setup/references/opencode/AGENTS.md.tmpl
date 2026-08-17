@@ -55,6 +55,10 @@ Agent 间的协调关系由各 Agent 定义文件的职责边界描述，不需�
 
 中文正文和台词中出现未授权拉丁字母词时一律 blocking，包括短词、专名、缩写和中英混合台词。只豁免 URL、邮箱、文件路径、代码等非正文结构以及 `.deslop-whitelist` 精确登记项；语言泄漏未清零不得交付。
 
-## 适度对白技巧与验收
+## 正文语言验收最终解释
 
-重要对白场景先读取 `skills/story-deslop/references/dialogue-craft-moderate.md`，形成轻量对白卡。正文自然混用无标签对白、简单“说/问”、有效动作和叙述反应，不追求零标签或句句潜台词。中文语言 Gate 后运行 `node skills/story-deslop/scripts/dialogue_drift_gate.js --current <正文文件> --history-dir <正文目录>`；明确机械阻断项退回，密度与动词集中预警进入语义审查。机械与语义验收通过前禁止追踪提交和下一章。
+本节覆盖前文任何“缩写/型号可默认保留”的宽松描述。中文正文初稿完成后必须运行 story-deslop 的 `language_gate.js`；发现中英文混杂时退回原正文写作者修改并复检。Gate 返回码为零之前不得继续后续流程。禁止自动翻译、简单删除或添加白名单绕过修改。
+
+## 适度对白写作与验收
+
+重要对白场景先读取 story-deslop 的 `dialogue-craft-moderate.md`，按轻量对白卡明确人物目标、策略、声线与转折。正文不追求零标签或句句潜台词；允许必要的简单“说/问”，动作必须有独立叙事价值。中文语言 Gate 后运行 `dialogue_drift_gate.js`，机械阻断项退回，密度与动词集中预警进入语义审查；全部通过前不得提交追踪或开始下一章。

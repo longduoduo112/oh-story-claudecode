@@ -67,7 +67,8 @@
 初始化示例：
 
 ```bash
-python3 skills/story-long-write/scripts/outline_forecast.py init "{项目根目录}" \
+for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+"$PYBIN" skills/story-long-write/scripts/outline_forecast.py init "{项目根目录}" \
   --level unit \
   --divergence "主角是否现在公开真实能力" \
   --author-intent "保持主角主动性，同时延后终极身份揭示" \
@@ -88,7 +89,8 @@ python3 skills/story-long-write/scripts/outline_forecast.py init "{项目根目�
 Agent 填写 `forecast.json` 中各分支，再运行陈旧检测：
 
 ```bash
-python3 skills/story-long-write/scripts/outline_forecast.py check "{项目根目录}/大纲/推演/{forecast-id}"
+for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+"$PYBIN" skills/story-long-write/scripts/outline_forecast.py check "{项目根目录}/大纲/推演/{forecast-id}"
 ```
 
 ## 选择与写回
@@ -96,10 +98,11 @@ python3 skills/story-long-write/scripts/outline_forecast.py check "{项目根目
 只有用户明确说出选择哪个分支后，才能运行：
 
 ```bash
-python3 skills/story-long-write/scripts/outline_forecast.py select "{推演目录}" --branch B1
+for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+"$PYBIN" skills/story-long-write/scripts/outline_forecast.py select "{推演目录}" --branch B1
 ```
 
-`select` 只生成 `selected-plan.md`，不提供自动写回命令。选择分支和修改正式大纲是两次授权：
+`select` 只生成选择计划文件，不提供自动写回命令。选择分支和修改正式大纲是两次授权：
 
 1. 用户选择分支，生成选择计划。
 2. Agent 说明将修改哪些总纲、卷纲、剧情单元或细纲文件。

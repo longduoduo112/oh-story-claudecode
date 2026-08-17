@@ -202,7 +202,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
   - **多对标书时**：参 `references/cross-book-recall.md`，副对标/参考对标按阶段预算进入"副对标召回摘要"；正文只传摘要，不传副书文风或原文
 - **步骤 2：指令确认**：用一句话概括本场景写作意图（情绪+技法+适配段落），并确认本场景是否有任务卡点、它卡出哪种情绪变化或新证据；没有就不强补。确认后开始写作
 
-**生成前中文锁（主会话 / narrative-writer / solo/direct 同一契约）**：开始每一批正文前都锁定 `language=zh`。叙述、对话、心理和场景必须用中文；外国人对话默认翻成中文并在场内标明语种。普通英文句/段、连续英文片段和未授权裸英文词属于语言泄漏。合法缩写/型号、URL、邮箱、文件路径/扩展名、行内或围栏代码，以及用户/设定明确要求并在 `.deslop-whitelist` 精确登记的外语可保留。
+**生成前中文锁（主会话 / narrative-writer / solo/direct 同一契约）**：开始每一批正文前都锁定 `language=zh`。叙述、对话、心理和场景必须用中文；外国人对话默认翻成中文并在场内标明语种。普通英文句/段、连续英文片段和未授权裸英文词属于语言泄漏。URL、邮箱、文件路径/扩展名和行内/围栏代码等非叙事结构由检测器保护；缩写、型号、剧情代号或其他外语必须经用户/设定授权并在 `.deslop-whitelist` 精确登记后才可保留。
 
 **写作指令：按三维度揉进逐场景写作，不照搬大纲腔。**
 
@@ -358,7 +358,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 ### Phase 4：精修打磨
 
 加载 `references/writing-workflow.md` 中的精修清单完成检查。
-重点：开头钩子、情绪曲线、反转铺垫、每句话价值、格式规范、AI 腔排查。文件模式先运行 `node scripts/check-ai-patterns.js --check --fail-on=blocking 正文.md`：blocking 先改正文并复扫；其他提示只作为读感风险，功能性写法标 `[需复核]`。再运行 `node scripts/normalize-punctuation.js 正文.md` 做标点兜底，并运行 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文.md`。退化 blocking 要重新生成受影响段落，不靠润色；普通英文句/段、连续英文片段或未授权裸英文词须改回中文并复扫。合法缩写/型号、URL、邮箱、文件路径/扩展名、行内或围栏代码和 `.deslop-whitelist` 精确登记项不算泄漏；语言类 advisory 只有用户/设定明确授权或精确白名单命中时才能保留。
+重点：开头钩子、情绪曲线、反转铺垫、每句话价值、格式规范、AI 腔排查。文件模式先运行 `node scripts/check-ai-patterns.js --check --fail-on=blocking 正文.md`：blocking 先改正文并复扫；其他提示只作为读感风险，功能性写法标 `[需复核]`。再运行 `node scripts/normalize-punctuation.js 正文.md` 做标点兜底，并运行 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文.md`。退化 blocking 要重新生成受影响段落，不靠润色；普通英文句/段、连续英文片段或未授权裸英文词须改回中文并复扫。URL、邮箱、文件路径/扩展名和行内/围栏代码等非叙事结构不算泄漏；缩写、型号、剧情代号或外语只有经用户/设定明确授权并命中 `.deslop-whitelist` 时才能保留。
 
 #### Agent 调用：narrative-writer（去AI味）+ consistency-checker
 
@@ -452,7 +452,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## 去味保护协议 v1.1
 
-短篇成稿进入去AI味时，若 `story-deslop/scripts/deslop_guard.py` 可用，先建立源文快照、候选稿和保护账本。短篇情绪烈度、审判句、火葬场预告和有功能的重复应登记为保护项或排除条件；只编辑候选稿，先过保真审计，再对本轮改动区查残留味。问题密度高不等于授权结构重写，默认仍为 `standard + bounded`。
+短篇成稿进入去AI味时，先读 [小说保护账本](references/fiction-protection-ledger.md)、[模式治理](references/pattern-governance.md) 和 [结构审计](references/structural-audit.md)，再用 [本 Skill 自带的保真脚本](scripts/deslop_guard.py) 建立源文快照、候选稿和保护账本。短篇情绪烈度、审判句、火葬场预告和有功能的重复应登记为保护项或排除条件；只编辑候选稿，先过保真审计，再对本轮改动区查残留味。问题密度高不等于授权结构重写，默认仍为 `standard + bounded`。
 
 ## 中文正文英文零容忍门
 
@@ -460,8 +460,8 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## 本篇语言验收 Gate（强制）
 
-短篇初稿完成后立即运行 `../story-deslop/scripts/language_gate.js`。返回非零时，把报告中的行号、原片段和所在行退回正文写作者修改，并重复检查；在返回码为零前，禁止去味验收和正式交付。不得用自动翻译、删除英文或新增白名单代替正文修改。
+短篇初稿完成后立即运行 `node scripts/language_gate.js "{正文文件}"`。返回非零时，把报告中的行号、原片段和所在行退回正文写作者修改，并重复检查；在返回码为零前，禁止去味验收和正式交付。不得用自动翻译、删除英文或新增白名单代替正文修改。
 
 ## 适度对白技巧（强制）
 
-重要对白场景按 `../story-deslop/references/dialogue-craft-moderate.md` 形成轻量对白卡，正文自然混用无标签对白、简单“说/问”、有效动作和叙述反应。对白退化机械检测只阻断明确的连续逐句报幕，密度与动词集中只作预警并进入语义审查；不得用华丽标签、空动作或句句潜台词制造技巧感。
+重要对白场景按 [适度对白技巧](references/dialogue-craft-moderate.md) 形成轻量对白卡，并以 [对白卡 schema](references/dialogue-scene-card.schema.json) 约束字段；退化边界见 [对白归属标记漂移](references/dialogue-attribution-drift.md)。中文语言 Gate 通过后运行 `node scripts/dialogue_drift_gate.js --current "{正文文件}"`。正文自然混用无标签对白、简单“说/问”、有效动作和叙述反应。对白退化机械检测只阻断明确的连续逐句报幕，密度与动词集中只作预警并进入语义审查；不得用华丽标签、空动作或句句潜台词制造技巧感。
