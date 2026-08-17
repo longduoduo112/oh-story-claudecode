@@ -17,11 +17,19 @@ const VERBS = [
   '开口说道', '开口说', '说道', '问道', '反问道', '回答道', '答道',
   '喊道', '叫道', '嘀咕道', '回答', '反问', '嘀咕', '说', '问', '答', '喊', '叫',
 ];
-const MODIFIERS = '(?:又|便|才|却|也|立刻|马上|忽然|低声|沉声|冷声|缓缓|淡淡地?)?';
-const ATTRIBUTION_RE = new RegExp(
-  `(?:^|[“”「」。！？；，\\s])([\\p{Script=Han}]{1,8}?)${MODIFIERS}(${VERBS.join('|')})(?=[，。！？：；])`,
-  'gu',
-);
+const ATTRIBUTION_RE = new RegExp(`(${VERBS.join('|')})(?=[，。！？：；])`, 'gu');
+const TRAILING_MODIFIER_RE = /(?:又|便|才|却|也|立刻|马上|忽然|低声|沉声|冷声|缓缓|淡淡地?)$/u;
+const SUBJECT_RE = /(?:^|[“”「」。！？；，\s])([\p{Script=Han}]{1,6})$/u;
+
+function extractSubject(line, verbIndex) {
+  let before = line.slice(0, verbIndex);
+  before = before.replace(TRAILING_MODIFIER_RE, '');
+  const match = before.match(SUBJECT_RE);
+  if (!match) return null;
+  const subject = match[1];
+  if (subject.length === 1 && !['我', '你', '他', '她', '它'].includes(subject)) return null;
+  return subject;
+}
 
 function parseArgs(argv) {
   const options = { json: false, baselineCount: 3, recentWindow: 3 };
@@ -71,13 +79,13 @@ function analyze(text) {
     ATTRIBUTION_RE.lastIndex = 0;
     const lineOccurrences = [];
     for (const match of line.matchAll(ATTRIBUTION_RE)) {
-      const subject = match[1];
-      const verb = match[2];
+      const verb = match[1];
+      const subject = extractSubject(line, match.index);
       const family = familyOf(verb);
       const item = {
         line: lineIndex + 1,
         column: match.index + 1,
-        text: `${subject}${verb}`,
+        text: subject ? `${subject}${verb}` : verb,
         subject,
         verb,
         family,
@@ -136,19 +144,21 @@ function loadHistory(currentPath, historyDir) {
 
 function evaluate(current, baseline, recent) {
   const findings = [];
-  const add = (code, message) => findings.push({ severity: 'blocking', code, message });
+  const advisories = [];
+  const block = (code, message) => findings.push({ severity: 'blocking', code, message });
+  const advise = (code, message) => advisories.push({ severity: 'advisory', code, message });
 
   if (current.dialogueTurns >= 6 && current.attributionCount >= 6 && current.density >= 0.72) {
-    add('attribution-density', `对白归属标记密度为 ${current.density.toFixed(2)}，已形成逐句报幕倾向`);
+    advise('attribution-density', `对白归属标记密度为 ${current.density.toFixed(2)}，需要结合场景清晰度复核`);
   }
   if (current.attributionCount >= 5 && current.topFamily.ratio >= 0.60) {
-    add('verb-family-repeat', `“${current.topFamily.value}”类标记占全部归属标记的 ${(current.topFamily.ratio * 100).toFixed(0)}%`);
+    advise('verb-family-repeat', `“${current.topFamily.value}”类标记占全部归属标记的 ${(current.topFamily.ratio * 100).toFixed(0)}%`);
   }
   if (current.attributionCount >= 4 && current.topVerb.count >= 4 && current.topVerb.ratio >= 0.50) {
-    add('same-verb-repeat', `“${current.topVerb.value}”重复 ${current.topVerb.count} 次`);
+    advise('same-verb-repeat', `“${current.topVerb.value}”重复 ${current.topVerb.count} 次`);
   }
-  if (current.maxConsecutive >= 3) {
-    add('consecutive-tagged-turns', `连续 ${current.maxConsecutive} 个对白行使用显式“谁说/谁问”标记`);
+  if (current.maxConsecutive >= 4) {
+    block('consecutive-tagged-turns', `连续 ${current.maxConsecutive} 个对白行使用显式归属标记，需退回检查是否逐句报幕`);
   }
 
   const baselineDensity = mean(baseline, (item) => item.metrics.density);
@@ -160,7 +170,7 @@ function evaluate(current, baseline, recent) {
     && current.density >= baselineDensity + 0.25
     && current.density >= baselineDensity * 1.5
   ) {
-    add('baseline-drift', `本章密度 ${current.density.toFixed(2)}，明显高于前期基线 ${baselineDensity.toFixed(2)}`);
+    advise('baseline-drift', `本章密度 ${current.density.toFixed(2)}，明显高于前期基线 ${baselineDensity.toFixed(2)}`);
   }
 
   const recentDensity = mean(recent, (item) => item.metrics.density);
@@ -171,10 +181,10 @@ function evaluate(current, baseline, recent) {
     && current.density >= 0.60
     && current.density >= recentDensity + 0.25
   ) {
-    add('chapter-spike', `本章密度 ${current.density.toFixed(2)}，较近期均值 ${recentDensity.toFixed(2)} 突升`);
+    advise('chapter-spike', `本章密度 ${current.density.toFixed(2)}，较近期均值 ${recentDensity.toFixed(2)} 突升`);
   }
 
-  return { findings, baselineDensity, recentDensity };
+  return { findings, advisories, baselineDensity, recentDensity };
 }
 
 function main() {
@@ -210,17 +220,24 @@ function main() {
         recent_density: evaluation.recentDensity === null ? null : Number(evaluation.recentDensity.toFixed(3)),
       },
       findings: evaluation.findings,
+      advisories: evaluation.advisories,
       examples: current.occurrences.slice(0, 12),
-      next_action: rejected ? 'return_to_narrative_writer_for_contextual_revision' : 'continue_workflow',
+      next_action: rejected
+        ? 'return_to_narrative_writer_for_contextual_revision'
+        : evaluation.advisories.length
+          ? 'continue_with_semantic_dialogue_review'
+          : 'continue_workflow',
     };
 
     if (options.json) {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else if (!rejected) {
       console.log(`PASS: dialogue attribution is stable in ${currentPath}`);
+      evaluation.advisories.forEach((finding) => console.log(`  ADVISORY [${finding.code}] ${finding.message}`));
     } else {
       console.error(`REJECTED: dialogue attribution drift in ${currentPath}`);
       evaluation.findings.forEach((finding) => console.error(`  [${finding.code}] ${finding.message}`));
+      evaluation.advisories.forEach((finding) => console.error(`  ADVISORY [${finding.code}] ${finding.message}`));
       current.occurrences.slice(0, 12).forEach((item) => console.error(`  ${item.line}:${item.column} [${item.text}] ${item.context}`));
       console.error('Return this chapter to the narrative writer, revise in context, then rerun the gate.');
     }

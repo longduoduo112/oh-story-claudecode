@@ -461,3 +461,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 ## 本篇语言验收 Gate（强制）
 
 短篇初稿完成后立即运行 `../story-deslop/scripts/language_gate.js`。返回非零时，把报告中的行号、原片段和所在行退回正文写作者修改，并重复检查；在返回码为零前，禁止去味验收和正式交付。不得用自动翻译、删除英文或新增白名单代替正文修改。
+
+## 适度对白技巧（强制）
+
+重要对白场景按 `../story-deslop/references/dialogue-craft-moderate.md` 形成轻量对白卡，正文自然混用无标签对白、简单“说/问”、有效动作和叙述反应。对白退化机械检测只阻断明确的连续逐句报幕，密度与动词集中只作预警并进入语义审查；不得用华丽标签、空动作或句句潜台词制造技巧感。

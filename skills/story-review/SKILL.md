@@ -528,6 +528,6 @@ Rubric Source: file | embedded fallback
 
 中文作品中任何未精确授权的拉丁字母 token 均按语言泄漏处理，不因位于台词、词很短、首字母大写或全大写而降为 advisory。URL、邮箱、路径、代码和 `.deslop-whitelist` 精确登记项除外。检测脚本报告的 `language-leak blocking` 一律阻止通过，不计入 AI 味轻中重分档。
 
-## 长篇对白归属漂移
+## 适度对白语义审查
 
-审查长篇章节时必须读取 story-deslop 的 `references/dialogue-attribution-drift.md`。若 `dialogue_drift_gate.js` 返回非零，本章结论不得为通过；把指标、行号和例句交回正文写作者修订并复检。
+审查对白时必须读取 story-deslop 的 `references/dialogue-craft-moderate.md` 与 `references/dialogue-attribution-drift.md`。机械 Gate 返回非零时本章不得通过；只有预警时继续语义判断，不得按密度直接退回。重点检查人物是否在采取不同语言策略、主要人物语言能否互换、动作是否只是标签替身、潜台词是否过密、多人场景是否清楚。允许必要的简单“说/问”，禁止机械换成华丽标签或空动作。
