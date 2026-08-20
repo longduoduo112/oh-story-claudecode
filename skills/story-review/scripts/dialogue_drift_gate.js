@@ -18,6 +18,20 @@ const VERBS = [
   '喊道', '叫道', '嘀咕道', '回答', '反问', '嘀咕', '说', '问', '答', '喊', '叫',
 ];
 const ATTRIBUTION_RE = new RegExp(`(${VERBS.join('|')})(?=[，。！？：；])`, 'gu');
+const NON_SPEECH_PREFIX_RE = /(?:没有|没|未|未曾|不曾|不想|不愿|不肯|拒绝|避免|懒得|无意|只想|想|想要|打算|准备|正要|刚要|试图|来不及)\s*$/u;
+const OPEN_QUOTE_RE = /^[，,:：\s]*[“「『"]/u;
+const POST_QUOTE_TAG_RE = /^[，,\s]*[\p{Script=Han}]{1,12}$/u;
+
+function isHighConfidenceAttribution(line, verbIndex, verb) {
+  const before = line.slice(0, verbIndex);
+  if (NON_SPEECH_PREFIX_RE.test(before.slice(-12))) return false;
+  const afterVerb = line.slice(verbIndex + verb.length);
+  if (OPEN_QUOTE_RE.test(afterVerb)) return true;
+  const closeQuote = Math.max(before.lastIndexOf('”'), before.lastIndexOf('」'), before.lastIndexOf('』'), before.lastIndexOf('"'));
+  if (closeQuote < 0) return false;
+  return POST_QUOTE_TAG_RE.test(before.slice(closeQuote + 1));
+}
+
 const TRAILING_MODIFIER_RE = /(?:又|便|才|却|也|立刻|马上|忽然|低声|沉声|冷声|缓缓|淡淡地?)$/u;
 const SUBJECT_RE = /(?:^|[“”「」。！？；，\s])([\p{Script=Han}]{1,6})$/u;
 
@@ -80,6 +94,7 @@ function analyze(text) {
     const lineOccurrences = [];
     for (const match of line.matchAll(ATTRIBUTION_RE)) {
       const verb = match[1];
+      if (!isHighConfidenceAttribution(line, match.index, verb)) continue;
       const subject = extractSubject(line, match.index);
       const family = familyOf(verb);
       const item = {

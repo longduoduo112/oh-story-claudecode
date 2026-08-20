@@ -921,10 +921,13 @@ def test_chinese_prose_language_contract() -> None:
         for anchor in (
             "中文正文语言锁",
             "story-globalize",
+            "language_gate.js",
             ".deslop-whitelist",
             "--language=zh",
             "英文句子",
             "裸英文词",
+            "用户单独确认",
+            "HTML",
         ):
             require(anchor in text, f"language-lock: {relative} is missing {anchor}")
         line = next(
@@ -950,6 +953,9 @@ def test_chinese_prose_language_contract() -> None:
         '"**/正文.md"',
         "禁止中文正文语言漂移",
         ".deslop-whitelist",
+        "明确非叙事结构",
+        "用户单独确认",
+        "HTML 标签、注释和实体",
     ):
         require(anchor in story_format, f"language-lock: story-format is missing {anchor}")
 
@@ -961,14 +967,20 @@ def test_chinese_prose_language_contract() -> None:
     for relative in self_lock_templates:
         text = (REPO_ROOT / relative).read_text(encoding="utf-8")
         for anchor in (
+            'node "{当前写作 Skill 目录}/scripts/language_gate.js" "{正文文件}"',
             "check-ai-patterns.js",
             "check-degeneration.js",
             "--language=zh",
             "--fail-on=blocking",
             "story-globalize",
             ".deslop-whitelist",
+            "用户单独确认",
+            "HTML",
         ):
             require(anchor in text, f"language-lock: {relative} is missing {anchor}")
+        gate_index = text.index("language_gate.js")
+        require(gate_index < text.index("check-ai-patterns.js"), f"language-lock: {relative} must run language_gate first")
+        require(gate_index < text.index("check-degeneration.js"), f"language-lock: {relative} must run language_gate first")
 
     chinese_skill_paths = (
         "skills/story-deslop/SKILL.md",
@@ -978,7 +990,15 @@ def test_chinese_prose_language_contract() -> None:
     )
     for relative in chinese_skill_paths:
         text = (REPO_ROOT / relative).read_text(encoding="utf-8")
-        for anchor in ("check-degeneration.js", "--language=zh", "--fail-on=blocking"):
+        for anchor in (
+            "language_gate.js",
+            "check-degeneration.js",
+            "--language=zh",
+            "--fail-on=blocking",
+            ".deslop-whitelist",
+            "用户单独确认",
+            "HTML",
+        ):
             require(anchor in text, f"language-lock: {relative} is missing {anchor}")
 
     router = (REPO_ROOT / "skills/story/SKILL.md").read_text(encoding="utf-8")

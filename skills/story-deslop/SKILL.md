@@ -12,7 +12,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 **中文正文语言边界**：本 skill 的普通正文流程按 `zh` 处理，文件模式与交互贴文模式都不得把中文润色成英文。普通英文句/段、连续英文片段和未授权的裸英文词属于语言泄漏，不是可保留的“原文风格”。英文小说、英文短故事、中文改英文、native 化或海外发行请求应路由 `story-globalize`；当前环境没有该 skill 时报告缺失并停止，不用本中文去味流程交付英文正稿。
 
-**中文正文英文零容忍门**：中文正文的叙述和台词中，只要出现未授权的外文字母 token，无论是 ASCII 单词、短词、TitleCase 专名、全大写缩写、中英混合台词、全角/扩展拉丁字母、数学/带圈字母，还是常见希腊与西里尔混淆字符，统一判为 `language-leak blocking`。不再根据词长、大小写或“看起来像专名”自动放行。URL、邮箱、Markdown 链接目标、文件路径、扩展名、行内/围栏代码等非正文结构继续由解析器保护；剧情确需保留的外语必须在 `.deslop-whitelist` 中按完整 token 或完整短句精确登记。`--fail-on=blocking` 未清零前不得交付中文正文。
+**中文正文外语与标记硬门**：中文正稿的叙述和台词中，ASCII 单词、短词、TitleCase 专名、全大写缩写、型号、剧情代号、中英混合台词、全角/扩展字母、数学/带圈字母和希腊/西里尔混淆字符都不得由模型自行豁免，未授权项统一判为 `language-leak blocking`。URL、邮箱、代码、路径和文件名只有明确属于非叙事结构时才由检测器机械保护；用户明确要求逐字保留的其他外语，必须单独确认后在 `.deslop-whitelist` 精确登记。HTML 标签、HTML 注释和实体统一判为 `forbidden-markup blocking`；未清零前不得交付。
 
 ---
 
@@ -154,16 +154,17 @@ for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
 
 > 评价只输出 AI味等级（轻度/中度/重度）与问题标记；不做「上乘 / 新人投稿属上乘 / 性价比高」这类横向市场判断——skill 没有平台投稿分布数据，这类措辞是无依据的越权担保。
 
-**确定性句式预检（文件模式）**：当输入是本地正文文件路径时，「AI味扫描」必须先运行本 skill 自带脚本，只报告不修改：
+**确定性句式预检（文件模式）**：当输入是本地正文文件路径时，必须先运行独立语言门，返回零后才进入「AI味扫描」；脚本只报告不修改：
 
 ```bash
+node scripts/language_gate.js <正文文件...>
 node scripts/check-ai-patterns.js --check --fail-on=blocking <正文文件...>
 node scripts/check-degeneration.js --check --language=zh --fail-on=blocking <正文文件...>
 ```
 
 - severity=blocking 的类别（`not-is-comparison` / `em-dash` / `voice-contrast` / `negation-parade` / `reverse-not-is` / `trailer-ending` / `trailer-summary`）并入 Gate B，属于写作/去 AI 味时优先处理的 blocking 类问题。
 - 其他 findings（碎句号、长段落、微动作、动作清单、抽象总结、套词、比喻密度、解释链、公文腔、过度精炼、低连接密度、引号强调滥用、`formulaic-parallelism` 工整并列）只作读感提示；完整类别和修法见 `references/anti-ai-writing.md`。其中工整并列会扫描台词，必须读语境判断，不能因为 hook 对台词低误报豁免就跳过。
-- `check-degeneration.js` 的 `language-leak` 语言 blocking（消息会细分纯英文句段、完整英文台词、连续短语或裸词）不计入 AI 味轻/中/重定档，但必须先改回中文并复扫。URL、邮箱、Markdown 链接目标、文件路径/扩展名和行内/围栏代码等非叙事结构由检测器保护；缩写、型号、剧情代号或其他叙事内外语只有在 `.deslop-whitelist` 精确登记后才不属于泄漏。
+- `check-degeneration.js` 的 `language-leak` 语言 blocking（消息会细分纯英文句段、完整英文台词、连续短语或裸词）不计入 AI 味轻/中/重定档，但必须先改回中文并复扫。URL、邮箱、Markdown 链接目标、文件路径/扩展名和行内/围栏代码只机械保护明确非叙事结构；缩写、型号、剧情代号不得自动豁免，其他外语只在用户单独确认后才能由 `.deslop-whitelist` 精确登记。HTML 标记不属于可保留格式。
 - 处理方式：删掉否定铺垫，直接写后项；或改成角色动作、物件细节、身体反应来呈现。
 - 若用户只要检测，保留报告不改文。若执行去 AI 味，只改确实损害读感且无叙事功能的问题；功能性写法标 `[需复核]` 并保留。
 
@@ -251,7 +252,7 @@ Pass F 未通过时禁止进入 Pass R；保真优先级高于去味彻底度。
 
 匹配规则：扫描时若禁用词命中段对应的子串在 `.deslop-whitelist` 中存在同样的子串，跳过该次告警。匹配方式与 banned-words.md 一致，使用子串扫描。
 
-**语言门单独使用精确匹配**：外文人名、术语或确需保留的外语对白，要以完整 token 或完整短句写入 `.deslop-whitelist`；不做子串泛化。例如白名单 `AI` 不能顺带豁免 `Aiden`。上一段的子串规则只用于 banned-words 命中，不用于语言泄漏。
+**语言门的白名单边界**：`.deslop-whitelist` 可处理禁用词误报；语言 Gate 只精确豁免用户已单独确认需逐字保留的外语 token 或完整短句，不得由模型自行添加、泛化或子串匹配。URL、邮箱、代码、路径和文件名等明确非叙事结构由检测器机械保护，不需要白名单；HTML 标记不得豁免。
 
 示例 `.deslop-whitelist`：
 
@@ -400,9 +401,10 @@ AI写作的结尾特征：总想总结、升华、点题。
 
 ### Phase 4：确定性收尾（文件模式）
 
-当输入是正文文件路径，且「逐项清除」已落盘修改后，**先**做句式/段落复扫，**再**做机械标点兜底（破折号要按功能改写，故先于机械替换报出）：
+当输入是正文文件路径，且「逐项清除」已落盘修改后，**先**复跑独立语言门，通过后再做句式/段落复扫，**最后**做机械标点兜底（破折号要按功能改写，故先于机械替换报出）：
 
 ```bash
+node scripts/language_gate.js <正文文件...>
 node scripts/check-ai-patterns.js --check --fail-on=blocking <正文文件...>
 node scripts/check-degeneration.js --check --language=zh --fail-on=blocking <正文文件...>
 node scripts/normalize-punctuation.js <正文文件...>
@@ -411,7 +413,7 @@ node scripts/normalize-punctuation.js <正文文件...>
 作用边界：
 - `check-ai-patterns.js` 只报告不改写：severity=blocking 的类别（`not-is-comparison` / `em-dash` / `voice-contrast` / `negation-parade` / `reverse-not-is` / `trailer-ending` / `trailer-summary`）优先改正文并复扫；advisory 先通读判断，确属提纲感、解释腔或模板腔再改，功能性写法标 `[需复核]`。
 - 它只是读感提示；完整类别、例外和修法见 `references/anti-ai-writing.md`。
-- `check-degeneration.js` 报告模型退化（逐字复读/打转、末尾截断、占位符、工程词泄漏 `细纲`/`情节点`、中文正文里的英文句段/裸词等），每条带 `severity: blocking|advisory`。复读/截断/拒绝语等 blocking 重新生成受影响段落；语言 blocking 把未授权英文改回中文。两类都必须复扫清零才能交付；advisory 只有在用户/设定明确授权或 `.deslop-whitelist` 精确登记时才能保留。
+- `check-degeneration.js` 报告模型退化（逐字复读/打转、末尾截断、占位符、工程词泄漏 `细纲`/`情节点`、中文正文里的英文句段/裸词等），每条带 `severity: blocking|advisory`。复读/截断/拒绝语等 blocking 重新生成受影响段落；语言 blocking 把未授权英文改回中文。两类都必须复扫清零才能交付；外语只有在用户单独确认并精确登记后才能保留，去味跳过不影响此门。
 - `normalize-punctuation.js` 机械兜底：清除残留的 `……`、漏网破折号 `——`/`—`、双连字符 `--` 和独立行 `---`；默认不改变引号风格，也不把有功能的 `？` / 少量 `！` 改成句号。
 - 知乎盐言短篇可保留 `「」`；只有用户或项目明确要求时，才给标点脚本加 `--quote-mode ascii` 或 `--quote-mode yan`。
 - 对话中表示被打断或拖长的 `——` 不再作为例外保留；脚本会改成句号、逗号、动作可承接的断句或中文连接词。无功能标点堆砌由人工 Gate D/E 判断处理。
@@ -509,7 +511,7 @@ node scripts/normalize-punctuation.js <正文文件...>
 
 ## 中文正文语言验收 Gate（强制）
 
-正文初稿完成后，先按 `references/language-gate-loop.md` 运行 `scripts/language_gate.js`。发现中英文混杂时，必须把行号、原片段和所在行退回原正文写作者；修改后重新检查。只有 Gate 返回码为零，才可继续去味、退化检查、追踪提交或下一章。Gate 不自动翻译，也不自动添加白名单。
+正文初稿完成后，第一关按 `references/language-gate-loop.md` 运行 `scripts/language_gate.js`。发现中英文混杂或 HTML 标记时，必须把行号、原片段和所在行退回原正文写作者；修改后重新检查。只有 Gate 返回码为零，才可继续其他检测、去味、追踪提交或下一章。Gate 不自动翻译、不自动添加白名单；确需逐字保留的其他外语须由用户单独确认后精确登记。
 
 ## 适度对白技巧与退化检查（强制）
 

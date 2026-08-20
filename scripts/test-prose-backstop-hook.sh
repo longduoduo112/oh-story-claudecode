@@ -58,8 +58,8 @@ expect_fire_kw() {
 # bash 字符串重复填充正文（不走 python stdout：Windows runner 上 python<3.15 的文本 stdout
 # 是 cp1252，写中文会 UnicodeEncodeError；printf 直出脚本里的 UTF-8 字节字面量才稳）。
 PAD() { local s='顾临握紧拳头慢慢走向门口心里盘算着接下来的每一步棋。'; printf '%s' "$s$s$s$s$s$s$s$s"; }
-# 干净：长正文 + 排比 + AI 角色对话（「作为AI…」在引号内豁免）+ 悬念收尾标点 → 完全静默
-{ printf '# 第10章 决战\n\n'; PAD; printf '\n要么生，要么死。\n要么战，要么逃。\n「作为AI管家，我陪你到最后。」\n他终于停下了脚步。\n'; } > "$TMP/某书/正文/第010章_决战.md"
+# 干净：长正文 + 排比 + 纯中文角色对话 + 悬念收尾标点 → 完全静默
+{ printf '# 第10章 决战\n\n'; PAD; printf '\n要么生，要么死。\n要么战，要么逃。\n「作为智能管家，我陪你到最后。」\n他终于停下了脚步。\n'; } > "$TMP/某书/正文/第010章_决战.md"
 expect_silent "$TMP/某书/正文/第010章_决战.md"
 # 截断：结尾无标点
 { printf '# 第11章\n\n'; PAD; printf '\n他猛地冲过去一拳砸在'; } > "$TMP/某书/正文/第011章_截断.md"
@@ -74,12 +74,13 @@ expect_fire_kw "$TMP/某书/正文/第013章_工程词.md" 工程词
 { printf '# 第14章\n\n'; PAD; printf '\n他握紧拳头一步步走过去缓缓逼近。\n他握紧拳头一步步走过去缓缓逼近。\n他停下了。\n'; } > "$TMP/某书/正文/第014章_复读.md"
 expect_fire_kw "$TMP/某书/正文/第014章_复读.md" 复读
 
-# 中文语言网：混合长英文必须由真实 PostToolUse hook 命中；去味跳过不豁免语言；
+# 中文语言网：混合长英文必须由真实 PostToolUse hook 命中；旧 HTML 跳过标记自身也阻断，且不豁免语言；
 # 项目级精确白名单则应放行指定 token。
 { printf '# 第15章\n\n'; PAD; printf '\n他盯着门，this should never happen again，然后关了灯。\n他走了。\n'; } > "$TMP/某书/正文/第015章_英文.md"
 expect_fire_kw "$TMP/某书/正文/第015章_英文.md" 连续英文短语泄漏
 { printf '# 第16章\n\n<!-- 去味:跳过 -->\n'; PAD; printf '\n他看见 shadow 伏在暗处。\n他走了。\n'; } > "$TMP/某书/正文/第016章_去味不豁免英文.md"
-expect_fire_kw "$TMP/某书/正文/第016章_去味不豁免英文.md" 裸英文词泄漏
+expect_fire_kw "$TMP/某书/正文/第016章_去味不豁免英文.md" 裸外文字母泄漏
+expect_fire_kw "$TMP/某书/正文/第016章_去味不豁免英文.md" "HTML 标记泄漏"
 printf '%s\n' 'watcher' > "$TMP/某书/.deslop-whitelist"
 { printf '# 第17章\n\n'; PAD; printf '\n他看见 watcher 伏在暗处。\n他走了。\n'; } > "$TMP/某书/正文/第017章_白名单.md"
 expect_silent "$TMP/某书/正文/第017章_白名单.md"
@@ -108,7 +109,7 @@ rm -f "$TMP/某书/.deslop-whitelist"
 printf '%s\n' 'watcher' > "$TMP/.deslop-whitelist"
 expect_silent "$TMP/某书/正文/第017章_白名单.md"
 rm -f "$TMP/.deslop-whitelist"
-expect_fire_kw "$TMP/某书/正文/第017章_白名单.md" 裸英文词泄漏
+expect_fire_kw "$TMP/某书/正文/第017章_白名单.md" 裸外文字母泄漏
 
 if [ "$fails" -ne 0 ]; then
   echo "Prose backstop hook tests FAILED ($fails)." >&2

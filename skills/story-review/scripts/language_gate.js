@@ -1,21 +1,17 @@
 #!/usr/bin/env node
-
-/**
- * Hard gate for Chinese prose.
- *
- * The gate reports foreign-language fragments and exits non-zero. It never
- * rewrites prose and never creates whitelist entries. The narrative writer is
- * responsible for revising the reported sentences and running the gate again.
- */
+'use strict';
 
 const fs = require('fs');
 const path = require('path');
 
+// 这些是明确的非叙事结构，不是正文语言例外。外层流程应尽量不把
+// 技术报告/配置交给本 Gate；确实嵌在 Markdown 文件时只机械保护结构本身。
 const PROTECTED_PATTERNS = [
   /```[\s\S]*?```/g,
   /`[^`\n]+`/g,
   /https?:\/\/[^\s<>()]+/gi,
   /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g,
+  /(?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|\/)(?:[^\s/\\<>"'“”‘’「」『』【】()\uff08\uff09,，。；;\uff1a:!！?\uff1f、]+[\\/])*[^\s/\\<>"'“”‘’「」『』【】()\uff08\uff09,，。；;\uff1a:!！?\uff1f、]+/g,
   /(?:^|[\s（(《“"'])[^\s]+\.(?:md|txt|json|ya?ml|toml|js|mjs|cjs|ts|tsx|jsx|py|sh|html|css)(?=$|[\s）)》”"'，。！？；：,.!?;:])/gim,
 ];
 
@@ -30,7 +26,7 @@ function loadWhitelist(inputPath) {
     if (fs.existsSync(candidate)) {
       const entries = fs.readFileSync(candidate, 'utf8')
         .split(/\r?\n/)
-        .map((line) => line.trim())
+        .map((line) => line.replace(/\s+#.*$/, '').trim())
         .filter((line) => line && !line.startsWith('#'));
       return { path: candidate, entries: [...new Set(entries)] };
     }
@@ -40,9 +36,53 @@ function loadWhitelist(inputPath) {
   }
 }
 
-function isForeignAt(text, index) {
-  if (index < 0 || index >= text.length) return false;
-  return isForeignLetter(String.fromCodePoint(text.codePointAt(index)));
+function compact(value, limit = 120) {
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
+function locate(text, offset) {
+  const before = text.slice(0, offset);
+  const line = before.split('\n').length;
+  const lineStart = before.lastIndexOf('\n') + 1;
+  const lineEndRaw = text.indexOf('\n', offset);
+  const lineEnd = lineEndRaw === -1 ? text.length : lineEndRaw;
+  return { line, column: offset - lineStart + 1, context: compact(text.slice(lineStart, lineEnd)) };
+}
+
+function findForbiddenMarkup(text, mask) {
+  const findings = [];
+  const pattern = /<!--[\s\S]*?-->|<\/?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|&(?:[A-Za-z][A-Za-z0-9]+|#\d+|#x[0-9A-Fa-f]+);/g;
+  for (const match of text.matchAll(pattern)) {
+    let protectedStructure = true;
+    for (let index = match.index; index < match.index + match[0].length; index += 1) {
+      if (!mask[index]) {
+        protectedStructure = false;
+        break;
+      }
+    }
+    if (protectedStructure) continue;
+    mask.fill(1, match.index, match.index + match[0].length);
+    findings.push({
+      severity: 'blocking',
+      type: 'forbidden-markup',
+      text: compact(match[0]),
+      ...locate(text, match.index),
+      action: 'return_to_narrative_writer',
+    });
+  }
+  return findings;
+}
+
+function isForeignLetter(char) {
+  for (const unit of char.normalize('NFKC')) {
+    if (/\p{L}/u.test(unit) && !/\p{Script=Han}/u.test(unit)) return true;
+  }
+  return false;
+}
+
+function isBridge(char) {
+  return /[\p{M}\p{N}_'’.+/#-]/u.test(char);
 }
 
 function isWhitelistTokenAt(text, index) {
@@ -51,7 +91,7 @@ function isWhitelistTokenAt(text, index) {
   return isForeignLetter(char) || /[0-9_.+/#-]/.test(char);
 }
 
-function markWhitelistEntries(text, protectedUnits, entries) {
+function markWhitelistEntries(text, mask, entries) {
   for (const entry of entries) {
     let offset = 0;
     while (offset <= text.length - entry.length) {
@@ -60,86 +100,51 @@ function markWhitelistEntries(text, protectedUnits, entries) {
       const end = start + entry.length;
       const beforeForeign = isWhitelistTokenAt(text, start - 1);
       const afterForeign = isWhitelistTokenAt(text, end);
-      // 多词短句只保护完整短句；“Open the door”不能子串豁免
-      // “Open the door now”。单 token 同样不得子串豁免 AidenX。
-      const followedByForeignWord = /\s/.test(text[end] || '')
-        && isForeignAt(text, end + ((text.slice(end).match(/^\s+/) || [''])[0].length));
-      if (!beforeForeign && !afterForeign && !followedByForeignWord) {
-        protectedUnits.fill(1, start, end);
-      }
+      const whitespace = (text.slice(end).match(/^\s+/) || [''])[0];
+      const followedByForeignWord = whitespace.length > 0
+        && isForeignLetter(String.fromCodePoint(text.codePointAt(end + whitespace.length) || 0));
+      if (!beforeForeign && !afterForeign && !followedByForeignWord) mask.fill(1, start, end);
       offset = start + Math.max(entry.length, 1);
     }
   }
 }
 
-function markProtected(text, whitelistEntries) {
-  const protectedUnits = new Uint8Array(text.length);
+function markProtectedStructures(text, mask) {
   for (const pattern of PROTECTED_PATTERNS) {
     pattern.lastIndex = 0;
     for (const match of text.matchAll(pattern)) {
-      const start = match.index;
-      const end = start + match[0].length;
-      protectedUnits.fill(1, start, end);
+      mask.fill(1, match.index, match.index + match[0].length);
     }
   }
-  markWhitelistEntries(text, protectedUnits, whitelistEntries);
-  return protectedUnits;
 }
 
-function isForeignLetter(char) {
-  const normalized = char.normalize('NFKC');
-  if (/[A-Za-z]/.test(normalized)) return true;
-  return /\p{Script=Latin}|\p{Script=Greek}|\p{Script=Cyrillic}/u.test(char);
-}
-
-function isBridge(char) {
-  return isForeignLetter(char) || /[0-9_.+/#-]/.test(char);
-}
-
-function lineAndColumn(text, index) {
-  const prefix = text.slice(0, index);
-  const line = prefix.split('\n').length;
-  const lastBreak = prefix.lastIndexOf('\n');
-  return { line, column: index - lastBreak };
-}
-
-function lineContext(text, index) {
-  const start = text.lastIndexOf('\n', index - 1) + 1;
-  const nextBreak = text.indexOf('\n', index);
-  const end = nextBreak === -1 ? text.length : nextBreak;
-  return text.slice(start, end).trim();
-}
-
-function scan(text, whitelistEntries = []) {
-  const protectedUnits = markProtected(text, whitelistEntries);
+function findForeignLetters(text, mask) {
   const findings = [];
   let index = 0;
-
   while (index < text.length) {
     const char = String.fromCodePoint(text.codePointAt(index));
-    const width = char.length;
-    if (protectedUnits[index] || !isForeignLetter(char)) {
-      index += width;
+    if (mask[index] || !isForeignLetter(char)) {
+      index += char.length;
       continue;
     }
 
     const start = index;
-    let end = index + width;
+    let end = index + char.length;
     while (end < text.length) {
+      if (mask[end]) break;
       const next = String.fromCodePoint(text.codePointAt(end));
-      if (protectedUnits[end]) break;
-      if (isBridge(next)) {
+      if (isForeignLetter(next) || isBridge(next)) {
         end += next.length;
         continue;
       }
-      if (/\s/.test(next)) {
+      if (/[ \t]/.test(next)) {
         let cursor = end + next.length;
         while (cursor < text.length) {
           const whitespace = String.fromCodePoint(text.codePointAt(cursor));
-          if (!/\s/.test(whitespace)) break;
+          if (!/[ \t]/.test(whitespace)) break;
           cursor += whitespace.length;
         }
-        if (cursor < text.length && !protectedUnits[cursor]) {
+        if (cursor < text.length && !mask[cursor]) {
           const following = String.fromCodePoint(text.codePointAt(cursor));
           if (isForeignLetter(following)) {
             end = cursor;
@@ -150,65 +155,72 @@ function scan(text, whitelistEntries = []) {
       break;
     }
 
-    const position = lineAndColumn(text, start);
     findings.push({
       severity: 'blocking',
       type: 'mixed-language',
       text: text.slice(start, end),
-      line: position.line,
-      column: position.column,
-      context: lineContext(text, start),
+      ...locate(text, start),
       action: 'return_to_narrative_writer',
     });
     index = end;
   }
-
   return findings;
 }
 
-function main() {
-  const args = process.argv.slice(2);
-  const jsonOutput = args.includes('--json');
-  const positional = args.filter((arg) => !arg.startsWith('--'));
-  if (positional.length !== 1) {
+function scan(text, whitelistEntries = []) {
+  const mask = new Uint8Array(text.length);
+  markProtectedStructures(text, mask);
+  const markupFindings = findForbiddenMarkup(text, mask);
+  markWhitelistEntries(text, mask, whitelistEntries);
+  return [...markupFindings, ...findForeignLetters(text, mask)]
+    .sort((a, b) => a.line - b.line || a.column - b.column);
+}
+
+function main(argv) {
+  let json = false;
+  let input = null;
+  for (const arg of argv) {
+    if (arg === '--json') json = true;
+    else if (!input) input = arg;
+    else {
+      usage();
+      return 3;
+    }
+  }
+  if (!input) {
     usage();
-    process.exit(3);
+    return 3;
   }
 
-  const inputPath = path.resolve(positional[0]);
+  const inputPath = path.resolve(input);
   let text;
   try {
     text = fs.readFileSync(inputPath, 'utf8');
   } catch (error) {
-    console.error(`language_gate: ${error.message}`);
-    process.exit(3);
+    console.error(`language_gate: cannot read ${inputPath}: ${error.message}`);
+    return 3;
   }
 
   const whitelist = loadWhitelist(inputPath);
   const findings = scan(text, whitelist.entries);
-  const result = {
-    status: findings.length === 0 ? 'passed' : 'rejected',
+  const report = {
+    status: findings.length ? 'rejected' : 'passed',
     file: inputPath,
     findings,
     whitelist_file: whitelist.path,
-    next_action: findings.length === 0
-      ? 'continue_workflow'
-      : 'revise_reported_sentences_and_rerun_gate',
+    next_action: findings.length ? 'revise_reported_sentences_and_rerun_gate' : 'continue_workflow',
   };
 
-  if (jsonOutput) {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  } else if (findings.length === 0) {
-    console.log(`PASS: no mixed-language fragments in ${inputPath}`);
-  } else {
-    console.error(`REJECTED: ${findings.length} mixed-language fragment(s) in ${inputPath}`);
-    for (const item of findings) {
-      console.error(`  ${item.line}:${item.column} [${item.text}] ${item.context}`);
+  if (json) console.log(JSON.stringify(report, null, 2));
+  else if (findings.length === 0) console.log(`PASS: no foreign letters or forbidden markup in ${inputPath}`);
+  else {
+    console.error(`REJECTED: ${findings.length} language/markup finding(s) in ${inputPath}`);
+    for (const finding of findings) {
+      console.error(`  ${finding.line}:${finding.column} [${finding.type}] ${finding.text}`);
+      console.error(`    ${finding.context}`);
     }
-    console.error('Return this draft to the narrative writer, revise it, then rerun the gate.');
   }
-
-  process.exit(findings.length === 0 ? 0 : 2);
+  return findings.length ? 2 : 0;
 }
 
-main();
+process.exitCode = main(process.argv.slice(2));

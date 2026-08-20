@@ -196,9 +196,6 @@ TOXIC_SYNC=(
   '删章尾状态总结句，收束状态是细纲的规划口径，正文落到具体动作、画面或台词上。'
   '毒句式是确定性 AI 指纹：本章须清零后再继续。完整扫描：node <skill>/scripts/check-ai-patterns.js --check <正文文件>'
   '处未清毒句式欠账，'
-  '去味:跳过'
-  '去味(：|:)跳过'
-  '\r?\n'
 )
 toxic_fail=0
 for needle in "${TOXIC_SYNC[@]}"; do
@@ -216,16 +213,18 @@ done
 LANGUAGE_SYNC=(
   "[A-Za-z]+(?:['’][A-Za-z]+)?"
   "[A-Za-z]+(?:['’][A-Za-z]+)?(?:[ \t]+[A-Za-z]+(?:['’][A-Za-z]+)?){2,}"
-  '[A-Z][a-z]{2,}[ \t]+[a-z][ \t]+\d{1,4}'
-  '(?:[A-Z][、,，/／]){1,}[A-Z]'
   '(?:[A-Za-z0-9_-]+\.)+[A-Za-z][A-Za-z0-9]{0,11}'
   '\]\s*\[([A-Za-z0-9_.-]+)\]'
   '纯英文句段泄漏'
   '完整英文台词泄漏'
   '连续英文短语泄漏'
   '裸英文词泄漏'
-  '英文专名/短词疑似泄漏'
-  '中文正文必须改成中文；确需逐字保留时写入 .deslop-whitelist 精确登记。'
+  '台词外文字母泄漏'
+  '裸外文字母泄漏'
+  'Unicode 外文字母泄漏'
+  '必须经用户单独确认后写入 .deslop-whitelist 精确登记。'
+  'HTML 标记泄漏'
+  'HTML 标签、注释和实体不得进入交付正文。'
   '处未清中文语言漂移欠账'
   '.deslop-whitelist'
 )
@@ -238,14 +237,13 @@ for needle in "${LANGUAGE_SYNC[@]}"; do
   done
 done
 
-# 欠账门在 Claude bash 侧另有一份前置实现（guard-outline-before-prose.sh：上一章发现 +
-# 首 6 行豁免窗口 + 拦截文案，毒句式扫描本身走共享核 prose-toxic），豁免标记与门文案
-# 必须与 js/py 三处同步。
+# 欠账门在 Claude bash 侧另有一份前置实现（guard-outline-before-prose.sh）。
+# 正文 HTML 跳过标记不得在任何 Hook 中生效；欠账文案必须与 js/py/bash 同步。
 GUARD_SH="$REPO_ROOT/skills/story-setup/references/templates/hooks/guard-outline-before-prose.sh"
+CLI_JS="$REPO_ROOT/skills/story-setup/references/templates/hooks/story_hook_cli.js"
 GATE_SYNC=(
-  '去味(：|:)跳过'
   '未清毒句式欠账'
-  '<!-- 去味:跳过 --> 后重试'
+  '正文不得添加 HTML 豁免标记'
 )
 for needle in "${GATE_SYNC[@]}"; do
   for file in "$JS_CORE" "$PY_HOOK" "$GUARD_SH"; do
@@ -255,8 +253,14 @@ for needle in "${GATE_SYNC[@]}"; do
     fi
   done
 done
+for file in "$JS_CORE" "$PY_HOOK" "$GUARD_SH" "$CLI_JS"; do
+  if grep -Eq '去味(：|:)跳过' "$file"; then
+    echo "FAIL: Hook 仍包含可被正文触发的去味跳过标记 — $(basename "$file")"
+    toxic_fail=1
+  fi
+done
 if [ "$toxic_fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "OK: 毒句式 + 中文语言网正则/常量/文案 js↔py 逐字同步（欠账门标记/文案含 bash 前置门同步）"
+echo "OK: 毒句式 + 中文语言网正则/常量/文案 js↔py 逐字同步（欠账门含 bash 前置门同步，正文 HTML 跳过标记不生效）"

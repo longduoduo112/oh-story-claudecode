@@ -96,7 +96,7 @@ run_functional() {
 
   cat > "$tmp/fixtures.json" <<'EOF'
 {
-  "clean": "顾临睁开眼天还没亮。\n他要快要狠要赢这是唯一的活路。\n「作为AI管家，我劝你别白费力气。」\n他握紧拳头走向门口。",
+  "clean": "顾临睁开眼天还没亮。\n他要快要狠要赢这是唯一的活路。\n「作为人工智能管家，我劝你别白费力气。」\n他握紧拳头走向门口。",
   "truncate": "顾临握紧拳头慢慢走向门口。\n顾临冲过去一拳砸在",
   "refuse": "夜色压下来。\n作为AI我无法继续创作这部分内容。",
   "ai_selfref_model": "夜色压下来。\n作为一个AI语言模型，我需要提醒您接下来的情节包含暴力描写。",
@@ -119,8 +119,11 @@ run_functional() {
   "language_dialogue_no_punct": "他堵在门口。\n“Go”\n她抬眼看他。",
   "language_oneword_sentence": "他堵在门口。\nSorry.\n她没理他。",
   "language_hyphen_not_model": "他说 it is well-known，然后走了。\n没人追他。",
-  "language_protected": "他打开 https://example.com/a，发信到 ops@example.com，下载 report.pdf，再键入 `npm install foo`，核对 DB-40。\n屏幕亮了。",
+  "language_protected": "他打开 https://example.com/a，发信到 ops@example.com，下载 report.pdf，再键入 `npm install foo`。\n屏幕亮了。",
   "language_science_protected": "报告列着 Ara h 2、A-03、A-218、F17-Q、LABADMIN、V0、PA66、R66-7、QP-07、PDF、KB、IP、A、B、C包 和 A客户/B客户。\n他把报告合上了。",
+  "language_unicode_blocked": "门牌上写着ＡＩ、𝐀𝐈、Α和А。\n他没有伸手。",
+  "language_html_blocked": "他停了一下。<br>然后继续。\n<!-- 内部备注 -->",
+  "language_html_code_protected": "非叙事示例是 `<br>`。\n```html\n<!-- note -->\n```\n他合上了本子。",
   "language_fenced_protected": "```text\nthis should never be scanned\n```\n他把终端合上了。",
   "language_long_fence_protected": "````text\nconst label = English words here;\n```\nThe room was quiet and nobody moved.\n````\n他把终端合上了。",
   "language_markdown_reference_protected": "正文见 [说明][docs]。\n[docs]: https://example.com/doc\n她继续往前走。",
@@ -188,6 +191,7 @@ JS
   # 毒句式 fixture 防空转断言（两端同错也能 diff 通过，故对期望输出显式断言）：
   # 正例（用户实抓的真实毒句）须命中对应规则；反例（对话内/either-or/确认语/是不是/
   # 窗口外 trailer）须完全静默。
+  grep -q '^clean | $' "$tmp/py.txt" || { echo "FAIL: 纯中文干净正文未保持静默" >&2; return 3; }
   grep -q '^toxic_voice | 第2行 毒句式\[voice-contrast\]' "$tmp/py.txt" || { echo "FAIL: 毒句式正例 voice-contrast 未命中「声音不高…却」" >&2; return 3; }
   grep -q '^toxic_negation | 第1行 毒句式\[negation-parade\]' "$tmp/py.txt" || { echo "FAIL: 毒句式正例 negation-parade 未命中「没有…没有…」" >&2; return 3; }
   grep -q '^toxic_cross_negation | $' "$tmp/py.txt" || { echo "FAIL: 跨段「不是/也不是/只是」应由深扫语义复核，不应进轻量 blocking 网" >&2; return 3; }
@@ -210,10 +214,13 @@ JS
   grep -q '^toxic_trailer_window_ok | $' "$tmp/py.txt" || { echo "FAIL: 文末 600 字窗口外的「没人知道」被误报" >&2; return 3; }
   grep -q '^toxic_quote_mid_ok | $' "$tmp/py.txt" || { echo "FAIL: 句中引号段未按等长占位截断，规则跨引号拼出假命中" >&2; return 3; }
   grep -q '^toxic_multi_tail_ok | $' "$tmp/py.txt" || { echo "FAIL: 带中间对比项的反问尾巴「…，不是吗」被误报" >&2; return 3; }
-  grep -q '^toxic_exempt_marker_ok | $' "$tmp/py.txt" || { echo "FAIL: 标「去味:跳过」的正文毒句式未被写后网豁免" >&2; return 3; }
-  grep -q '^toxic_exempt_fullwidth_ok | $' "$tmp/py.txt" || { echo "FAIL: 全角冒号豁免标记「去味：跳过」未生效" >&2; return 3; }
-  grep -q '^toxic_exempt_other_nets | 第4行 工程词泄漏' "$tmp/py.txt" || { echo "FAIL: 豁免标记不应连带关掉毒句式以外的网（工程词漏检）" >&2; return 3; }
-  grep '^toxic_exempt_other_nets' "$tmp/py.txt" | grep -q '毒句式' && { echo "FAIL: 豁免标记在场时毒句式仍被推回" >&2; return 3; }
+  grep '^toxic_exempt_marker_ok' "$tmp/py.txt" | grep -q '毒句式\[negation-parade\]' || { echo "FAIL: 旧去味 HTML 标记仍绕过写后毒句式网" >&2; return 3; }
+  grep '^toxic_exempt_marker_ok' "$tmp/py.txt" | grep -q 'HTML 标记泄漏' || { echo "FAIL: 旧去味 HTML 标记本身未阻断" >&2; return 3; }
+  grep '^toxic_exempt_fullwidth_ok' "$tmp/py.txt" | grep -q '毒句式\[negation-parade\]' || { echo "FAIL: 全角冒号旧标记仍绕过毒句式网" >&2; return 3; }
+  grep '^toxic_exempt_fullwidth_ok' "$tmp/py.txt" | grep -q 'HTML 标记泄漏' || { echo "FAIL: 全角冒号旧 HTML 标记本身未阻断" >&2; return 3; }
+  grep '^toxic_exempt_other_nets' "$tmp/py.txt" | grep -q '第4行 工程词泄漏' || { echo "FAIL: 旧标记不得关掉工程词网" >&2; return 3; }
+  grep '^toxic_exempt_other_nets' "$tmp/py.txt" | grep -q '毒句式\[negation-parade\]' || { echo "FAIL: 旧标记仍关掉毒句式网" >&2; return 3; }
+  grep '^toxic_exempt_other_nets' "$tmp/py.txt" | grep -q 'HTML 标记泄漏' || { echo "FAIL: 旧 HTML 标记本身未阻断" >&2; return 3; }
   grep -q '^toxic_astral_window_ok | $' "$tmp/py.txt" || { echo "FAIL: 引号内 emoji 的占位长度未按 UTF-16 码元对齐，trailer 窗口切点漂移" >&2; return 3; }
   grep -q '^toxic_quote_codename_ok | $' "$tmp/py.txt" || { echo "FAIL: 引号占位替 trailer-summary 的句末 [。！] 伪造终止符（占位字符落进了规则接受位）" >&2; return 3; }
 
@@ -235,23 +242,27 @@ JS
   grep -q '^language_dialogue_one | 第2行 完整英文台词泄漏：「Sorry」' "$tmp/py.txt" || { echo "FAIL: 单词英文台词 Sorry 未按 blocking 命中" >&2; return 3; }
   grep -q '^language_dialogue_ascii_one | 第2行 完整英文台词泄漏：「Yes」' "$tmp/py.txt" || { echo "FAIL: ASCII 引号内单词英文台词未按 blocking 命中" >&2; return 3; }
   grep -q '^language_mixed | 第1行 连续英文短语泄漏' "$tmp/py.txt" || { echo "FAIL: 中文行内连续英文短语未命中" >&2; return 3; }
-  grep -q '^language_bare | 第1行 裸英文词泄漏：「watcher」' "$tmp/py.txt" || { echo "FAIL: 中文叙述里的裸英文词未命中" >&2; return 3; }
+  grep -q '^language_bare | 第1行 裸外文字母泄漏：「watcher」' "$tmp/py.txt" || { echo "FAIL: 中文叙述里的裸外文字母未命中" >&2; return 3; }
   grep -q '^language_quote_scope | 第1行 连续英文短语泄漏' "$tmp/py.txt" || { echo "FAIL: 同行别处引号污染了英文命中的作用域" >&2; return 3; }
-  grep -q '^language_titlecase_advisory | 第1行 英文专名/短词疑似泄漏：「Alice」' "$tmp/py.txt" || { echo "FAIL: 未登记 TitleCase 专名未给出 advisory" >&2; return 3; }
+  grep -q '^language_titlecase_advisory | 第1行 裸外文字母泄漏：「Alice」' "$tmp/py.txt" || { echo "FAIL: 未登记 TitleCase 专名未按 blocking 命中" >&2; return 3; }
   grep -q '^language_dialogue_no_punct | 第2行 完整英文台词泄漏：「Go」' "$tmp/py.txt" || { echo "FAIL: 无句末标点的单词英文台词 Go 未按 blocking 命中" >&2; return 3; }
   grep -q '^language_oneword_sentence | 第2行 纯英文句段泄漏：「Sorry」' "$tmp/py.txt" || { echo "FAIL: 叙述层单词英文句未按 blocking 命中" >&2; return 3; }
-  grep -q '^language_hyphen_not_model | .*裸英文词泄漏：「well」' "$tmp/py.txt" || { echo "FAIL: 普通连字符英文词被误当型号保护，导致英文句绕过 blocking" >&2; return 3; }
-  grep -q '^language_protected | $' "$tmp/py.txt" || { echo "FAIL: URL/邮箱/inline code/扩展名/型号保护区被误报" >&2; return 3; }
-  grep -q '^language_science_protected | $' "$tmp/py.txt" || { echo "FAIL: 科学名称/型号/大写缩写/客户路径合法串被误报" >&2; return 3; }
+  grep -q '^language_hyphen_not_model | .*裸外文字母泄漏：「well」' "$tmp/py.txt" || { echo "FAIL: 普通连字符英文词被误当型号保护，导致英文句绕过 blocking" >&2; return 3; }
+  grep -q '^language_protected | $' "$tmp/py.txt" || { echo "FAIL: URL/邮箱/inline code/扩展名等明确非叙事结构被误报" >&2; return 3; }
+  grep -q '^language_science_protected | 第1行 裸外文字母泄漏：「Ara」' "$tmp/py.txt" || { echo "FAIL: 科学名称/型号/大写缩写仍被检测器自动豁免" >&2; return 3; }
+  grep -q '^language_unicode_blocked | 第1行 Unicode 外文字母泄漏' "$tmp/py.txt" || { echo "FAIL: Unicode 宽字符/数学/混淆字母逃逸 Hook" >&2; return 3; }
+  grep -q '^language_html_blocked | .*HTML 标记泄漏' "$tmp/py.txt" || { echo "FAIL: 原始 HTML 标签/注释未阻断" >&2; return 3; }
+  grep -q '^language_html_code_protected | $' "$tmp/py.txt" || { echo "FAIL: 明确 inline/fenced code 中的 HTML 被误当交付正文阻断" >&2; return 3; }
   grep -q '^language_fenced_protected | $' "$tmp/py.txt" || { echo "FAIL: fenced code 中英文被语言网误报" >&2; return 3; }
   grep -q '^language_long_fence_protected | $' "$tmp/py.txt" || { echo "FAIL: 四反引号代码围栏被更短围栏提前关闭，误扫围栏内英文" >&2; return 3; }
   grep -q '^language_markdown_reference_protected | $' "$tmp/py.txt" || { echo "FAIL: Markdown reference id/definition 被当成可见英文正文" >&2; return 3; }
-  grep -q '^language_markdown_reference_label | 第1行 裸英文词泄漏：「watcher」' "$tmp/py.txt" || { echo "FAIL: Markdown reference 可见 label 被连同 id 误遮罩" >&2; return 3; }
+  grep -q '^language_markdown_reference_label | 第1行 裸外文字母泄漏：「watcher」' "$tmp/py.txt" || { echo "FAIL: Markdown reference 可见 label 被连同 id 误遮罩" >&2; return 3; }
   grep -q '^language_unicode_path_protected | $' "$tmp/py.txt" || { echo "FAIL: Unicode 目录/无扩展名路径被误报英文泄漏" >&2; return 3; }
   grep -q '^language_upper_sentence | 第2行 纯英文句段泄漏：「GET OUT NOW」' "$tmp/py.txt" || { echo "FAIL: 全大写英文句被无限缩写豁免" >&2; return 3; }
-  grep -q '^language_single_acronym_ok | $' "$tmp/py.txt" || { echo "FAIL: 单个大写缩写 PDF 被误报英文句" >&2; return 3; }
-  grep -q '^language_dialogue_acronym_ok | $' "$tmp/py.txt" || { echo "FAIL: 完整台词中的单个大写缩写 OK 被误报" >&2; return 3; }
-  grep -q '^language_deslop_skip_not_exempt | 第3行 裸英文词泄漏' "$tmp/py.txt" || { echo "FAIL: 去味:跳过 误把中文语言漂移一起豁免" >&2; return 3; }
+  grep -q '^language_single_acronym_ok | 第2行 裸外文字母泄漏：「PDF」' "$tmp/py.txt" || { echo "FAIL: 单个大写缩写 PDF 被自动豁免" >&2; return 3; }
+  grep -q '^language_dialogue_acronym_ok | 第1行 完整英文台词泄漏：「OK」' "$tmp/py.txt" || { echo "FAIL: 台词中的大写缩写 OK 被自动豁免" >&2; return 3; }
+  grep '^language_deslop_skip_not_exempt' "$tmp/py.txt" | grep -q '第3行 裸外文字母泄漏' || { echo "FAIL: 旧去味标记误把中文语言漂移豁免" >&2; return 3; }
+  grep '^language_deslop_skip_not_exempt' "$tmp/py.txt" | grep -q 'HTML 标记泄漏' || { echo "FAIL: 旧去味 HTML 标记本身未阻断" >&2; return 3; }
 
   # .deslop-whitelist：从正文向上读取最近文件；单 token 大小写精确、短句按规范化空白与
   # 外围引号/句末标点后精确匹配，不得做子串（AI 不能豁免 Aiden，I love you 不能豁免更长句）。
@@ -567,7 +578,7 @@ run_claude_core_check() {
 # fixture 至少覆盖：① name 字段大小写变体（NAME/全角空格补白）命中一致——有字段不告警；
 # ② 缺字段/硬编码属性的中文警告文案（含头尾框线）逐字一致；③ 长篇缺细纲/有细纲、
 # 短篇缺小节大纲/无设定信号 4 组阻断判定与阻断文案逐字一致；④ 毒句式欠账门 4 组：
-# 有欠账拦、标「去味:跳过」/全角冒号「去味：跳过」豁免放、上一章含坏字节替换解码继续扫。
+# 有欠账拦、旧去味 HTML 标记不再豁免且自身阻断、上一章含坏字节替换解码继续扫。
 run_uncored_parity() {
   command -v node >/dev/null 2>&1 || return 1
   command -v python3 >/dev/null 2>&1 || return 1
@@ -620,7 +631,7 @@ JS
   grep -q '地理.md' "$tmp/spy.txt" && { echo "FAIL: 设定/ 下非角色子目录应整目录跳过" >&2; return 3; }
 
   # E2: 大纲/追踪阻断判定 —— 长篇缺细纲(拦)/有细纲(放)、短篇缺小节大纲(拦)/无设定信号(放)、
-  #     毒句式欠账门（上一章有欠账拦 / 标「去味:跳过」豁免放 / 全角冒号「去味：跳过」豁免放 /
+  #     毒句式欠账门（上一章有欠账拦 / 旧去味 HTML 标记阻断且不豁免 /
   #     上一章含坏字节替换解码继续扫仍拦）、新书无脚手架时仍须先建细纲（拦）
   local blk="$tmp/blk"
   mkdir -p "$blk/long/正文" "$blk/long/大纲" "$blk/short" "$blk/short2" \
@@ -641,7 +652,7 @@ JS
     "$blk/long9/正文" "$blk/long9/大纲" "$blk/long10/正文" "$blk/long10/大纲"
   for book in long7 long8 long9 long10; do : > "$blk/$book/大纲/细纲_第2章.md"; done
   printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$blk/long7/正文/第1章_旧.md"
-  printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$blk/long8/正文/第1章_旧.md"
+  printf '%s\n' '# 第1章 旧' '他看见 watcher 伏在暗处。' > "$blk/long8/正文/第1章_旧.md"
   printf '%s\n' 'watcher' > "$blk/long8/.deslop-whitelist"
   printf '%s\n' '# 第1章 旧' '他回答：“Go.”' > "$blk/long9/正文/第1章_旧.md"
   printf '%s\n' '# 第1章 旧' '报告列着 Ara h 2、F17-Q、LABADMIN、V0、PA66、R66-7、QP-07、PDF、KB、IP 和 A客户/B客户。' > "$blk/long10/正文/第1章_旧.md"
@@ -688,16 +699,20 @@ JS
   grep -q 'short/正文.md :: ⛔' "$tmp/bpy.txt" || { echo "FAIL: 短篇缺小节大纲未被拦截" >&2; return 3; }
   grep -q 'short2/正文.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 无设定信号的正文.md 被误拦" >&2; return 3; }
   grep -q '毒句式欠账' "$tmp/bpy.txt" || { echo "FAIL: 上一章毒句式欠账未被欠账门拦截" >&2; return 3; }
-  grep -q 'long3/正文/第2章_新.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 标「去味:跳过」豁免的上一章仍被欠账门误拦" >&2; return 3; }
-  grep -q 'long4/正文/第2章_新.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 全角冒号豁免标记「去味：跳过」未被欠账门认可" >&2; return 3; }
+  grep -q 'long3/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" \
+    && grep -q 'HTML 标记泄漏' "$tmp/bpy.txt" \
+    || { echo "FAIL: 旧去味 HTML 标记仍豁免上一章欠账，或标记本身未阻断" >&2; return 3; }
+  grep -q 'long4/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" \
+    && grep -q 'HTML 标记泄漏' "$tmp/bpy.txt" \
+    || { echo "FAIL: 全角冒号旧 HTML 标记仍豁免上一章欠账" >&2; return 3; }
   grep -q 'long5/正文/第2章_新.md :: ⛔' "$tmp/bpy.txt" || { echo "FAIL: 上一章含坏字节时两端应替换解码继续扫（不得整体放行）" >&2; return 3; }
   grep -q 'long6/正文/第2章_新.md :: ⛔.*必须先提交第1章追踪事务' "$tmp/bpy.txt" || { echo "FAIL: state 的 last_committed_chapter 落后正文时未拦住下一章" >&2; return 3; }
-  grep -q 'long7/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" || { echo "FAIL: 去味:跳过 错误豁免了上一章英文旧债" >&2; return 3; }
+  grep -q 'long7/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" || { echo "FAIL: 旧去味 HTML 标记错误豁免了上一章语言旧债" >&2; return 3; }
   grep -q 'long8/正文/第2章_新.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 上一章英文已精确白名单登记仍被旧债门误拦" >&2; return 3; }
   grep -q 'long9/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" \
     && grep -q '完整英文台词泄漏：「Go」' "$tmp/bpy.txt" \
     || { echo "FAIL: 上一章单词英文台词未进入 blocking 旧债门" >&2; return 3; }
-  grep -q 'long10/正文/第2章_新.md :: -' "$tmp/bpy.txt" || { echo "FAIL: 合法科学名称/型号/缩写被上一章语言旧债门误拦" >&2; return 3; }
+  grep -q 'long10/正文/第2章_新.md :: ⛔.*中文语言漂移欠账' "$tmp/bpy.txt" || { echo "FAIL: 科学名称/型号/缩写未经精确白名单却被上一章门自动豁免" >&2; return 3; }
   grep -q 'bare/正文/第1章_起.md :: ⛔' "$tmp/bpy.txt" || { echo "FAIL: 新书无 大纲/追踪/设定 脚手架时首章守卫 fail open" >&2; return 3; }
 
   # E2b: Claude 历史薄壳的双轨追踪门。其他三端保持严格核语义；Claude 只对
@@ -730,7 +745,7 @@ JS
   gate_prev="$gate/legacy_language/book/正文/第1章_旧.md"
   printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$gate_prev"
   gate_prev="$gate/legacy_language_whitelist/book/正文/第1章_旧.md"
-  printf '%s\n' '# 第1章 旧' '<!-- 去味:跳过 -->' '他看见 watcher 伏在暗处。' > "$gate_prev"
+  printf '%s\n' '# 第1章 旧' '他看见 watcher 伏在暗处。' > "$gate_prev"
   printf '%s\n' 'watcher' > "$gate/legacy_language_whitelist/.deslop-whitelist"
   rm -f "$gate/legacy_outline/book/大纲/细纲_第2章.md"
   gate_prev="$gate/legacy_toxic/book/正文/第1章_旧.md"

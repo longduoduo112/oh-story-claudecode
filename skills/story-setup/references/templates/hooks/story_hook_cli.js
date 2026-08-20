@@ -122,13 +122,12 @@ function legacyProseDebtReason(root, target) {
     if (more > 0) reason += `\n（另有 ${more} 处，请执行正文确定性扫描查看全部命中）`
     return reason
   }
-  // 去味跳过只豁免毒句式，不能豁免上面的语言网。
-  if (/去味(：|:)跳过/.test(prevText.split(/\r?\n/).slice(0, 6).join("\n"))) return null
+  // 旧版正文中的 HTML 跳过标记不再生效；语言门和毒句式欠账都必须清零。
   const hits = core.toxicPhraseFindings(prevText).filter((line) => line.startsWith("第"))
   if (!hits.length) return null
   const shown = hits.slice(0, 6)
   const more = hits.length - shown.length
-  let reason = `⛔ 写正文被拦截：上一章（${path.basename(prevFile)}）有 ${hits.length} 处未清毒句式欠账，先清零再写第 ${target.chapter} 章；用户显式豁免时在上一章标题行下加 <!-- 去味:跳过 --> 后重试。\n${shown.join("\n")}`
+  let reason = `⛔ 写正文被拦截：上一章（${path.basename(prevFile)}）有 ${hits.length} 处未清毒句式欠账，先清零再写第 ${target.chapter} 章；毒句式欠账必须改写清零，正文不得添加 HTML 豁免标记。\n${shown.join("\n")}`
   if (more > 0) reason += `\n（另有 ${more} 处，完整扫描：node <skill>/scripts/check-ai-patterns.js --check 上一章文件）`
   return reason
 }

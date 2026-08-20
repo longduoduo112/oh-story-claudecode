@@ -296,7 +296,7 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
   项目路径：{项目根}
   审查范围：{文件路径/章节/必要摘录}
   审查基准包摘要：{Phase 1 形成的 rubric / fallback 摘要，必须内联}
-  语言契约：language=zh；中文正文普通英文句段/裸英文词按 S1/S2 prose 报告，只放行受保护格式或明确授权的精确白名单项
+  语言契约：language=zh；中文正文普通英文句段/裸英文词按 S1/S2 prose 报告；只放行机械识别的非叙事结构，或用户单独确认后精确登记的外语；HTML 标记阻断
   Rubric Source: file | embedded fallback
   AI 味 / 禁用词摘要：{从 anti-ai-writing、banned-words 或内置 fallback 提取，必须内联}
   可选补充参考：本 Skill 的 `story-review/references/anti-ai-writing.md`、`story-review/references/banned-words.md`、`story-review/references/quality-checklist.md`；若不可读，不影响审查。
@@ -311,7 +311,7 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
   8. 身体部位同一词是否超 5 次？
   9. AI味分级（轻度/中度/重度）及证据。
   10. 去 AI 补充复核：是否有作者解释总结/意义尾巴；是否连续堆精致戏剧反应短语；是否把已有手机/屏幕/公告/规则/证据载体改成叙述者解释；是否把任务卡点当成自然感或凑字数手段；是否机械删除了有功能的生活化/角色化比喻或短篇主观审判句。
-  11. 是否出现普通英文句/段、连续英文片段或未授权裸英文词？整句/整段/大范围漂移标 S1 prose，局部泄漏标 S2 prose；URL、邮箱、路径、文件名和代码等非叙事结构不报，缩写/型号/剧情代号需命中 `.deslop-whitelist` 精确项才可保留。
+  11. 是否出现普通英文句/段、连续英文片段或未授权裸英文词？整句/整段/大范围漂移标 S1 prose，局部泄漏标 S2 prose；URL、邮箱、路径、文件名和代码只有明确属于非叙事结构时不报；缩写/型号/剧情代号不得自动豁免，其他外语只在用户单独确认并命中 `.deslop-whitelist` 精确项时保留；HTML 标签/注释/实体按 prose 问题报告。
 
   输出格式：
   VERDICT: APPROVE / CONCERNS / REJECT
@@ -526,7 +526,7 @@ Rubric Source: file | embedded fallback
 
 ## 中文正文英文零容忍审查
 
-中文作品中任何未精确授权的拉丁字母 token 均按语言泄漏处理，不因位于台词、词很短、首字母大写或全大写而降为 advisory。URL、邮箱、路径、代码和 `.deslop-whitelist` 精确登记项除外。审查前运行 `node scripts/language_gate.js "{正文文件}"`；返回非零或其他检测脚本报告 `language-leak blocking` 时一律阻止通过，不计入 AI 味轻中重分档。
+中文作品中任何未精确授权的拉丁字母 token 均按语言泄漏处理，不因位于台词、词很短、首字母大写或全大写而降为 advisory。URL、邮箱、路径、文件名和代码只机械保护明确非叙事结构；其他外语只有在用户单独确认后才可通过 `.deslop-whitelist` 精确登记。HTML 标签、注释和实体一律阻断。审查前首先运行 `node scripts/language_gate.js "{正文文件}"`；返回非零或其他检测脚本报告 `language-leak blocking` 时一律阻止通过，不计入 AI 味轻中重分档。
 
 ## 适度对白语义审查
 

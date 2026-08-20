@@ -51,8 +51,8 @@
 ### v29 承继契约
 
 - **生成前语言锁**：普通长篇、短篇中文写作流程显式锁定 `zh`，narrative-writer 和 solo/direct 回退路径都不得自行切成英文；用户明确要求英文或海外发行时改走 `en` / globalize 语言契约。
-- **交付前中文深扫**：`check-degeneration.js --language=zh` 同时阻断突发的完整英文句段与裸小写英文词，按命中位置判断对话，并在扫描前保护 URL、邮箱、行内/围栏代码、路径、扩展名与型号；合法外文人名、术语或对白继续复用项目根 `.deslop-whitelist` 做精确豁免。
-- **写后与跨章旧债门**：多端写后 Hook 在正文落盘后立即报出英文泄漏；长篇写下一章前再扫上一章的英文旧债。命中 blocking 必须先返修、复扫通过，不得带病交付或继续向后写。
+- **交付前独立中文正文门**：正文落盘后首先运行 `language_gate.js`，返回非零时禁止运行错别字、去味和退化等后续验收。中文叙事和台词中的外语、缩写、型号和代号不得由模型自行豁免；URL、邮箱、行内/围栏代码、路径和文件名只机械保护明确非叙事结构。其他外语只能在用户单独确认逐字保留后精确登记 `.deslop-whitelist`；HTML 标签、注释和实体一律阻断。
+- **写后与跨章旧债门**：多端写后 Hook 在正文落盘后立即报出语言泄漏和 HTML 标记；长篇写下一章前再扫上一章旧债。命中 blocking 必须先返修、复扫通过，不得带病交付或继续向后写。去味跳过只是正文外的人工风格取舍，不得通过 HTML 标记进入正文，也不得绕过语言门。
 
 - 新部署项目（`.story-deployed.agents_version >= 28`）走普通长篇写作时，若尚无 `追踪/_tracking-state.json`，Claude 正文守卫会 fail-closed，要求先完成 `tracking_commit.py init`；旧版或无 sentinel 的存量项目仍保留缺 state 放行，避免升级前被突然卡死。已有 `拆文库/{书名}` 的 `story-import` 迁移仍使用共享核的受控放行窗口，不能借此绕过普通写作的初始化门；state 已存在时，schema、修订一致性和跨章顺序继续走四端共享核。
 - chapter-extractor 的新任务优先返回严格 JSON，由 `render_chapter_summary.py` 校验 schema、枚举、单主题、情节点编号、引用数量和概要长度后原子渲染 Markdown；旧摘要不追溯重写。
@@ -323,13 +323,13 @@
 - **story-architect 模板对齐**：细纲最小结构补 单元ID/位置、主角目标/关键选择；「代价兑现/收益兑现」改名「行动成本（可无）/收益归属」；Phase 2 spawn 也必须附带契约摘要（新增细纲层字段一条）。
 - **审查线对齐新推进模型**：agent-references/quality-checklist.md 同步七类状态分档、悬念/爽点间隔按章节定位豁免，新增「读者契约与终局储备双向审查」一节。
 - **hooks 健壮性**：session-start 部署自检名单纳入 `story_hook_cli.js` / `story_hook_core.js`，并在 node 缺失时一次性 [WARN] 提示正文兜底网/commit 提示/连续性检查已停用（大纲拦截仍有纯 bash 兜底）；staged 提交扫描四份实现（JS core / Codex python / Claude bash / OpenCode pre-commit）语义与中文文案统一，parity 测试新增 Part E（staged warnings 与大纲阻断的 py↔js 逐字锁）。
-- **去AI味闸口机器化（无状态）**：写后正文网新增确定性毒句式检测（不是A而是B 全家族/声线反差/否定排比/预告收尾），写正文落盘即自动扫描并推回命中，Claude/ZCode/OpenCode/Codex 四端同一共享核；写下一章前新增「毒句式欠账门」——上一章有未清 blocking 命中且未标 `<!-- 去味:跳过 -->` 豁免时拦截（判据现算自文件本身，不落任何状态文件，node 缺失或解析失败一律放行）；豁免标记冒号全半角均认，且同时使写后网跳过该章毒句式推回（其余网照常）；`check-ai-patterns.js` 同步新增 voice-contrast / 同句 negation-parade / reverse-not-is / trailer-ending（blocking，经真人语料零误报校准）与跨段否定三连、quote-emphasis-tic（advisory）；SKILL 侧最毒句式速查内联进写作步骤、新增「写后同轮清零」要求，OpenClaw/generic 无 hook 平台由 AGENTS 模板自锁条款兜底。
+- **去AI味闸口机器化（无状态）**：写后正文网新增确定性毒句式检测（不是A而是B 全家族/声线反差/否定排比/预告收尾），写正文落盘即自动扫描并推回命中，Claude/ZCode/OpenCode/Codex 四端同一共享核；写下一章前新增「毒句式欠账门」。早期版本曾使用正文 HTML 跳过标记；现行 Hook 已删除该绕过，部署时应清理存量标记。风格取舍只能在正文外由用户明确确认，绝不得豁免独立语言门；`check-ai-patterns.js` 保留 voice-contrast / 同句 negation-parade / reverse-not-is / trailer-ending 等规则，OpenClaw/generic 无 Hook 平台由 AGENTS 模板的实际命令兜底。
 - 已部署项目请重新运行 `/story-setup` 刷新 hooks/agents/rules/references；**部署后新开会话**，否则旧会话仍使用 v18 部署。
 
 ### v21
 
 - `.story-deployed` 的 `agents_version` 升级到 `21`（`setup_skill_version` 仍为 `1.2.7`）。
-- **章尾状态总结体进写前闸门（#255）**：部署 hook 的毒句式欠账门新增 `trailer-summary` 规则，与既有 `trailer-ending` 共用文末 600 字窗口，命中「这一夜注定… / 这一切都结束了 / 新的人生才刚刚开始 / 命运的齿轮 / 就这样，一切都结束了」这类把细纲「结尾设定·收束状态」原样写成总结句的收尾——收的都是 `banned-words.md` 已按名禁掉的形态。写下一章前必须清零，`<!-- 去味:跳过 -->` 仍可豁免。四端（Claude / OpenCode / ZCode 共享 JS 核 + Codex Python）同步，`check-ai-patterns.js` 四份副本同规则。
+- **章尾状态总结体进写前闸门（#255）**：部署 Hook 的毒句式欠账门新增 `trailer-summary` 规则，与既有 `trailer-ending` 共用文末 600 字窗口，命中「这一夜注定… / 这一切都结束了 / 新的人生才刚刚开始 / 命运的齿轮 / 就这样，一切都结束了」这类把细纲「结尾设定·收束状态」原样写成总结句的收尾——收的都是 `banned-words.md` 已按名禁掉的形态。写下一章前必须清零。早期版本的正文 HTML 跳过标记现已废止；风格取舍不得通过交付正文内的标记表达，更不得豁免语言门。四端（Claude / OpenCode / ZCode 共享 JS 核 + Codex Python）同步，`check-ai-patterns.js` 四份副本同规则。
 - **不收「(这|那)一刻…终于明白」与裸认知句**：真人语料里那是正常的认知节拍，短篇第一人称审判金句还是卖点（`short-craft.md`「审判金句 / 心死余韵」）；这一族仍由 advisory 的 `abstract-summary-tic` 按密度兜。
 - 各分支都要求落在句末断言位，避免吃进条件从句（等这一切结束了，…）、动补（说明得非常清楚）、成语跨匹配（命中注定）、系表（结果是注定的）、及物用法（才结束了这个话题）与场内报幕（宣布…圆满落幕）——这些形状已作为负例 fixture 钉进 `scripts/test-ai-patterns.sh`。
 - 校准（文末 600 字窗口，命中逐条人工复核）：qimao 章中段 20000 章命中 1 处（0.005%）、heiyan 整篇 3999 篇命中 22 处（0.550%，全部是上列禁用形态）；同批既有 `trailer-ending` 分别命中 1.345% / 6.602%。短篇整篇即收口，基线天然高于长篇章中段，故两个总体分别报数。

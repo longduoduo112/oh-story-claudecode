@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
@@ -53,7 +53,7 @@ set +e
 node "$SCRIPT" --current "$HISTORY/第003章.md" --history-dir "$HISTORY" --json > "$TMP_DIR/rejected.json"
 rejected_status=$?
 set -e
-[ "$rejected_status" -eq 2 ] || { echo "FAIL: four consecutive tagged turns must reject" >&2; exit 1; }
+[ "$rejected_status" -eq 2 ] || { echo "FAIL: five consecutive tagged turns must reject" >&2; exit 1; }
 node - "$TMP_DIR/rejected.json" <<'NODE'
 const fs = require('fs');
 const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -63,10 +63,60 @@ if (report.next_action !== 'return_to_narrative_writer_for_contextual_revision')
 if (report.examples.length < 5 || !report.examples.every((item) => item.line && item.context)) throw new Error('missing line evidence');
 NODE
 
+# 误报回归：“没有回答 / 只想问 / 有人喊”是叙事动作，不是话语标签。
+cat > "$TMP_DIR/narrative-actions.md" <<'PROSE'
+他没有回答，只望向窗外。“今晚别等我。”
+她只想问，却又捏紧衣角。“你还回来吗？”
+楼下忽然有人喊，脚步声全乱了。“快走！”
+他仍旧没有回答，把门带上。“照顾好自己。”
+PROSE
+node "$SCRIPT" --current "$TMP_DIR/narrative-actions.md" --json > "$TMP_DIR/narrative-actions.json"
+node - "$TMP_DIR/narrative-actions.json" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (report.status !== 'passed' || report.metrics.attribution_count !== 0) throw new Error(JSON.stringify(report));
+NODE
+
+# 真实四连话语标签仍必须阻断；中等密度的语境化对话不误拦。
+cat > "$TMP_DIR/real-tags.md" <<'PROSE'
+林舟说：“钥匙丢了。”
+苏棠问：“丢在哪儿？”
+林舟答：“车里。”
+苏棠说道：“你去拿。”
+PROSE
+set +e
+node "$SCRIPT" --current "$TMP_DIR/real-tags.md" --json > "$TMP_DIR/real-tags.json"
+real_status=$?
+set -e
+[ "$real_status" -eq 2 ] || { echo "FAIL: four real consecutive tags must reject" >&2; exit 1; }
+node - "$TMP_DIR/real-tags.json" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (report.metrics.max_consecutive_tagged_turns !== 4) throw new Error(JSON.stringify(report));
+NODE
+
+cat > "$TMP_DIR/moderate.md" <<'PROSE'
+“账本呢？”苏棠问。
+林舟没有看她，只把抽屉推回去。“烧了。”
+“你撒谎。”
+雨点打在铁皮棚上，一阵紧过一阵。
+“昨晚十点，你还拿它去见过陈叔。”她把手机扣在桌面。
+林舟盯着那只手机。“谁告诉你的？”
+“重要吗？”
+门外的脚步停住了。
+林舟压低声音说：“后门，快走。”
+PROSE
+node "$SCRIPT" --current "$TMP_DIR/moderate.md" --json > "$TMP_DIR/moderate.json"
+node - "$TMP_DIR/moderate.json" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (report.status !== 'passed') throw new Error(JSON.stringify(report));
+NODE
+
 set +e
 node "$SCRIPT" --current "$HISTORY/不存在.md" >/dev/null 2>&1
 missing_status=$?
 set -e
 [ "$missing_status" -eq 3 ] || { echo "FAIL: unreadable input should exit 3" >&2; exit 1; }
 
-echo "OK: dialogue drift gate separates advisories from blocking consecutive-tag degeneration"
+echo "OK: dialogue drift gate keeps regressions, rejects real tag runs, and avoids narrative-action false positives"

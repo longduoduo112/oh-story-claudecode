@@ -18,8 +18,8 @@ Each finding carries severity: blocking (复读/截断/占位拒绝语/tier1 工
 完整英文台词/连续短语/高置信裸词) 或 advisory (tier2 章节/歧义词、疑似外文专名或短词，交人/LLM 判)。
 --fail-on=blocking 只在出现 blocking finding 时退出 1；默认 --fail-on=all 有任何 finding 即退出 1。
 --language=auto 根据整份正文判定中文/英文（默认）；zh 开启中文正文语言门禁；en 跳过语言门禁，
-但仍执行复读、截断、占位符和工程词检测。中文正文确需保留的拉丁词或完整英文短句，可在
-正文所在项目根目录的 .deslop-whitelist 中逐行精确登记（不做子串豁免）。
+但仍执行复读、截断、占位符和工程词检测。中文正稿确需逐字保留的其他外语，必须由用户单独确认后，
+在正文所在项目根目录的 .deslop-whitelist 中逐行精确登记（不做子串豁免）。
 
 Report-only. The script never rewrites — the safe response is to regenerate the
 affected unit (chapter / 摘要) with the finding fed back as a constraint, cap retries,
@@ -540,8 +540,8 @@ function maskProtectedLatin(text) {
   maskMatches(/(?<![A-Za-z0-9])(?:[A-Za-z0-9_-]+\.)+[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])/g);
   maskMatches(/(?<![A-Za-z0-9])\.[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])/g);
   // 只保护纯数字。缩写、型号、科学名称、分组字母和剧情代号
-  // 都属于叙事内容，不得由检测器猜测放行；用户确认保留时写入
-  // .deslop-whitelist。这与独立 language_gate.js 的零容忍边界一致。
+  // 都属于叙事内容，不得由检测器猜测放行；只有用户单独确认逐字保留后，
+  // 才能写入 .deslop-whitelist 精确登记。这与独立 language_gate.js 的边界一致。
   maskMatches(/(?<![A-Za-z0-9])\d+(?:[.,:/-]\d+)*%?(?![A-Za-z0-9])/g);
   return chars.join('');
 }
@@ -657,7 +657,7 @@ function findLanguageLeak(content, whitelist) {
         lineNo,
         columnAt(range.contentStart),
         'blocking',
-        `完整英文台词泄漏：「${compact(original)}」未在 .deslop-whitelist 精确登记；中文项目应改成中文台词，或确认剧情需要后登记完整短句。`,
+        `完整英文台词泄漏：「${compact(original)}」未在 .deslop-whitelist 精确登记；中文项目应改成中文台词，只有用户单独确认逐字保留后才能登记完整短句。`,
         trimmed.slice(Math.max(0, range.start - 8), Math.min(trimmed.length, range.end + 8)),
       ));
       cover(covered, range.contentStart, range.contentEnd);
@@ -680,7 +680,7 @@ function findLanguageLeak(content, whitelist) {
           lineNo,
           columnAt(core.start),
           'blocking',
-          `纯英文句段泄漏：「${compact(original)}」出现在中文正文中；整句改成中文，或确认剧情需要后在 .deslop-whitelist 精确登记。`,
+          `纯英文句段泄漏：「${compact(original)}」出现在中文正文中；应整句改成中文，只有用户单独确认逐字保留后才能在 .deslop-whitelist 精确登记。`,
           original,
         ));
         cover(covered, core.start, coreEnd);
@@ -775,7 +775,7 @@ function findLanguageLeak(content, whitelist) {
         lineNo,
         columnAt(start),
         'blocking',
-        `Unicode 外文字母泄漏：「${value}」出现在中文正文中；全角、扩展字母和常见混淆字符同样禁止，改成中文或在 .deslop-whitelist 精确登记。`,
+        `Unicode 外文字母泄漏：「${value}」出现在中文正文中；全角、扩展字母和常见混淆字符同样禁止，应改成中文；确需保留时必须先由用户单独确认并精确登记。`,
         trimmed.slice(Math.max(0, start - 10), Math.min(trimmed.length, end + 14)),
       ));
       cover(covered, start, end);
@@ -793,7 +793,7 @@ function findLanguageLeak(content, whitelist) {
           lineNo,
           columnAt(token.index),
           'blocking',
-          `裸英文词泄漏：「${token.value}」出现在中文正文${inDialogue ? '的中英混合台词' : '叙述层'}；中英混写属于 blocking，改成中文称呼，确需保留则在 .deslop-whitelist 中逐词精确登记。`,
+          `裸英文词泄漏：「${token.value}」出现在中文正文${inDialogue ? '的中英混合台词' : '叙述层'}；中英混写属于 blocking，应改成中文称呼；确需逐字保留时必须先由用户单独确认并在 .deslop-whitelist 精确登记。`,
           trimmed.slice(Math.max(0, token.index - 10), Math.min(trimmed.length, token.end + 14)),
         ));
       } else {
@@ -801,7 +801,7 @@ function findLanguageLeak(content, whitelist) {
           lineNo,
           columnAt(token.index),
           'blocking',
-          `英文专名/短词泄漏：「${token.value}」出现在中文正文中；不再默认豁免专名、缩写或短词，改成中文，确需保留则在 .deslop-whitelist 精确登记。`,
+          `英文专名/短词泄漏：「${token.value}」出现在中文正文中；不再默认豁免专名、缩写或短词，应改成中文；确需逐字保留时必须先由用户单独确认并在 .deslop-whitelist 精确登记。`,
           trimmed.slice(Math.max(0, token.index - 10), Math.min(trimmed.length, token.end + 14)),
         ));
       }

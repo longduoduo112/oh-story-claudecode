@@ -27,6 +27,7 @@ python3 scripts/skill-numbering.py check
 bash scripts/test-skill-numbering.sh
 bash scripts/check-current-skill-contracts.sh
 python3 scripts/test-current-skill-contracts.py
+python3 scripts/check-chinese-prose-contract.py
 
 step "shared assets and writing detectors"
 bash scripts/check-hook-regex-sync.sh

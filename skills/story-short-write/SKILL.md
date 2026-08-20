@@ -202,7 +202,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
   - **多对标书时**：参 `references/cross-book-recall.md`，副对标/参考对标按阶段预算进入"副对标召回摘要"；正文只传摘要，不传副书文风或原文
 - **步骤 2：指令确认**：用一句话概括本场景写作意图（情绪+技法+适配段落），并确认本场景是否有任务卡点、它卡出哪种情绪变化或新证据；没有就不强补。确认后开始写作
 
-**生成前中文锁（主会话 / narrative-writer / solo/direct 同一契约）**：开始每一批正文前都锁定 `language=zh`。叙述、对话、心理和场景必须用中文；外国人对话默认翻成中文并在场内标明语种。普通英文句/段、连续英文片段和未授权裸英文词属于语言泄漏。URL、邮箱、文件路径/扩展名和行内/围栏代码等非叙事结构由检测器保护；缩写、型号、剧情代号或其他外语必须经用户/设定授权并在 `.deslop-whitelist` 精确登记后才可保留。
+**生成前中文锁（主会话 / narrative-writer / solo/direct 同一契约）**：开始每一批正文前都锁定 `language=zh`。叙述、对话、心理和场景必须用中文；外国人对话默认译成中文并在场内标明语种。英文、缩写、型号和剧情代号不得由模型自行豁免；URL、邮箱、文件路径/扩展名和行内/围栏代码只有在明确属于非叙事结构时才由检测器机械保护。用户明确要求逐字保留的其他外语，必须单独确认后在 `.deslop-whitelist` 精确登记；HTML 标签、注释和实体不得进入交付正文。
 
 **写作指令：按三维度揉进逐场景写作，不照搬大纲腔。**
 
@@ -335,8 +335,11 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ### Phase 3 完成门槛（进入 Phase 4 前必须通过）
 
-**错别字校验（本篇正文写完后第一步，先于其他所有检查）**：对实际落盘的 正文.md 运行 `node scripts/check-typos.js --check --fail-on=all 正文.md`。这一步专查错别字/形近字/音近字误用，跟风格/AI味/一致性是完全不同维度的问题，必须最先做——错字不管文风改成什么样都是错的。词典只收高置信度的固定搭配误写，命中全部是 advisory，脚本从不自动改写；先判断是不是项目里有意为之的风格化用词，确认是真错字才改。
+**正文验收第一关（独立语言门）**：初稿落盘后立即运行 `node scripts/language_gate.js 正文.md`。返回非零就先退回原写作者修改并复扫；返回零前不得运行错别字、去味或其他后续验收。
 
+**错别字校验（语言门通过后的第二步）**：对实际落盘的 正文.md 运行 `node scripts/check-typos.js --check --fail-on=all 正文.md`。这一步专查错别字/形近字/音近字误用，跟风格/AI味/一致性是完全不同维度的问题。词典只收高置信度的固定搭配误写，命中全部是 advisory，脚本从不自动改写；先判断是不是项目里有意为之的风格化用词，确认是真错字才改。
+
+- [ ] `node scripts/language_gate.js 正文.md` 首先返回零，未授权外语与 HTML 标记已清零
 - [ ] `node scripts/check-typos.js --check --fail-on=all 正文.md` 已过一遍，命中的真错字已改
 - [ ] 总字数 ≥ 8000（优先用 Python 字符统计验证，兼容 Windows 和中文字符计数）
 - [ ] 每节 ≥ 800 字（爽文等高信息密度题材 ≥ 500 字，见 genre-writing-formulas.md）
@@ -358,12 +361,12 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 ### Phase 4：精修打磨
 
 加载 `references/writing-workflow.md` 中的精修清单完成检查。
-重点：开头钩子、情绪曲线、反转铺垫、每句话价值、格式规范、AI 腔排查。文件模式先运行 `node scripts/check-ai-patterns.js --check --fail-on=blocking 正文.md`：blocking 先改正文并复扫；其他提示只作为读感风险，功能性写法标 `[需复核]`。再运行 `node scripts/normalize-punctuation.js 正文.md` 做标点兜底，并运行 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文.md`。退化 blocking 要重新生成受影响段落，不靠润色；普通英文句/段、连续英文片段或未授权裸英文词须改回中文并复扫。URL、邮箱、文件路径/扩展名和行内/围栏代码等非叙事结构不算泄漏；缩写、型号、剧情代号或外语只有经用户/设定明确授权并命中 `.deslop-whitelist` 时才能保留。
+重点：开头钩子、情绪曲线、反转铺垫、每句话价值、格式规范、AI 腔排查。文件模式每次改完正文先重跑 `node scripts/language_gate.js 正文.md`，通过后才运行 `node scripts/check-ai-patterns.js --check --fail-on=blocking 正文.md`：blocking 先改正文并复扫；其他提示只作为读感风险，功能性写法标 `[需复核]`。再运行 `node scripts/normalize-punctuation.js 正文.md` 做标点兜底，并运行 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文.md`。退化 blocking 要重新生成受影响段落，不靠润色；未授权外语须改回中文并复扫。URL、邮箱、文件路径/扩展名和行内/围栏代码只机械保护明确非叙事结构；其他外语只有经用户单独确认并命中 `.deslop-whitelist` 时才能保留，HTML 标记必须清零。
 
 #### Agent 调用：narrative-writer（去AI味）+ consistency-checker
 
 精修阶段，如果项目已部署对应 agent，可 spawn：
-- `Agent(subagent_type: "narrative-writer", prompt: "项目目录：{dir}\n任务描述：去AI味+格式检查\n检查范围：{正文文件}\n语言契约：language=zh；普通英文句段或未授权裸英文词必须改回中文，只保留受保护格式或 .deslop-whitelist 精确登记项\n删除优先：每条 AI 味项先判能否删除——删后不丢伏笔/钩子/角色/情节/必要信息的直接删，会丢才润色（删除受比例上限与字数下限约束，跌破下限改降AI重写）\n必须检查：先否定再肯定的翻转句式，发现后直接改成后项或动作细节；检查像/好像/仿佛/如同等比喻是否成片堆叠，确属堆叠时只留最有功能的少数比喻，其余回到具体画面；检查是否连续使用头皮发紧/眼皮一跳/心口一沉/胃里翻涌等精致戏剧反应，能写普通动作/普通感觉就写普通动作/普通感觉；已有手机/聊天记录/公告/账单/病历/证据截图等信息，保留为角色看到或处理的场内载体，不改成叙述者解释；任务卡点只在角色本来有要办的事且能加重情绪/证据/关系/反转时使用，不为自然感补流程")` — 执行去AI味（7 Gate）、中文语言门和格式合规检查
+- `Agent(subagent_type: "narrative-writer", prompt: "项目目录：{dir}\n任务描述：去AI味+格式检查\n检查范围：{正文文件}\n语言契约：language=zh；未授权外语必须改回中文；只保留机械识别的非叙事结构，或用户单独确认后在 .deslop-whitelist 精确登记的外语；HTML 标记必须清零\n删除优先：每条 AI 味项先判能否删除——删后不丢伏笔/钩子/角色/情节/必要信息的直接删，会丢才润色（删除受比例上限与字数下限约束，跌破下限改降AI重写）\n必须检查：先否定再肯定的翻转句式，发现后直接改成后项或动作细节；检查像/好像/仿佛/如同等比喻是否成片堆叠，确属堆叠时只留最有功能的少数比喻，其余回到具体画面；检查是否连续使用头皮发紧/眼皮一跳/心口一沉/胃里翻涌等精致戏剧反应，能写普通动作/普通感觉就写普通动作/普通感觉；已有手机/聊天记录/公告/账单/病历/证据截图等信息，保留为角色看到或处理的场内载体，不改成叙述者解释；任务卡点只在角色本来有要办的事且能加重情绪/证据/关系/反转时使用，不为自然感补流程")` — 执行去AI味（7 Gate）、中文语言门和格式合规检查
 - `Agent(subagent_type: "consistency-checker", prompt: "项目目录：{dir}\n检查范围：{正文文件}\n检查类型：事实冲突+伏笔断线+角色属性不一致")` — 执行一致性检查
 
 如 agent 不可用，由主线程直接执行。
@@ -414,7 +417,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 | [references/reversal-toolkit.md](references/reversal-toolkit.md) | 设计反转时 |
 | [references/quality-checklist.md](references/quality-checklist.md) | 精修检查时 |
 | [references/banned-words.md](references/banned-words.md) | 禁用词表 |
-| [scripts/check-typos.js](scripts/check-typos.js) | Phase 3 完成门槛第一步；写完后先查错别字/形近字/音近字，advisory 不自动改写 |
+| [scripts/check-typos.js](scripts/check-typos.js) | Phase 3 独立语言门通过后的第二步；检查错别字/形近字/音近字，advisory 不自动改写 |
 | [scripts/normalize-punctuation.js](scripts/normalize-punctuation.js) | Phase 4 文件模式确定性标点收尾 |
 | [scripts/check-ai-patterns.js](scripts/check-ai-patterns.js) | Phase 3 完成门槛与 Phase 4 复扫；报告高危 AI 句式、破折号、碎句号、长段落、微动作复读、抽象总结、套词/比喻密度、解释链、系统公告腔、提纲感短段、低连接密度 |
 | [scripts/check-degeneration.js](scripts/check-degeneration.js) | Phase 3 完成门槛与 Phase 4 复扫；中文正文显式用 `--language=zh --fail-on=blocking`，报告英文泄漏与模型退化；blocking 需修复后复扫 |
@@ -456,11 +459,11 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## 中文正文英文零容忍门
 
-中文短篇正文和台词中的未授权拉丁字母词一律判为 `language-leak blocking`，包括单个短词、专名、缩写和中英混合台词。内部提示词中的英文标签不得进入正文；确需保留的剧情外语必须在 `.deslop-whitelist` 精确登记。语言门未清零时不得交付成稿。
+中文短篇正文和台词中的外语、缩写、型号和剧情代号一律判为 `language-leak blocking`，不得由模型自行豁免。URL、邮箱、代码、路径和文件名只机械保护明确非叙事结构；用户明确要求逐字保留的其他外语，必须单独确认后在 `.deslop-whitelist` 精确登记。HTML 标签、注释和实体必须清零；语言门未通过时不得交付成稿。
 
 ## 本篇语言验收 Gate（强制）
 
-短篇初稿完成后立即运行 `node scripts/language_gate.js "{正文文件}"`。返回非零时，把报告中的行号、原片段和所在行退回正文写作者修改，并重复检查；在返回码为零前，禁止去味验收和正式交付。不得用自动翻译、删除英文或新增白名单代替正文修改。
+短篇初稿完成后立即首先运行 `node scripts/language_gate.js "{正文文件}"`。返回非零时，把报告中的行号、原片段和所在行退回正文写作者修改，并重复检查；在返回码为零前，禁止其他检测、去味验收和正式交付。不得用自动翻译、简单删除或未经用户单独确认的白名单代替正文修改。
 
 ## 适度对白技巧（强制）
 

@@ -12,6 +12,7 @@ import re
 import shlex
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -252,6 +253,67 @@ def _language_whitelisted(entries: list[str], candidate: str, single_token: bool
     return any(_normalized_language_phrase(entry) == normalized for entry in entries)
 
 
+def _language_is_han(char: str) -> bool:
+    point = ord(char)
+    return (
+        0x3400 <= point <= 0x4DBF
+        or 0x4E00 <= point <= 0x9FFF
+        or 0xF900 <= point <= 0xFAFF
+        or 0x20000 <= point <= 0x323AF
+    )
+
+
+def _language_is_foreign_letter(value: str) -> bool:
+    return any(
+        unicodedata.category(unit).startswith("L") and not _language_is_han(unit)
+        for unit in unicodedata.normalize("NFKC", str(value or ""))
+    )
+
+
+def _language_whitelist_boundary_at(text: str, index: int) -> bool:
+    if index < 0 or index >= len(text):
+        return False
+    char = text[index]
+    return _language_is_foreign_letter(char) or re.fullmatch(r"[0-9_.+/#-]", char) is not None
+
+
+def _mask_language_whitelist(line: str, masked: str, entries: list[str]) -> str:
+    chars = list(masked)
+    for entry in entries:
+        if not entry:
+            continue
+        offset = 0
+        while offset <= len(line) - len(entry):
+            start = line.find(entry, offset)
+            if start < 0:
+                break
+            end = start + len(entry)
+            whitespace_match = re.match(r"\s+", line[end:])
+            whitespace = whitespace_match.group(0) if whitespace_match else ""
+            followed_by_foreign_word = bool(
+                whitespace
+                and end + len(whitespace) < len(line)
+                and _language_is_foreign_letter(line[end + len(whitespace)])
+            )
+            if (
+                not _language_whitelist_boundary_at(line, start - 1)
+                and not _language_whitelist_boundary_at(line, end)
+                and not followed_by_foreign_word
+            ):
+                chars[start:end] = [" "] * len(entry)
+            offset = start + max(len(entry), 1)
+    return "".join(chars)
+
+
+def _mask_language_markup_protected(text: str) -> str:
+    source = str(text)
+    chars = list(source)
+    for pattern in (re.compile(r"```[\s\S]*?```|~~~[\s\S]*?~~~"), re.compile(r"`+[^`\n]*`+")):
+        for match in pattern.finditer(source):
+            chars[match.start():match.end()] = [" "] * (match.end() - match.start())
+    return "".join(chars)
+
+
 def _mask_language_protected(line: str) -> str:
     chars = list(line)
 
@@ -283,12 +345,6 @@ def _mask_language_protected(line: str) -> str:
     apply(re.compile(rf"(?<![A-Za-z0-9])(?:{path_part}[\\/])+{path_part}(?![A-Za-z0-9])"))
     apply(re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z0-9_-]+\.)+[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])"))
     apply(re.compile(r"(?<![A-Za-z0-9])\.[A-Za-z][A-Za-z0-9]{0,11}(?![A-Za-z0-9])"))
-    apply(re.compile(r"(?<![A-Za-z0-9_])[A-Z][a-z]{2,}[ \t]+[a-z][ \t]+\d{1,4}(?![A-Za-z0-9_])"))
-    apply(re.compile(r"(?<![A-Za-z0-9_])[A-Z](?=[\u3400-\u9fff])"))
-    apply(re.compile(r"(?<![A-Za-z0-9])(?:[A-Z][、,，/／]){1,}[A-Z](?=(?:[一二三四五六七八九十百两千0-9]+(?:个)?)?(?:包|组|类|客户|方案|版本|档|编号|记录|样本|文件))"))
-    apply(re.compile(r"(?:字母|文件名(?:后面|末尾)|后缀|代号|编号)[ \t]*(?:是|为|有|写着|标成|：|:)?[ \t]*[A-Z](?![A-Za-z0-9])"))
-    apply(re.compile(r"(?<![A-Za-z0-9_])(?=[A-Za-z0-9_-]*[A-Za-z])(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*(?![A-Za-z0-9_])"))
-    apply(re.compile(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+(?![A-Za-z0-9_])"))
     return "".join(chars)
 
 
@@ -324,7 +380,7 @@ def _language_excerpt(value: str) -> str:
 
 def _language_record(line_no: int, start: int, end: int, finding_type: str, excerpt: str, blocking: bool) -> dict[str, Any]:
     advice = (
-        "中文正文必须改成中文；确需逐字保留时写入 .deslop-whitelist 精确登记。"
+        "中文正文应改成中文；确需逐字保留时，必须经用户单独确认后写入 .deslop-whitelist 精确登记。"
         if blocking else
         "请核对是否为设定中的专名/短词；非有意保留就改成中文，保留则写入 .deslop-whitelist 精确登记。"
     )
@@ -340,6 +396,18 @@ def _language_record(line_no: int, start: int, end: int, finding_type: str, exce
 def language_leak_records(text: str, whitelist_entries: list[str] | None = None) -> list[dict[str, Any]]:
     entries = whitelist_entries if isinstance(whitelist_entries, list) else []
     records: list[dict[str, Any]] = []
+    markup_re = re.compile(r"<!--[\s\S]*?-->|</?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|&(?:[A-Za-z][A-Za-z0-9]+|#\d+|#x[0-9A-Fa-f]+);")
+    markup_visible = _mask_language_markup_protected(str(text))
+    for match in markup_re.finditer(markup_visible):
+        line_no = str(text)[:match.start()].count("\n") + 1
+        excerpt = re.sub(r"\s+", " ", match.group(0))[:40]
+        records.append({
+            "line": line_no,
+            "start": match.start(),
+            "end": match.end(),
+            "blocking": True,
+            "finding": f"第{line_no}行 HTML 标记泄漏：「{excerpt}」——HTML 标签、注释和实体不得进入交付正文。",
+        })
     fence_char = ""
     fence_length = 0
     for line_no, raw in enumerate(str(text).split("\n"), 1):
@@ -358,7 +426,7 @@ def language_leak_records(text: str, whitelist_entries: list[str] | None = None)
             continue
         if re.match(r"^\s{0,3}\[[^\]\n]+\]:\s*(?:<[^>\n]+>|\S+)", raw):
             continue
-        masked = _mask_language_protected(raw)
+        masked = _mask_language_whitelist(raw, _mask_language_protected(raw), entries)
         quotes = _language_quote_spans(raw)
         occupied: list[tuple[int, int]] = []
 
@@ -377,8 +445,6 @@ def language_leak_records(text: str, whitelist_entries: list[str] | None = None)
             candidate = raw[span[2]:span[3]]
             if _language_whitelisted(entries, candidate, False):
                 continue
-            if len(words) == 1 and re.fullmatch(r"[A-Z]{2,}", words[0].group(0)):
-                continue
             add(_language_record(line_no, span[2], span[3], "完整英文台词泄漏", _language_excerpt(candidate), True))
 
         for sentence in _LANGUAGE_SENTENCE.finditer(masked):
@@ -391,14 +457,12 @@ def language_leak_records(text: str, whitelist_entries: list[str] | None = None)
             candidate = raw[start:end]
             if _language_whitelisted(entries, candidate, len(words) == 1):
                 continue
-            if len(words) == 1 and re.fullmatch(r"[A-Z]{2,}", words[0].group(0)):
-                continue
             single_sentence = len(words) == 1 and re.search(r"[。！？.!?][ \t]*$", candidate) is not None
             if len(words) >= 2 or single_sentence or re.fullmatch(r"[a-z]{4,}", words[0].group(0)):
                 finding_type = "纯英文句段泄漏" if len(words) >= 2 or single_sentence else "裸英文词泄漏"
                 add(_language_record(line_no, start, end, finding_type, _language_excerpt(candidate), True))
             else:
-                add(_language_record(line_no, start, end, "英文专名/短词疑似泄漏", _language_excerpt(candidate), False))
+                add(_language_record(line_no, start, end, "裸外文字母泄漏", _language_excerpt(candidate), True))
 
         for sequence in _LANGUAGE_SEQUENCE.finditer(masked):
             start, end = sequence.span()
@@ -413,13 +477,31 @@ def language_leak_records(text: str, whitelist_entries: list[str] | None = None)
             token = word.group(0)
             if overlaps(start, end) or _language_whitelisted(entries, token, True):
                 continue
-            if re.fullmatch(r"[A-Z]{2,}", token):
-                continue
             quote = _language_containing_quote(quotes, start, end)
-            if re.fullmatch(r"[a-z]{4,}", token):
-                add(_language_record(line_no, start, end, "英文专名/短词疑似泄漏" if quote else "裸英文词泄漏", token, not bool(quote)))
-            else:
-                add(_language_record(line_no, start, end, "英文专名/短词疑似泄漏", token, False))
+            add(_language_record(line_no, start, end, "台词外文字母泄漏" if quote else "裸外文字母泄漏", token, True))
+
+        cursor = 0
+        while cursor < len(masked):
+            char = masked[cursor]
+            if re.fullmatch(r"[A-Za-z]", char) or not _language_is_foreign_letter(char):
+                cursor += 1
+                continue
+            start = cursor
+            end = cursor + 1
+            while end < len(masked):
+                next_char = masked[end]
+                if not _language_is_foreign_letter(next_char) and not (
+                    unicodedata.category(next_char).startswith("M")
+                    or unicodedata.category(next_char).startswith("N")
+                    or next_char in "_'’.-"
+                ):
+                    break
+                end += 1
+            if not overlaps(start, end):
+                candidate = raw[start:end]
+                if not _language_whitelisted(entries, candidate, True):
+                    add(_language_record(line_no, start, end, "Unicode 外文字母泄漏", candidate, True))
+            cursor = end
     return records
 
 
@@ -609,12 +691,8 @@ def prose_net_findings(text: str, whitelist_entries: list[str] | None = None) ->
         ln, last = content[-1]
         if last and last[-1] not in _NET_TERMINAL:
             findings.append(f"第{ln}行 疑似截断：结尾「…{last[-12:]}」未以标点收束")
-    # 「去味:跳过」豁免与欠账门同判据（文件首 6 行）：标记在场时跳过毒句式推回，
-    # 其余网（元信息/占位/复读/截断）照常——否则按拦截提示加标记的那次 Edit 会把
-    # 已豁免的毒句式再次当硬信号推回。
-    if not re.search(r"去味(：|:)跳过", "\n".join(re.split(r"\r?\n", text)[:6])):
-        findings.extend(toxic_phrase_findings(text))
-    # 语言网不受「去味:跳过」影响；该标记只豁免毒句式。
+    # 正文内不使用 HTML 跳过标记；风格跳过也不改变 Hook 的语言与标记检查。
+    findings.extend(toxic_phrase_findings(text))
     findings.extend(language_leak_findings(text, whitelist_entries))
     return findings
 
@@ -1526,7 +1604,7 @@ def prose_block_reason(root: Path, abs_path: Path) -> str | None:
         return f"⛔ 写正文被拦截：{safe_rel(root, book_dir)} 的{checkpoint_issue}。"
     if exists:
         return None
-    # 欠账门（无状态）：写第 N 章（首建）前，上一章有未清毒句式且未标「去味:跳过」豁免时先清再写。
+    # 欠账门（无状态）：写第 N 章（首建）前，上一章有未清毒句式时先清再写。
     # 判据现算自上一章文件本身，不落任何状态文件；找不到上一章/读取失败一律放行（宁可漏拦不可误伤）。
     # js↔py 文案由 check-hook-regex-sync.sh 锁同步，判定由 test-prose-net-parity.sh Part E 锁 parity。
     prev_num = int(num) - 1
@@ -1569,14 +1647,14 @@ def prose_block_reason(root: Path, abs_path: Path) -> str | None:
                     if more > 0:
                         reason += f"\n（另有 {more} 处，请执行正文确定性扫描查看全部命中）"
                     return reason
-            if prev_text is not None and not re.search(r"去味(：|:)跳过", "\n".join(re.split(r"\r?\n", prev_text)[:6])):
+            if prev_text is not None:
                 hits = [ln for ln in toxic_phrase_findings(prev_text) if ln.startswith("第")]
                 if hits:
                     shown = hits[:6]
                     more = len(hits) - len(shown)
                     reason = (
                         f"⛔ 写正文被拦截：上一章（{prev_file.name}）有 {len(hits)} 处未清毒句式欠账，"
-                        f"先清零再写第 {num} 章；用户显式豁免时在上一章标题行下加 <!-- 去味:跳过 --> 后重试。\n"
+                        f"先清零再写第 {num} 章；毒句式欠账必须改写清零，正文不得添加 HTML 豁免标记。\n"
                         + "\n".join(shown)
                     )
                     if more > 0:

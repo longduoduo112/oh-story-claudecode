@@ -260,7 +260,7 @@ All notable changes to this project will be documented in this file.
 
 - **长篇「剧情单元」概念统一并接入拆书产物（#246）**：把「剧情条 / 循环卡 / 正式情节循环 / 剧情段」五个混用叫法统一为**剧情单元**（卷纲里记为**剧情单元卡**），字段 循环ID/循环节拍/… → 单元ID/单元节拍/…（「循环」只保留节奏义如爽点循环）。拆书剧情单元接入卷纲/细纲：卷纲剧情单元卡新增「对标剧情参照」，对标节奏迁移改以剧情单元为选段单位，细纲分批边界改为「一批 = 一个剧情单元」，拆文侧 `剧情/README.md` 新增「剧情单元清单」索引（存量书可机械补建）。旧版卷纲/细纲/拆文库无这些字段一律不阻塞、按字段结构回退读取，仅在补纲/改纲时升级。story-long-write 场景表新增「补纲/扩纲」入口与卷纲锁定定义。
 - **读者契约 + 终局储备推进模型（#237）**：用「读者契约 + 终局储备」双层推进模型替代原「成长预算」，放开单章爽感，治长篇推进过快导致后期无可写；Σ 字数预算契约（密/疏预算、Σ∈[章目标, ×1.1]）不变。
-- **去 AI 味闸口机器化（无状态，#246）**：写后正文网新增确定性毒句式检测（「不是 A 而是 B」全家族、声线反差、否定排比、预告收尾），落盘即自动扫描并推回命中；写下一章前新增「毒句式欠账门」——上一章有未清 blocking 命中且未标 `<!-- 去味:跳过 -->` 豁免时拦截（判据现算自文件本身，不落任何状态文件，node 缺失或解析失败一律放行）。豁免标记冒号全半角均认，同时使写后网跳过该章毒句式推回（其余网照常）。`check-ai-patterns.js` 同步新增 voice-contrast / negation-parade / reverse-not-is / trailer-ending（blocking，经真人语料零误报校准）与 quote-emphasis-tic（advisory）。四端（Claude/OpenCode/Codex/ZCode）共享同一份判定，js↔py 逐字 parity 锁 + 引号占位对齐 check-ai-patterns.js。
+- **去 AI 味闸口机器化（无状态，#246）**：写后正文网新增确定性毒句式检测（「不是 A 而是 B」全家族、声线反差、否定排比、预告收尾），落盘即自动扫描并推回命中；写下一章前新增「毒句式欠账门」（判据现算自文件本身，不落任何状态文件，node 缺失或解析失败一律放行）。该版发布时曾提供正文内 HTML 跳过标记；现行版本已删除这项绕过，交付正文中的 HTML 一律阻断，风格取舍也不得跳过语言门。`check-ai-patterns.js` 同步新增 voice-contrast / negation-parade / reverse-not-is / trailer-ending（blocking，经真人语料零误报校准）与 quote-emphasis-tic（advisory）。四端（Claude/OpenCode/Codex/ZCode）共享同一份判定，js↔py 逐字 parity 锁 + 引号占位对齐 check-ai-patterns.js。
 
 ### 重构
 

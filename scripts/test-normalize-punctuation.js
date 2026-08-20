@@ -92,12 +92,12 @@ try {
     "per-line endings must be preserved while punctuation is normalized"
   );
 
-  // HTML 注释里的 `--` 不是停顿标点：`<!-- 去味:跳过 -->` 豁免标记必须原样留在正文里，
-  // 被改成 `<! 去味:跳过 ，>` 就不再是注释，会当可见文本泄进成稿。
+  // HTML 注释会被独立语言门阻断；标点格式化器仍必须非破坏地保留其语法，
+  // 避免将非正文输入的注释改成可见的残缺文本。
   const marker = path.join(tmpDir, "marker.md");
   const markerOriginal = [
     "# 第12章 雨夜",
-    "<!-- 去味:跳过 -->",
+    "<!-- 内部备注 -->",
     "他握紧了拳头，慢慢站起身。",
     "<!--",
     "跨行注释里的---与……也照旧",
@@ -112,12 +112,12 @@ try {
   assert.doesNotMatch(markerCheck.stdout, /markdown-divider/, "注释内的 --- 不是正文分隔线");
   assert.strictEqual(run([marker]).status, 0);
   const markerNormalized = fs.readFileSync(marker, "utf8");
-  assert(markerNormalized.includes("<!-- 去味:跳过 -->"), "去味豁免标记必须原样保留");
+  assert(markerNormalized.includes("<!-- 内部备注 -->"), "HTML 注释语法必须原样保留");
   assert(markerNormalized.includes("跨行注释里的---与……也照旧"), "跨行注释内容必须原样保留");
   assert(markerNormalized.includes("<!-- 行内备注 -->"), "行内注释必须原样保留");
   assert(markerNormalized.includes("正文，继续。"), "注释外的正文仍要归一化");
 
-  // 未闭合注释不是“从这里到 EOF 都合法豁免”：必须具名报错，后续正文仍参与检查/归一化。
+  // 未闭合注释不能让从这里到 EOF 都逃过检查：必须具名报错，后续正文仍参与检查/归一化。
   // 否则一个误写的 `<!--` 会让整篇的 `……` / `---` 在 --check 下静默 exit 0。
   const unclosedComment = path.join(tmpDir, "unclosed-comment.md");
   fs.writeFileSync(

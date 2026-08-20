@@ -264,8 +264,8 @@ function normalizePausePunctuationPass(line, lineNo, commentSpans) {
 
   while ((match = pattern.exec(original)) !== null) {
     const token = match[0];
-    // HTML 注释是正文里的元信息（如 `<!-- 去味:跳过 -->` 豁免标记）：`<!--`/`-->` 里的
-    // `--` 不是停顿标点，改掉它注释就散了，标记会变成读者看得见的正文。
+    // HTML 注释不属于交付正文，会被独立语言门阻断。这里仍保持格式化器的
+    // 非破坏性：`<!--`/`-->` 里的 `--` 不是停顿标点，不应被正常化拆坏。
     if (insideSpans(match.index, match.index + token.length, commentSpans)) continue;
     output += original.slice(lastIndex, match.index);
     const replacement = choosePauseReplacement(original, match.index, token.length);

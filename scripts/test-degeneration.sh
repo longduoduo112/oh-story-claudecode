@@ -240,7 +240,7 @@ for (const [line, [severity, label]] of expected) {
 NODE
 echo "  OK 中文语言门禁：英文句段/台词/短语/TitleCase 全部 blocking，引号 offset 精确"
 
-# --- .deslop-whitelist：Latin token / 完整短句只做大小写敏感的精确豁免，不做子串 ---
+# --- .deslop-whitelist：经用户单独确认后，Latin token / 完整短句只做大小写敏感的精确豁免，不做子串 ---
 WHITE_ROOT="$TMP_DIR/whitelist-project"
 WHITE_BODY="$WHITE_ROOT/正文"
 mkdir -p "$WHITE_BODY"
@@ -332,7 +332,7 @@ for (const line of [1, 2, 3, 4, 5]) {
   }
 }
 NODE
-echo "  OK 叙事内 Latin 零容忍：缩写/型号/分组字母必须白名单授权"
+echo "  OK 叙事内 Latin 不自动豁免：缩写/型号/分组字母必须白名单精确授权"
 
 # --- 边界回归：全大写句、无句号单词台词、短中文 auto 不得逃逸 ---
 LANG_EDGE="$TMP_DIR/language-edge.md"
