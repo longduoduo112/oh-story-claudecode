@@ -65,13 +65,13 @@
 ```json
 {
   "schema_version": 1,
-  "run_id": "fanqie-7661645008545516606-20260812T120000+0800",
+  "run_id": "fanqie-1000000000000000000-20260812T120000+0800",
   "lane": "metrics_analysis",
   "mode": "latest|snapshot|method_only",
   "project_abs_path": "/absolute/project/path",
   "platform": "fanqie",
   "work_type": "LONG_NOVEL|SHORT_STORY",
-  "work_id": "7661645008545516606",
+  "work_id": "1000000000000000000",
   "question": "改版后前三章是否改善",
   "data_cutoff_expected": "2026-08-11",
   "immutable_inputs": [

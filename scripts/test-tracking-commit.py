@@ -67,6 +67,28 @@ def snapshot(*, state: str = "军内认可继续抬升", items: int = 1, repeat:
     }
 
 
+def canon_fact(
+    chapter: int,
+    *,
+    identifier: str = "R001",
+    obj: str = "周衡胞弟一支长房",
+) -> dict[str, object]:
+    return {
+        "action": "upsert",
+        "id": identifier,
+        "category": "血缘",
+        "subject": "林岚",
+        "predicate": "血缘来源",
+        "object": obj,
+        "cardinality": "one",
+        "canon_status": "正文已证",
+        "reader_status": "已揭示",
+        "reveal_chapter": chapter,
+        "established_chapter": chapter,
+        "evidence": [f"正文/第{chapter:03d}章_身世显影.md｜家谱原文"],
+        "related_entities": ["林岚", "周衡"],
+        "negative_constraints": ["林岚不是自己的祖先"],
+    }
 def transaction(
     chapter: int,
     *,
@@ -186,13 +208,16 @@ class TrackingCommitTests(unittest.TestCase):
         tracking = self.project / "追踪"
         state = self.read_state()
 
-        self.assertEqual(state["schema_version"], 4)
+        self.assertEqual(state["schema_version"], 5)
         self.assertEqual(state["state_revision"], 0)
         self.assertEqual(state["characters"], {})
         self.assertEqual(state["foreshadow"], {})
         self.assertEqual(state["timeline"], {})
+        self.assertEqual(state["facts"], {})
         self.assertFalse((tracking / "_tracking-meta.json").exists())
         self.assertFalse((tracking / "时间线/事件库.json").exists())
+        self.assertTrue((tracking / "长期事实.md").exists())
+        self.assertTrue((tracking / "关系清单.md").exists())
         self.assertIn("状态修订：0", (tracking / "上下文.md").read_text(encoding="utf-8"))
         self.run_tool("check")
 
@@ -612,6 +637,52 @@ class TrackingCommitTests(unittest.TestCase):
         invalid["character_snapshots"] = {"CON": invalid["character_snapshots"]["江晨"]}
         self.run_tool("commit", invalid, expect=2)
         self.assertEqual(self.read_state()["state_revision"], 0)
+
+    def test_fact_change_generates_relation_and_entity_views(self) -> None:
+        self.init(last_chapter=1)
+        document = transaction(1, mode="revision")
+        document["delta"]["fact_changes"] = [canon_fact(1)]
+        self.run_tool("commit", document)
+
+        state = self.read_state()
+        self.assertIn("R001", state["facts"])
+        tracking = self.project / "追踪"
+        self.assertIn("林岚不是自己的祖先", (tracking / "长期事实.md").read_text(encoding="utf-8"))
+        self.assertIn("R001", (tracking / "关系清单.md").read_text(encoding="utf-8"))
+        self.assertTrue((tracking / "事实档案/林岚.md").exists())
+        self.assertIn("## 长期事实变化", (tracking / "逐章记录/第001章.md").read_text(encoding="utf-8"))
+        self.run_tool("check")
+
+    def test_single_valued_fact_conflict_is_rejected_before_write(self) -> None:
+        self.init()
+        first = transaction(1)
+        first["delta"]["fact_changes"] = [canon_fact(1)]
+        self.run_tool("commit", first)
+        conflict = transaction(2)
+        conflict["delta"]["fact_changes"] = [canon_fact(2, identifier="R002", obj="林岚本人的直系后代")]
+        result = self.run_tool("commit", conflict, expect=2)
+        self.assertIn("single-valued canon slot", result.stderr)
+        self.assertEqual(self.read_state()["last_committed_chapter"], 1)
+
+    def test_migrate_v4_seeds_facts_without_fabricating_a_chapter_delta(self) -> None:
+        self.init(last_chapter=82)
+        state = self.read_state()
+        state["schema_version"] = 4
+        state.pop("facts")
+        (self.project / "追踪/_tracking-state.json").write_text(
+            json.dumps(state, ensure_ascii=False), encoding="utf-8"
+        )
+        before_records = sorted((self.project / "追踪/逐章记录").glob("*.md"))
+        self.run_tool(
+            "migrate-v4",
+            {"schema_version": 1, "expected_state_revision": 0, "facts": [canon_fact(82)]},
+        )
+        migrated = self.read_state()
+        self.assertEqual(migrated["schema_version"], 5)
+        self.assertEqual(migrated["state_revision"], 1)
+        self.assertIn("R001", migrated["facts"])
+        self.assertEqual(sorted((self.project / "追踪/逐章记录").glob("*.md")), before_records)
+        self.run_tool("check")
 
 
 if __name__ == "__main__":

@@ -243,7 +243,7 @@ NODE
 [ "$adv_all" -eq 1 ] || { echo "FAIL: advisory-only 默认 --fail-on=all 应退出 1，实际 $adv_all" >&2; exit 1; }
 [ "$adv_blk" -eq 0 ] || { echo "FAIL: advisory-only --fail-on=blocking 应退出 0，实际 $adv_blk" >&2; exit 1; }
 
-# blocking（em-dash）：severity=blocking，--fail-on=blocking 退出 1。
+# 破折号是语境 advisory：默认 all 退出 1，--fail-on=blocking 退出 0。
 FIXTURE7="$TMP_DIR/fixture-blocking.md"
 printf '%s\n' '她停住——没说话。' > "$FIXTURE7"
 set +e
@@ -255,9 +255,9 @@ node - "$OUT" <<'NODE'
 const fs = require('fs');
 const r = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const dash = r.findings.find((f) => f.type === 'em-dash');
-if (!dash || dash.severity !== 'blocking') throw new Error('em-dash 应为 blocking: ' + JSON.stringify(dash));
+if (!dash || dash.severity !== 'advisory') throw new Error('em-dash 应为 advisory: ' + JSON.stringify(dash));
 NODE
-[ "$blk_blk" -eq 1 ] || { echo "FAIL: em-dash --fail-on=blocking 应退出 1，实际 $blk_blk" >&2; exit 1; }
+[ "$blk_blk" -eq 0 ] || { echo "FAIL: em-dash --fail-on=blocking 应退出 0，实际 $blk_blk" >&2; exit 1; }
 
 echo "Prose pattern (碎句号/长段落/破折号) regression tests passed."
 

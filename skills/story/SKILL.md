@@ -24,6 +24,8 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 | 去 AI 味 | 去 AI 味、太 AI、去味 | `/story-deslop` |
 | 审查稿件 | 审查、审稿、帮我审一下、一致性检查、看看有没有问题 | `/story-review` |
 | 封面 | 封面、封面图 | `/story-cover` |
+| 发布材料 | 准备发布、发布文案、书名简介标签 | `/story-release-package` |
+| 平台发布 | 发到番茄、自动发布、存草稿、修改线上章节、排期发布 | `/story-publish`；只在用户明确授权对应远程动作时执行 |
 | 环境部署 | 准备写书、搭环境、初始化 | `/story-setup` |
 | 浏览器操控 | 浏览器、抓取、登录态 | `/browser-cdp` |
 | 导入小说 | 导入、反向解析、导入小说、把我的书导进来 | `/story-import` |
@@ -80,7 +82,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ## 查询降级
 
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 30` 不一致时（标记缺失、字段缺失/非整数、小于或大于 30）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 30）` 并提示重新运行 `/story-setup` 后新开会话；大于 30 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 36` 不一致时（标记缺失、字段缺失/非整数、小于或大于 36）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 36）` 并提示重新运行 `/story-setup` 后新开会话；大于 36 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 「查故事资料」「查资料」走 agent 前先做轻量可用性检查（路由只做这一层，不承担全局部署策略）：当前不在子代理上下文、Agent/Task 工具可用、且 `.claude/agents/{story-explorer|story-researcher}.md`、`.opencode/agents/{story-explorer|story-researcher}.md` 或 `.codex/agents/{story-explorer|story-researcher}.toml` 存在 → 可尝试 spawn。任一不满足，或 Codex 运行时返回 `unknown agent_type` / 未暴露 custom-agent registry，则降级，不硬失败：
 

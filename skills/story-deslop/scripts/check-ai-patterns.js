@@ -31,7 +31,7 @@ Detect high-risk AI-flavor prose patterns that need human rewrite:
   - 引号强调滥用 (叙述里 1-4 字短词加引号强调，密度型)
   - 对话密度统计 (info，独立成行对话段占比，非问题项，不影响退出码，仅供节奏判断参考)
 
-Each finding carries severity: blocking by default for generation/deslop cleanup (not-is-comparison / em-dash / voice-contrast / negation-parade / reverse-not-is / trailer-ending / trailer-summary). This is a local style/readability gate, not an AIGC detector score; functional human text can be marked for review instead of hard-edited for a detector.
+Each finding carries severity: blocking by default only for high-confidence generation/deslop patterns (not-is-comparison / voice-contrast / negation-parade / reverse-not-is / trailer-ending / trailer-summary). Em dashes are contextual advisory because they may belong to stable author voice or functional interruption. This is a local style/readability gate, not an AIGC detector score; functional human text can be marked for review instead of hard-edited for a detector.
 或 advisory (period-stutter / long-paragraph / micro-action-tic / action-list-tic / abstract-summary-tic / cliche-density-tic / metaphor-density-tic / reasoning-chain-tic / system-notice-formality-tic / overcompressed-prose-tic / low-connective-density-tic / quote-emphasis-tic / formulaic-parallelism / sensory-subject-mismatch，是提示，justified 的长推理/氛围段或有意拟人可保留)。
 --fail-on=blocking 只在出现 blocking finding 时退出 1；默认 --fail-on=all 有任何 blocking/advisory finding 即退出 1（info 级 dialogue-density-stat 是确定性统计输出，不计入退出码）。
 
@@ -406,7 +406,7 @@ function scanProsePatterns(proseLines) {
         line: lineNo,
         column: dash.index + 1,
         type: 'em-dash',
-        severity: 'blocking',
+        severity: 'advisory',
         message: '破折号按功能改写：打断→动作 beat/短句，拖长音→省略或动作，插入说明→逗号/冒号；勿一律改句号。',
         excerpt: compact(text.slice(Math.max(0, dash.index - 8), dash.index + dash[0].length + 8)),
       });

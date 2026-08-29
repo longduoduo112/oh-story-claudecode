@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MARKETPLACE="$REPO_ROOT/.claude-plugin/marketplace.json"
-EXPECTED_COUNT=17
+EXPECTED_COUNT=18
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 

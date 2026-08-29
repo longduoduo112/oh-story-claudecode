@@ -549,7 +549,7 @@ class WorkflowTest(unittest.TestCase):
 
     def test_frozen_legacy_snapshots_complete_only_as_observed_sample_unavailable(self):
         run_id = "historical-real"
-        work_id = "7661645008545516606"
+        work_id = "1000000000000000000"
         raw_root = HISTORICAL_FIXTURES / "raw"
         registry = HISTORICAL_FIXTURES / "config" / "frozen-snapshots.v1.json"
         paths = {

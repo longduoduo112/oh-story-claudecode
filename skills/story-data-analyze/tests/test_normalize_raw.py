@@ -232,7 +232,7 @@ class NormalizeRawTest(unittest.TestCase):
             result = nr.normalize_file(
                 path, expected_snapshot_date=name[:-5],
                 expected_data_until=str(__import__("datetime").date.fromisoformat(name[:-5]) - __import__("datetime").timedelta(days=1)),
-                expected_work_id="7661645008545516606", scope="long",
+                expected_work_id="1000000000000000000", scope="long",
             )
             self.assertEqual("SCOPE_UNKNOWN", result["quality"]["status"])
             self.assertTrue(result["quality"]["usable_fields"])

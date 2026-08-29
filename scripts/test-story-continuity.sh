@@ -28,7 +28,7 @@ make_book() {
   printf 'b\n' > "$root/某书/设定/世界.md"
   printf 'c\n' > "$root/某书/设定/力量.md"
   printf '卷纲\n' > "$root/某书/大纲/卷纲.md"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":0}' > "$root/某书/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":0}' > "$root/某书/追踪/_tracking-state.json"
   printf '%s\n' '> 状态修订：0' > "$root/某书/追踪/上下文.md"
 }
 
@@ -48,7 +48,7 @@ for kind in mismatch malformed missing; do
   T_META="$(mktemp -d)"; make_book "$T_META"
   printf '# 第1章 开端\n正文。\n' > "$T_META/某书/正文/第001章_开端.md"
   case "$kind" in
-    mismatch) printf '%s\n' '{"schema_version":4,"state_revision":1,"last_committed_chapter":0}' > "$T_META/某书/追踪/_tracking-state.json" ;;
+    mismatch) printf '%s\n' '{"schema_version":5,"state_revision":1,"last_committed_chapter":0}' > "$T_META/某书/追踪/_tracking-state.json" ;;
     malformed) printf '%s\n' '{not-json' > "$T_META/某书/追踪/_tracking-state.json" ;;
     missing) rm -f "$T_META/某书/追踪/_tracking-state.json" ;;
   esac

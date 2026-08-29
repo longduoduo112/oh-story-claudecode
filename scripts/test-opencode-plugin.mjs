@@ -32,7 +32,7 @@ function writeCleanState(book, lastCommitted = 0) {
   fs.mkdirSync(path.join(book, "追踪"), { recursive: true });
   fs.writeFileSync(
     path.join(book, "追踪", "_tracking-state.json"),
-    JSON.stringify({ schema_version: 4, state_revision: 0, last_committed_chapter: lastCommitted }) + "\n",
+    JSON.stringify({ schema_version: 5, state_revision: 0, last_committed_chapter: lastCommitted }) + "\n",
     "utf8"
   );
   fs.writeFileSync(path.join(book, "追踪", "上下文.md"), "> 状态修订：0\n", "utf8");
@@ -123,7 +123,7 @@ try {
   );
   fs.writeFileSync(
     "book/追踪/_tracking-state.json",
-    JSON.stringify({ schema_version: 4, state_revision: 1, last_committed_chapter: 0 }) + "\n",
+    JSON.stringify({ schema_version: 5, state_revision: 1, last_committed_chapter: 0 }) + "\n",
     "utf8"
   );
   await assert.rejects(
@@ -143,7 +143,7 @@ try {
         { tool: "bash" },
         { args: { command: "cat draft.md > book/正文/第003章_绕过.md" } }
       ),
-    /写正文被拦截[\s\S]*已从 Bash 命令识别到正文写入目标/,
+    /(?:写正文|修改旧内容)被拦截[\s\S]*已从 Bash 命令识别到写入目标/,
     "bash redirect must be blocked without claiming the static parser is unbypassable"
   );
   await hooks["tool.execute.before"](
@@ -337,7 +337,7 @@ try {
       );
       await hooks["tool.execute.before"](
         { tool: "write" },
-        { args: { filePath: "book/正文/第002章_续写.md" } }
+        { args: { filePath: "notes.md" } }
       );
       assert.match(
         fs.readFileSync(gitLog, "utf8"),

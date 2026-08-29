@@ -658,14 +658,14 @@ JS
   printf '%s\n' '# 第1章 旧' '报告列着 Ara h 2、F17-Q、LABADMIN、V0、PA66、R66-7、QP-07、PDF、KB、IP 和 A客户/B客户。' > "$blk/long10/正文/第1章_旧.md"
   for book in long long2 long3 long4 long5 long7 long8 long9 long10; do
     mkdir -p "$blk/$book/追踪"
-    printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$blk/$book/追踪/_tracking-state.json"
+    printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":1}' > "$blk/$book/追踪/_tracking-state.json"
     printf '%s\n' '> 状态修订：0' > "$blk/$book/追踪/上下文.md"
   done
   # 上一章正文已存在、state 提交进度落后：必须拦住下一章首建。
   mkdir -p "$blk/long6/正文" "$blk/long6/大纲" "$blk/long6/追踪"
   : > "$blk/long6/大纲/细纲_第2章.md"
   printf '%s\n' '# 第1章 旧' '他把门关上了。' > "$blk/long6/正文/第1章_旧.md"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":0}' > "$blk/long6/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":0}' > "$blk/long6/追踪/_tracking-state.json"
   printf '%s\n' '> 状态修订：0' > "$blk/long6/追踪/上下文.md"
   # canonical case：agent 直接首建 {书}/正文/第N章.md，即使书目录还没有大纲/追踪/设定脚手架，
   # 也必须 fail closed；相对目标的 cwd 语义由各宿主 adapter 单独负责，不能靠削弱核心守卫来掩盖。
@@ -753,10 +753,10 @@ JS
   gate_prev="$gate/state_toxic/book/正文/第1章_旧.md"
   printf '%s\n' '# 第1章 旧' '声音不大，却带着一股狠劲。' > "$gate_prev"
   mkdir -p "$gate/state_valid/book/追踪" "$gate/state_bad/book/追踪" "$gate/state_toxic/book/追踪"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$gate/state_valid/book/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":1}' > "$gate/state_valid/book/追踪/_tracking-state.json"
   printf '%s\n' '> 状态修订：0' > "$gate/state_valid/book/追踪/上下文.md"
   printf '%s\n' '{not-json' > "$gate/state_bad/book/追踪/_tracking-state.json"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$gate/state_toxic/book/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":1}' > "$gate/state_toxic/book/追踪/_tracking-state.json"
   printf '%s\n' '> 状态修订：0' > "$gate/state_toxic/book/追踪/上下文.md"
   gate_target="$gate/current_existing/book/正文/第2章_新.md"
   printf '%s\n' '# 第2章 已有' > "$gate_target"
@@ -827,14 +827,14 @@ JS
   done
   printf '%s\n' '{not-json' > "$cp/malformed/追踪/_tracking-state.json"
   printf '%s\n' '{"schema_version":3,"state_revision":0,"last_committed_chapter":7}' > "$cp/old/追踪/_tracking-state.json"
-  printf '%s\n' '{"schema_version":4,"state_revision":1,"last_committed_chapter":7}' > "$cp/mismatch/追踪/_tracking-state.json"
-  printf '%s\n' '{"schema_version":4,"last_committed_chapter":7}' > "$cp/norevision/追踪/_tracking-state.json"
-  printf '%s\n' '{"schema_version":4,"state_revision":0}' > "$cp/nolast/追踪/_tracking-state.json"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":6}' > "$cp/behind/追踪/_tracking-state.json"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":7}' > "$cp/valid/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":1,"last_committed_chapter":7}' > "$cp/mismatch/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"last_committed_chapter":7}' > "$cp/norevision/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0}' > "$cp/nolast/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":6}' > "$cp/behind/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":7}' > "$cp/valid/追踪/_tracking-state.json"
   # 回炉/改名/留原稿备份：章号已在追踪范围内（expected 7 < last 9），文件名是新的但该章早已提交，
   # 顺序校验对它恒为假，必须放行——否则 workflow-revision 的「备份原稿」步骤在三端被硬拦。
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":9}' > "$cp/revised/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":9}' > "$cp/revised/追踪/_tracking-state.json"
   python3 - "$CODEX" "$cp" > "$tmp/cpy.txt" <<'PY'
 import importlib.util, sys
 from pathlib import Path
@@ -862,7 +862,7 @@ JS
   fi
   grep -q 'missing :: .*_tracking-state.json 缺失' "$tmp/cpy.txt" || { echo "FAIL: 缺失 state 未 fail closed" >&2; return 3; }
   grep -q 'malformed :: .*无法解析' "$tmp/cpy.txt" || { echo "FAIL: 坏 JSON 未 fail closed" >&2; return 3; }
-  grep -q 'old :: .*schema_version=4' "$tmp/cpy.txt" || { echo "FAIL: 旧 schema 未 fail closed" >&2; return 3; }
+  grep -q 'old :: .*schema_version=5' "$tmp/cpy.txt" || { echo "FAIL: 旧 schema 未 fail closed" >&2; return 3; }
   grep -q 'mismatch :: .*状态修订.*mode=revision 事务重建派生视图' "$tmp/cpy.txt" || { echo "FAIL: 派生 revision 不一致未给 mode=revision 重建动作" >&2; return 3; }
   grep -q 'norevision :: .*缺少整数 state_revision' "$tmp/cpy.txt" || { echo "FAIL: 缺 state_revision 未 fail closed" >&2; return 3; }
   grep -q 'nolast :: .*缺少整数 last_committed_chapter' "$tmp/cpy.txt" || { echo "FAIL: 缺 last_committed 未 fail closed" >&2; return 3; }
@@ -874,7 +874,7 @@ JS
   local hot="$tmp/hot-context"
   mkdir -p "$hot/book/正文" "$hot/book/追踪"
   printf '%s\n' '# 第1章 开端' '正文。' > "$hot/book/正文/第001章_开端.md"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$hot/book/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":1}' > "$hot/book/追踪/_tracking-state.json"
   python3 - "$hot/book/追踪/上下文.md" <<'PY'
 from pathlib import Path
 import sys

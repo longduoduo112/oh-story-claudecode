@@ -120,8 +120,9 @@ validator 的“独立复算”不是复述 metrics artifact：必须对每条 f
 用户要求最新数据或例行监控时，对本项目执行：
 
 ```bash
-cd /Users/yutingting/Documents/网盘备份/琴鱼科技/拍短剧/爆款小说创作/发布工具/番茄发布器
-.venv/bin/python ../../数据追踪/拉取番茄数据.py
+cd "<项目根>"
+for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
+"$PYBIN" "数据追踪/拉取番茄数据.py"
 ```
 
 用户明确指定本地历史快照、上传数据或只询问分析方法时，不擅自拉取新数据；先核验给定数据的截止日和作品 ID。

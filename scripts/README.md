@@ -30,12 +30,12 @@
 | `check-hook-regex-sync.sh` | `detect-story-gaps.sh` 伏笔状态检测行为 | CI |
 | `check-hook-locale-safety.sh` | 部署 hook 在 Windows 中文 GBK 区域的字节安全 | CI |
 | `check-python-invocation.sh` | 技能文档禁止裸调 `python3`（须 python3→python→py 探测） | CI |
-| `check-claude-adapter.sh` | Claude marketplace 与 17 个 skill 的一一映射；可选真实 CLI strict validate | CI（静态）；`CLAUDE_REAL_CHECK=1`（真实 CLI） |
+| `check-claude-adapter.sh` | Claude marketplace 与 18 个 skill 的一一映射；可选真实 CLI strict validate | CI（静态）；`CLAUDE_REAL_CHECK=1`（真实 CLI） |
 | `check-opencode-adapter.sh` | OpenCode 适配层同步 + commands/agents/config 结构 + plugin 行为回归 | CI + sync CI（调 sync-opencode.py） |
 | `check-openclaw-skills.sh` | OpenClaw AgentSkills/frontmatter 兼容性 | CI |
 | `check-codex-adapter.sh` | Codex 适配层：repo skills symlink、agent TOML、hooks 与跨平台 launcher | CI（调 generate-codex-agents.py 验生成确定性） |
 | `check-zcode-adapter.sh` | ZCode plugin/marketplace、Skills/Commands/Hooks 与部署锚点 | CI |
-| `check-reasonix-adapter.sh` | Reasonix plugin manifest（schema、17 Skills、版本与 skills/story/VERSION 同步） | CI |
+| `check-reasonix-adapter.sh` | Reasonix plugin manifest（schema、18 Skills、版本与 skills/story/VERSION 同步） | CI |
 
 ## 测试回归（test-*）
 
@@ -48,9 +48,15 @@
 | `test-story-continuity.sh` | `detect-story-gaps.sh` 跨批连续性兜底回归 | CI |
 | `test-tracking-workflow-contracts.py` | 文件优先追踪契约：唯一事务写入口、续写状态卡（固定 7 栏）、导入基线、作者/读者时间线隔离、旧结构清零 | CI |
 | `test-tracking-commit.py` | 单权威追踪行为：state 最后提交、失败同事务重跑、派生一致性、修订语义、导入截止章 | CI |
+| `test-outline-forecast.py` | 分支推演隔离、追踪修订陈旧判定、用户选择凭证与禁止自动写回 | CI |
+| `test-chapter-candidate.py` | 精确一章许可、候选接纳、正文摘要失效、追踪闭环与 doctor | CI |
+| `test-voice-profile.py` | 已接纳正文声音画像、回执/旧章授权、双向漂移 advisory、摘要陈旧与盲测包 | CI |
+| `test-cold-read-ledger.py` | 顺序冷读游标、追加式问题事件与未解决 S1/S2 阻断 | CI |
 | `test-codex-hooks.sh` | Codex hook 合成 stdin/stdout 契约 | CI |
 | `test-static-check.py` | 真 frontmatter block、精确路径/锚点、跨 Skill 引用、fence、死 reference、Agent 与章节链接 fixture | CI |
 | `test-current-skill-contracts.py` | current-contract manifest 类型/固定值与主产物 fail-fast 语义 fixture | CI |
+| `test-revision-hook-gate.js` | 旧正文/既有大纲设定修改的活动清单、计划内写入、日更暂停与摘要审批失效门禁 | CI |
+| `test-revision-codex-gate.py` | Codex Python adapter 与共享修改门禁的计划/审批生命周期回归 | CI |
 | `test-shared-assets.py` | 共享资产 manifest 的 drift、sync、路径越界、basename 单一 owner 与未登记重复检测 | CI |
 | `test-manage-version.py` | 产品 SemVer 五处同步、tag/changelog 校验与非稳定版拒绝 | 统一 gate |
 | `test-package-channel.py` | release 只接受同 HEAD、干净且 checksum 有效的 dev 证据 | 统一 gate |
@@ -60,11 +66,11 @@
 | `test-normalize-punctuation.js` | 标点归一化的只读检查、frontmatter/fence、CRLF、引号模式与幂等性 | CI |
 | `test-scan-runtime.js` | CDP argv 边界/报错/JSON 契约与 7 个 scraper 无副作用 import | CI |
 | `test-opencode-plugin.mjs` | 直接执行 OpenCode TypeScript plugin，验大纲守卫、Bash 绕过、写后检查与 compact 恢复 | 被 `check-opencode-adapter.sh` 调用 |
-| `test-codex-cli-e2e.sh` | 隔离 HOME 后用真实 Codex CLI 检查 repo 17 个 skill 的发现结果 | CLI compatibility CI；需已安装 `codex` |
+| `test-codex-cli-e2e.sh` | 隔离 HOME 后用真实 Codex CLI 检查 repo 18 个 skill 的发现结果 | CLI compatibility CI；需已安装 `codex` |
 | `test-zcode-hooks.sh` | ZCode 严格 JSON Hook、正文守卫与连续性回归 | CI |
 | `test-charcount-portable.sh` | 跨平台字符统计命令在三平台 + Windows 的正确性 | CI（调 check-python-invocation） |
 | `test-hook-encoding-portable.sh` | 部署 hook 在 Windows 中文系统的编码健壮性 | CI |
-| `test-opencode-cli-e2e.sh` | 真实 OpenCode CLI 加载 smoke（repo skills 发现 / 17 commands / 7 agents / plugin） | CLI compatibility CI；需已安装 `opencode` |
+| `test-opencode-cli-e2e.sh` | 真实 OpenCode CLI 加载 smoke（repo skills 发现 / 17 commands / 8 agents / plugin） | CLI compatibility CI；需已安装 `opencode` |
 | `test-skill-numbering.sh` | Step 重排级联安全、锚点 fail-closed、代码块引用、验证零写入/提交回滚、dry-run/write/幂等性 | Linux / Windows Git Bash / macOS CI |
 
 ## 代码生成 / 同步

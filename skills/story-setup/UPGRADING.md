@@ -2,10 +2,10 @@
 
 ## 当前版本
 
-- `setup_skill_version: 1.2.13`
-- `agents_version: 30`
+- `setup_skill_version: 1.2.19`
+- `agents_version: 36`
 
-`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `30`，都视为待更新部署。直接重新运行 `/story-setup`（Codex 用 `$story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `30`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v30 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
+`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `36`，都视为待更新部署。直接重新运行 `/story-setup`（Codex 用 `$story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `36`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v36 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
 
 ## 升级策略
 
@@ -26,7 +26,7 @@
 - `.claude/agents/` — 所有 agent 定义
 - `.claude/rules/` — 所有 path-scoped 规则
 - `.claude/skills/story-setup/references/agent-references/` — Agent 参考资料副本
-- `.zcode/skills/{17 known skills}/`、`.zcode/commands/{17 known commands}.md` — 仅覆盖 oh-story 已知名称
+- `.zcode/skills/{18 known skills}/`、`.zcode/commands/{18 known commands}.md` — 仅覆盖 oh-story 已知名称
 - `.zcode/hooks/story_zcode_hook.js` — ZCode 专用 Hook runner
 
 ### 用户与 story-setup 共同维护，只合并管理块
@@ -43,7 +43,37 @@
 - `{书名}/设定/`、`大纲/`、`追踪/`
 - `.active-book`
 
-## v30 当前契约
+## v36 当前契约
+
+- 新增 `story-publish`：发布材料与远程写入分权，项目通过 `.story-publish.json` 关联本地适配器，不把本书配置或登录态打入工具包。
+- 番茄适配器接入保留 preview、preflight、防重、草稿确认、正式发布确认和显式 AI 申报；失败状态不明时禁止自动重放。
+- Claude、OpenCode、Codex、ZCode、OpenClaw、Reasonix 与 generic 同步 18-Skill 路由和命令面。
+
+### v35 承继契约
+
+- 新增独立 `check-style-hygiene.js`：语言门之后机械检查表情符号、颜文字、火星文、标点堆砌与不可见字符；`？！`、`……` 等功能性小说标点保留。
+- 本书可在 `设定/文风.md` 选择出版级纯中文、对白弹性、宽松复核或逐类策略；未配置时默认出版级，例外使用独立 `.style-hygiene-whitelist`，不与外语白名单混用。
+- narrative-writer、多端 AGENTS/CLAUDE 模板、长短篇写作、去 AI 味与审查流程统一接入“语言门 → 文风卫生门 → 其他检测”顺序。
+
+### v34 承继契约
+
+- 所有递归部署复制先按 realpath/samefile 做路径安全预检：同源同目标为幂等 no-op，源/目标祖先—后代嵌套直接阻断，避免 skills-only 部署自嵌套。
+- narrative-writer 不再自报“实际句长分布”；主流程用 `prose_metrics.py` 从落盘正文确定性实测，并把结果纳入候选章 Gate。
+- 长篇候选新增正文—细纲连续照搬检测：归一化后连续 16 字起阻断；只有细纲 `复沓锚句` 精确登记的誓言、系统提示、案卷引文可逐字回环。细纲仍约束事件，不规定正文段落形状。
+
+### v32 承继契约
+
+- 长篇项目可从至少五章可信接纳正文建立本书声音画像；新章只认 `committed` 回执，无回执旧章必须由作者显式批准连续范围。
+- 候选章接入早期/近期双向漂移 advisory 与原句重合提醒；统计结果不是质量分，不自动改正文。
+- 画像绑定正式正文摘要；新章接纳或合法修订后必须更新，旧摘要由 story doctor 阻断。可生成隐藏来源标签的盲测包，为后续模式升级提供证据。
+
+### v31 承继契约
+
+- 新增只读 `revision-governor`：旧正文、既有大纲/设定修改前做影响规划，关联修改与追踪更新后做闭环复核。
+- 四端写入守卫接入 `追踪/修改影响/active.json`：没有计划拒绝改旧内容，活动事务只允许计划内源文件，未闭环时拒绝穿插日更。
+- `revision_guard.py check --stamp` 生成与活动清单字节摘要绑定的审批戳；清单再改即失效，旧审批不能复用。
+
+### v30 承继契约
 
 - 作品查询、资料研究和发布材料拆为三个独立 Skill，同步 Claude/OpenCode/Codex/ZCode/OpenClaw/Reasonix/generic 的 17-Skill 路由与命令面。
 - 三个新 Skill 按最小权限运行：作品查询只读、资料研究不携带登录态、发布材料不登录或自动发布。
@@ -60,7 +90,7 @@
 - 长短篇榜单采集统一捕获一个 run clock：报告同时写无歧义的 UTC 抓取时刻和与文件名一致的本地报告日期，不再让两处各自取时。
 
 - 正式更新统一从 GitHub Release 的固定资产 `oh-story-release.zip` 安装；直接指向浮动仓库源的安装只属于 Dev 渠道。
-- 部署包按 17 个 skill 自检，已部署项目需重跑 `/story-setup` 刷新 hooks、agents、rules 与 reference bundle，并新开会话。
+- 部署包按 18 个 skill 自检，已部署项目需重跑 `/story-setup` 刷新 hooks、agents、rules 与 reference bundle，并新开会话。
 - Claude Code 的正文前置守卫现在也注册到 Bash：常见的重定向、`tee`、`touch`、`cp`、`mv`、`install` 写入正文时复用共享 JS 核识别目标并执行大纲/追踪门；只读命令里的引号示例与 heredoc 正文提及不拦，并按 hook `cwd` 解析相对路径。该面是**静态 best-effort 识别，不是 shell 沙箱**：环境变量间接路径、运行时生成命令与未列出的任意写文件程序无法可靠静态判定；这类写入应改用 Write/Edit。Bash 命令面依赖 node，node/共享核异常时显式告警后 fail-open；Write/Edit/MultiEdit 的纯 bash 兜底不受影响。
 - `.claude/settings.local.json` 由 `merge-claude-settings.py` 按稳定 command 身份迁移受管注册，matcher、timeout 与 if 能随升级刷新；用户 hook、未知顶层字段及混合 block 中的用户项保留，重复执行字节幂等。
 - Claude Bash、Codex Python 与共享 JS 的书目录发现统一限制为项目下 4 层，并剪枝隐藏目录、`node_modules`；`.active-book` 只有在 realpath 确证逃出项目根时才拒绝，避免符号链接逃逸，也不因中文路径 realpath 失败误丢合法声明。
@@ -72,7 +102,7 @@
 
 - `story-import` 只把作者已有小说重建为写作工程：`拆文库/{导入书名}/` 迁移到正文/设定/大纲/追踪，不再自动登记成主/副对标，也不再复制到项目 `对标/`。只有用户明确选择、且来源为独立 `拆文库/{对标书名}/` 的外部作品才同步到 `对标/{对标书名}/`。
 - 无外部对标时只跳过对标模块、节奏和文风召回；项目题材卡仍从本书题材信息生成，不再被对标分支误伤。对标主产物缺失继续 fail-fast，只有单个可选模块卡未命中时才局部跳过。
-- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v30 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
+- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v36 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
 - 写作与导入只接受当前拆文产物：`剧情/情绪模块.md` 与 `剧情/节奏.md` 缺失时 fail-fast，并给出重跑 Stage 3+ / 重新导入的修复动作。
 - 新建、补建、改纲的细纲只接受完整章节蓝图：缺少阶段位置、结构公式、禁止提前释放、内容概括、情节安排、人物关系、情节细化或结尾设定时，先补齐再写。旧版细纲缺这些字段不阻塞日更，回退消费旧字段（核心事件、情节点序列、目标情绪、章首/章尾钩子、字数目标）。
 - 细纲字段是本章「要发生什么」的内容规格，不规定正文形状：各字段都要在正文里兑现，但正文可合并、穿插、重排情节点，不按条目顺序一条一段平推。细纲「结尾 / 结尾设定」写本章最后落在什么动作、画面或台词上，不写状态判词。
@@ -86,7 +116,7 @@
 ## 升级步骤
 
 1. 在项目根目录重新运行 story-setup。
-2. 确认 `.story-deployed` 写入 `agents_version: 30` 与 `setup_skill_version: 1.2.13`。
+2. 确认 `.story-deployed` 写入 `agents_version: 36` 与 `setup_skill_version: 1.2.19`。
 3. 确认目标 CLI 的 agents、hooks/rules 和 reference bundle 都通过安装验证。
 4. 新开会话，使 custom agents 与 hooks 按当前文件重新注册。
 5. **长篇在写项目必做**：检查每本书的 `追踪/_tracking-state.json` 是否存在。不存在就是旧追踪结构，按下方「追踪模型迁移」重建，否则写下一章会被拦。
@@ -122,7 +152,37 @@
 
 ## 版本变更
 
-### v30（当前）
+### v36（当前）
+
+- `.story-deployed` 的 `agents_version` 升级到 `36`，`setup_skill_version` 升级到 `1.2.19`。
+- 部署 story-publish、平台适配器关联协议及 18-Skill 多端路由；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v35
+
+- `.story-deployed` 的 `agents_version` 升级到 `35`，`setup_skill_version` 升级到 `1.2.18`。
+- 部署中文正文文风卫生检测器、配置协议与 narrative-writer/多端模板接入；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v34
+
+- `.story-deployed` 的 `agents_version` 升级到 `34`，`setup_skill_version` 升级到 `1.2.17`。
+- 去 AI 味改为三轴决策；部署写手按作品声线和场景功能复核停顿标点，不再把省略号/破折号一刀切当作硬禁项。已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v33
+
+- `.story-deployed` 的 `agents_version` 升级到 `33`，`setup_skill_version` 升级到 `1.2.16`。
+- 部署递归复制路径安全预检、确定性句段实测、正文—细纲连续照搬 Gate 与 `复沓锚句` 精确豁免；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v32
+
+- `.story-deployed` 的 `agents_version` 升级到 `32`，`setup_skill_version` 升级到 `1.2.15`。
+- 部署已接纳正文声音画像规则、候选漂移 advisory、摘要陈旧门和盲测协议；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v31
+
+- `.story-deployed` 的 `agents_version` 升级到 `31`，`setup_skill_version` 升级到 `1.2.14`。
+- 部署 revision-governor、跨产物活动修改清单、摘要审批戳及多端写入门禁；已部署项目需重跑 `/story-setup` 并新开会话。
+
+### v30
 
 - `.story-deployed` 的 `agents_version` 升级到 `30`，`setup_skill_version` 升级到 `1.2.13`。
 - 部署 story-explore、story-research、story-release-package 及 17-Skill 多端路由；已部署项目需重跑 `/story-setup` 并新开会话。

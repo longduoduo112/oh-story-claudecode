@@ -1,12 +1,12 @@
 ---
 name: story-review
-version: 1.1.1
+version: 1.1.2
 description: "多视角对抗式审查。full/lean 模式在已部署 reviewer agents 时并行 spawn；缺失/异常 agents 或 spawn 失败时自动降级 solo，参考文件不可读时使用内置 rubric fallback。触发方式：/story-review、/审查、「审查一下」「帮我审一下」。"
 metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-claudecode"}}
 ---
 # story-review：多视角对抗式审查
 
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 30` 不一致时（标记缺失、字段缺失/非整数、小于或大于 30）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 30）` 并提示重新运行 `/story-setup` 后新开会话；大于 30 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 36` 不一致时（标记缺失、字段缺失/非整数、小于或大于 36）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 36）` 并提示重新运行 `/story-setup` 后新开会话；大于 36 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 你是审查协调器。你的职责是找出小说文本中的结构、角色、文字、设定问题，并给出可执行修改建议。
 
@@ -89,6 +89,7 @@ Rubric Source: file | embedded fallback
 | 审查禁用词 | `story-review/references/banned-words.md` |
 | 平台 rubric | `story-review/references/rubrics/{fanqie,qidian,zhihu}.md` |
 | 标点预检脚本 | `story-review/scripts/normalize-punctuation.js` |
+| 中文文风卫生脚本 | `story-review/scripts/check-style-hygiene.js` |
 | AI句式预检脚本 | `story-review/scripts/check-ai-patterns.js` |
 
 ### 内置审查基准包（路径不可读时必用）
@@ -155,7 +156,7 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
    - 多章/整卷/整本审查必须分批：按章节或文件组拆分，每批输出独立 findings，再综合。
    - **跨批连续性（分批必做）**：审每一批前，先读 `追踪/伏笔.md` 中状态为 `已埋` 且计划回收章 ≤ 本批末章的当前行，再按需读取相关 `追踪/逐章记录/第NNN章.md` 查变更原因；同时读取涉及角色的独立快照，并按上方契约把 state.md 的上一批未解决 findings 摘要作为「继承的开放项」注入 reviewer / consistency-checker prompt。新发现但尚未登记的开放钩子先列为维护候选，收尾时必须有正文证据才能进入修订事务。
    - **乱序/重叠审查提醒**：若已审过靠后的范围（如先审 300-400），之后审靠前的范围（200-300）时，只有当本批**新增/改动了一个开放项、且其预计兑现章落在已审过的靠后范围内**，才提醒用户「200-300 的改动可能影响已审的 300-400」，并让用户选择复审受影响章节 / 全量复审 / 仅记为待办——**默认记为待办，不盲目全量重跑**。无具体跨范围依赖时不提醒。
-3. **读取相关支撑材料**：正文、相关设定、角色档案、大纲、追踪/上下文、伏笔文件；缺失时在报告中标记证据不足。
+3. **读取相关支撑材料**：正文、相关设定、角色档案、总纲/卷纲/细纲、追踪/上下文、伏笔文件；凡涉及身世、血缘、亲属、婚姻、传承、所有权、机构权限或不可逆规则，还必须读 `追踪/长期事实.md`、`追踪/关系清单.md` 和相关 `事实档案/{实体}.md`，再沿 evidence 定点核对原始正文/设定。缺失时在报告中标记证据不足。
 4. **识别目标平台并加载 rubric**：
    - 优先使用用户显式指定的平台。
    - 其次读取项目文档里的 `目标平台` / `平台` 字段，例如 `设定/题材定位.md`、`大纲/`、`拆文报告` 等。
@@ -167,10 +168,13 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
 5. **形成审查基准包摘要**：把已加载的文件内容或内置 fallback 摘要压缩为 5-12 条审查标准，后续 solo 和子 Agent 都必须使用这份摘要。摘要必须保留一条句长标准：叙述默认是逗号长句，碎句和电报体与 AI 腔同级处理，不因「短」放行；中文正文范围还必须保留一条 `language=zh` 语言契约，不能在压缩 rubric 时删掉。
 6. **确定性预检（只报告，不修改）**：当审查范围包含本地正文文件路径时，运行本 skill 自带脚本：
    ```bash
+   node scripts/language_gate.js <正文文件...>
+   node scripts/check-style-hygiene.js --check --fail-on=blocking <正文文件...>
    node scripts/normalize-punctuation.js --check <正文文件...>
    node scripts/check-ai-patterns.js --check --fail-on=blocking <正文文件...>
    node scripts/check-degeneration.js --check --language=zh --fail-on=blocking <正文文件...>
    ```
+   - `check-style-hygiene.js` 的 blocking 合并进 `prose` S2：默认出版级策略只报告表情符号、颜文字、火星文、标点堆砌和不可见字符；若项目 `设定/文风.md` 明确选择对白弹性或逐类策略，按项目配置审查，不把作者已经授权的聊天体误判为 AI 味。
    - 将 `ellipsis`、`double-hyphen`、`markdown-divider` 结果作为 `format` findings 合并进报告。`em-dash` 破折号只采用 `check-ai-patterns.js` 的语义改写建议（见下条）；`normalize-punctuation.js` 报的同一位置 `em-dash` 在合并时去重丢弃，避免同处出现「机械替换」与「按功能改写」两条相互冲突的 finding。另外人工检查标点节奏是否通篇句号化或随机堆砌，脚本不替代语气判断。
    - `check-ai-patterns.js` 的 findings 合并进 `prose`：severity=blocking 的类别一律按 S2（当前为 `not-is-comparison` / `em-dash` / `voice-contrast` / `negation-parade` / `reverse-not-is` / `trailer-ending` / `trailer-summary`），修法直接采用检测器输出的建议（删否定铺垫/反差腔/排比否定/章尾预告腔/章尾状态总结句，直接写后项或具体动作；破折号按功能改成动作/短句/逗号/冒号）。
    - 其余 prose findings 统一按 S4：只指出读感风险，不替代人工判断；功能性写法标 `[需复核]` 并保留。完整类别和修法见 `anti-ai-writing.md`。
@@ -326,6 +330,7 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
   ```
   你是 consistency-checker，使用 grep-first + 推理型一致性审查检测事实矛盾。
   你的任务是【找事实矛盾、状态断线和需要推理才能发现的设定逻辑冲突】，不做创作评判，不评价文学质量，不输出创作修改建议。
+  涉及身世/血缘/亲属/婚姻/传承/所有权/权限/不可逆规则时，必须以 `追踪/长期事实.md`、`关系清单.md`、`事实档案/{实体}.md` 为索引，沿 evidence 回读原始正文/设定；检查单值事实、禁止误读、作者真相和读者揭示范围。
   项目路径：{项目根}
   审查范围：{文件路径/章节/必要摘录}
   已知角色：{从设定文件提取角色列表}
@@ -477,8 +482,8 @@ Rubric Source: file | embedded fallback
 新追踪协议只有一个写入口：本 skill 的 `scripts/tracking_commit.py`；完整事务字段和命令见 `references/tracking-transaction.md`。**full / lean 模式只允许通过该工具修改 `追踪/`；solo 模式不修改任何 `追踪/` 文件。** 分批审查的所有模式仍可写 **{项目根}/.story-review/state.md**，它不是追踪事实。不得直接 Edit/Write/追加 `伏笔.md`、角色快照、时间线视图、摘要或 `上下文.md`。
 
 1. **先检查状态**：执行 `tracking_commit.py check --project {项目根}`，确认 `_tracking-state.json` 与全部派生视图一致。失败时重跑产生当前目标状态的原事务，不得猜测、手改 Markdown 或另造事务覆盖。
-2. **判定是否需要修订**：只有正文证据表明现有追踪事实错误或缺失时才维护。过期伏笔、漏登记开放钩子、角色当前状态、客观时间线、读者认知都归入其证据所在章的 `mode=revision` 事务。普通审查意见和未来写作建议不进追踪。
-3. **构造完整同章事务**：保留该章原有紧凑增量中仍成立的字段，只修改有证据的变化；核心角色变化同时提交截至当前最后已写章的完整 `character_snapshots`。伏笔对同一 ID `upsert` 当前状态，不增加重复行；时间线同时提交客观事实、读者当前认知和实际揭示状态。
+2. **判定是否需要修订**：只有正文或锁定设定证据表明现有追踪事实错误或缺失时才维护。过期伏笔、漏登记开放钩子、角色当前状态、客观时间线、读者认知以及身世/关系/规则/物权/权限长期事实，都归入其证据所在章的 `mode=revision` 事务。普通审查意见和未来写作建议不进追踪。
+3. **构造完整同章事务**：保留该章原有紧凑增量中仍成立的字段，只修改有证据的变化；核心角色变化同时提交截至当前最后已写章的完整 `character_snapshots`。伏笔对同一 ID `upsert` 当前状态，不增加重复行；时间线同时提交客观事实、读者当前认知和实际揭示状态；长期硬事实用 `fact_changes` 更新稳定 ID，必须保留证据和禁止误读。
 4. **提交并复检**：执行 `tracking_commit.py commit`，再执行 `check`。确认逐章记录规范且未超限、`上下文.md` 恰好固定 7 栏且 ≤12288 字节、作者/读者时间线及全部派生视图与 state 一致。
 
 例如审查 demo 第 10 章时，若正文明确显示周薄森说专业重拍版“缺了灵魂”、张耀祖拍板继续用江晨手机原版，修订事务可以把该结果写进客观事实和读者已知；钟嘉嘉“只猜对了一半”背后的培养安排如果正文尚未揭示，只能留在作者真相，不能写入读者视图。
@@ -527,6 +532,10 @@ Rubric Source: file | embedded fallback
 ## 中文正文英文零容忍审查
 
 中文作品中任何未精确授权的拉丁字母 token 均按语言泄漏处理，不因位于台词、词很短、首字母大写或全大写而降为 advisory。URL、邮箱、路径、文件名和代码只机械保护明确非叙事结构；其他外语只有在用户单独确认后才可通过 `.deslop-whitelist` 精确登记。HTML 标签、注释和实体一律阻断。审查前首先运行 `node scripts/language_gate.js "{正文文件}"`；返回非零或其他检测脚本报告 `language-leak blocking` 时一律阻止通过，不计入 AI 味轻中重分档。
+
+## 中文正文文风卫生审查
+
+语言门通过后运行 `node scripts/check-style-hygiene.js --check --fail-on=blocking "{正文文件}"`。默认只阻断高置信的表情符号、颜文字、火星文、标点堆砌与不可见字符；有功能的 `？！`、`……` 不报。项目若配置 `设定/文风.md`，按 [正文文风卫生门](references/style-hygiene.md) 读取策略；审查者不得把允许项自行升级为 blocking，也不得用宽松配置豁免未授权外语。
 
 ## 适度对白语义审查
 

@@ -238,7 +238,8 @@ def test_hooks_fail_closed_on_invalid_tracking_checkpoints() -> None:
             text,
             (
                 "_tracking-state.json 缺失",
-                "schema_version=4",
+                "schema_version=5",
+                "migrate-v4",
                 "state_revision",
                 "mode=revision 事务重建派生视图",
                 "重新 /story-import",
@@ -249,12 +250,57 @@ def test_hooks_fail_closed_on_invalid_tracking_checkpoints() -> None:
         )
 
 
+def test_durable_canon_and_revision_impact_are_mandatory() -> None:
+    protocol = read("skills/story-long-write/references/tracking-transaction.md")
+    require_all(
+        protocol,
+        (
+            "fact_changes",
+            "长期事实.md",
+            "关系清单.md",
+            "事实档案/{实体}.md",
+            "cardinality=one",
+            "migrate-v4",
+        ),
+        "durable canon protocol",
+    )
+    revision = read("skills/story-long-write/references/workflow-revision.md")
+    require_all(
+        revision,
+        (
+            "revision-impact-and-canon.md",
+            "revision_guard.py plan",
+            "revision_guard.py check",
+            "changed_files / affected_entities / affected_fact_ids / affected_chapters",
+            "S1/S2 不得留待后续",
+        ),
+        "cross-artifact revision workflow",
+    )
+    daily = read("skills/story-long-write/references/workflow-daily.md")
+    require_all(daily, ("fact_changes", "事实档案/{实体}.md", "关系清单.md"), "daily canon recall")
+    explorer = read("skills/story-setup/references/templates/agents/story-explorer.md")
+    require_all(explorer, ("`canon_fact`", "`entity_dossier`", "追踪/长期事实.md"), "story-explorer canon queries")
+    checker = read("skills/story-setup/references/templates/agents/consistency-checker.md")
+    require_all(checker, ("单值事实槽位", "身世关系级联", "禁止误读"), "consistency canon review")
+
+
 def test_daily_quality_repairs_close_tracking_before_batch_finish() -> None:
     text = read("skills/story-long-write/references/workflow-daily.md")
-    revision = text.index("若本步修文改变了会影响后续的事实")
+    revision = text.index("若本步发现必须回滚或修改已提交正文")
     step_four = text.index("## Step 4：批末收尾")
     require(revision < step_four, "quality repair revision invariant must appear before Step 4")
-    require_all(text[revision:step_four], ("mode=revision", "通过 `check`", "纯措辞调整不重复提交"), "daily quality repair closure")
+    require_all(
+        text[revision:step_four],
+        (
+            "revision-governor phase=plan",
+            "revision-governor phase=verify",
+            "追踪/修改影响/active.json",
+            "revision_guard.py check",
+            "tracking_commit.py check",
+            "纯措辞调整不重复提交",
+        ),
+        "daily quality repair closure",
+    )
 
 
 def test_tracking_examples_use_the_demo_novel() -> None:
@@ -308,6 +354,46 @@ def test_init_archives_a_pre_protocol_tracking_directory() -> None:
         'RETIRED_ARCHIVE_DIR = "_旧追踪存档"' in tool,
         "tracking_commit.py must define the archive directory used by the documented contract",
     )
+
+
+def test_chapter_acceptance_projection_and_cold_read_are_gated() -> None:
+    skill = read("skills/story-long-write/SKILL.md")
+    require_all(
+        skill,
+        (
+            "正文先候选、接纳后入正史",
+            "chapter_candidate.py",
+            "story_doctor.py",
+            "sequential-cold-read.md",
+        ),
+        "long-form acceptance gate",
+    )
+    daily = read("skills/story-long-write/references/workflow-daily.md")
+    require_all(
+        daily,
+        (
+            "approval_mode",
+            "不自动等于接纳",
+            "approve --confirm ACCEPT",
+            "promote --confirm PROMOTE",
+            "chapter_candidate.py close",
+            "story_doctor.py --project",
+        ),
+        "daily candidate workflow",
+    )
+    acceptance = read("skills/story-long-write/references/chapter-acceptance-and-doctor.md")
+    require_all(
+        acceptance,
+        (
+            "精确一章许可",
+            "已接纳正文的 SHA-256",
+            "追踪/投影日志.jsonl",
+            "revision_guard.py",
+        ),
+        "chapter acceptance protocol",
+    )
+    cold_read = read("skills/story-long-write/references/sequential-cold-read.md")
+    require_all(cold_read, ("clock", "promises", "knowledge", "props", "S1/S2"), "cold-read protocol")
 
 
 def main() -> None:

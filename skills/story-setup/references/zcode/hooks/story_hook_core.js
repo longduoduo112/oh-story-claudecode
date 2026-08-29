@@ -2,6 +2,7 @@
 
 const fs = require("node:fs")
 const path = require("node:path")
+const crypto = require("node:crypto")
 const { spawnSync } = require("node:child_process")
 
 function existingDir(value) {
@@ -118,8 +119,11 @@ function trackingCheckpointIssue(book, requireState = false, expectedLastCommitt
   } catch {
     return `追踪/_tracking-state.json 无法解析；停止写正文并重新 /story-import，不能猜测或手补状态`
   }
-  if (!document || typeof document !== "object" || Array.isArray(document) || document.schema_version !== 4) {
-    return `追踪/_tracking-state.json 不是当前 schema_version=4；停止写正文并重新 /story-import，不保留旧结构兼容路径`
+  if (document && typeof document === "object" && !Array.isArray(document) && document.schema_version === 4) {
+    return `追踪/_tracking-state.json 仍是 schema_version=4；停止写正文，用 tracking_commit.py migrate-v4 升级并植入长期事实后再 check`
+  }
+  if (!document || typeof document !== "object" || Array.isArray(document) || document.schema_version !== 5) {
+    return `追踪/_tracking-state.json 不是当前 schema_version=5；停止写正文并重新 /story-import，不保留旧结构兼容路径`
   }
   if (!Number.isInteger(document.state_revision)) {
     return `追踪/_tracking-state.json 缺少整数 state_revision；停止写正文并重新 /story-import`
@@ -520,6 +524,10 @@ function joinPosix(directory, name) {
   return `${String(directory).replace(/[\\/]+$/, "")}/${name}`
 }
 
+function isStorySourceTarget(value) {
+  return /(^|\/)(正文|大纲|设定)(\/|$)/.test(String(value || "").replace(/\\/g, "/"))
+}
+
 function copyLikeTargets(command, args) {
   const positionals = []
   let targetDirectory = ""
@@ -582,12 +590,12 @@ function extractProseTargets(command, depth = 0) {
     }
     if (commandName === "tee" || commandName === "touch") {
       for (const destination of writeOperands(commandName, commandArgs)) {
-        if (destination.includes("正文")) targets.push(destination)
+        if (isStorySourceTarget(destination)) targets.push(destination)
       }
     }
     if (commandName === "cp" || commandName === "mv" || commandName === "install") {
       for (const destination of copyLikeTargets(commandName, commandArgs)) {
-        if (destination.includes("正文")) targets.push(destination)
+        if (isStorySourceTarget(destination)) targets.push(destination)
       }
     }
   }
@@ -628,6 +636,92 @@ function extractPatchTargets(patchText) {
     }
   }
   return targets
+}
+
+function revisionSourceInfo(root, absolute) {
+  const target = path.resolve(absolute)
+  let relative
+  try {
+    relative = path.relative(path.resolve(root), target)
+  } catch {
+    return null
+  }
+  if (!relative || path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) return null
+  const parts = relative.split(path.sep)
+  const sourceIndex = parts.findIndex((part) => ["正文", "大纲", "设定"].includes(part))
+  if (sourceIndex < 1 || parts.length <= sourceIndex + 1 || !parts[parts.length - 1].endsWith(".md")) return null
+  if (parts.slice(sourceIndex + 1, -1).some((part) => part.includes("备份") || ["归档", "archive", "archives"].includes(part) || part.startsWith("."))) return null
+  const book = path.join(path.resolve(root), ...parts.slice(0, sourceIndex))
+  const statePath = path.join(book, "追踪", "_tracking-state.json")
+  if (!fs.existsSync(statePath)) return null
+  let state
+  try {
+    state = JSON.parse(fs.readFileSync(statePath, "utf8"))
+  } catch {
+    return null
+  }
+  const lastCommitted = Number.isInteger(state.last_committed_chapter) ? state.last_committed_chapter : null
+  const base = parts[parts.length - 1]
+  let chapter = null
+  if (parts[sourceIndex] === "正文") {
+    const match = base.match(/^第0*(\d+)章/)
+    if (match) chapter = Number(match[1])
+  } else if (parts[sourceIndex] === "大纲") {
+    const match = base.match(/^细纲_第0*(\d+)章/)
+    if (match) chapter = Number(match[1])
+  }
+  const activeRelative = parts.slice(sourceIndex).join("/")
+  const priorCanon = chapter !== null && lastCommitted !== null
+    ? chapter <= lastCommitted
+    : fs.existsSync(target)
+  return { target, book, activeRelative, chapter, lastCommitted, priorCanon }
+}
+
+function revisionApprovalStatus(manifestPath, manifest, manifestBytes) {
+  const stampPath = path.join(path.dirname(manifestPath), "active.approved.json")
+  let stamp
+  try {
+    stamp = JSON.parse(fs.readFileSync(stampPath, "utf8"))
+  } catch {
+    return "pending"
+  }
+  const digest = crypto.createHash("sha256").update(manifestBytes).digest("hex")
+  return stamp && stamp.schema_version === 1 && stamp.status === "PASS"
+    && stamp.change_id === manifest.change_id && stamp.manifest_sha256 === digest
+    ? "approved"
+    : "pending"
+}
+
+function revisionBlockReason(root, absolute) {
+  const info = revisionSourceInfo(root, absolute)
+  if (!info) return null
+  const manifestPath = path.join(info.book, "追踪", "修改影响", "active.json")
+  if (!fs.existsSync(manifestPath)) {
+    if (!info.priorCanon) return null
+    return `⛔ 修改旧内容被拦截：${safeRelative(root, info.target)} 属于已提交内容或既有权威源。先调用 revision-governor（phase=plan），再用 revision_guard.py plan 生成 ${safeRelative(root, manifestPath)}；不得只改单章而跳过关联项检查。`
+  }
+
+  let manifestBytes
+  let manifest
+  try {
+    manifestBytes = fs.readFileSync(manifestPath)
+    manifest = JSON.parse(manifestBytes.toString("utf8"))
+  } catch {
+    return `⛔ 修改事务被拦截：${safeRelative(root, manifestPath)} 无法解析。修复或重新生成活动修改清单后再写。`
+  }
+  if (!manifest || manifest.schema_version !== 1 || typeof manifest.change_id !== "string" || !Array.isArray(manifest.changed_files)) {
+    return `⛔ 修改事务被拦截：${safeRelative(root, manifestPath)} 缺少有效 schema_version/change_id/changed_files；请重新运行 revision_guard.py plan。`
+  }
+
+  const approval = revisionApprovalStatus(manifestPath, manifest, manifestBytes)
+  if (approval === "approved") {
+    if (!info.priorCanon) return null
+    return `⛔ 修改旧内容被拦截：活动事务 ${manifest.change_id} 已验收关闭，不能复用旧批准继续改 ${info.activeRelative}。请重新调用 revision-governor（phase=plan）并生成新的 active.json。`
+  }
+  if (!manifest.changed_files.includes(info.activeRelative)) {
+    return `⛔ 计划外修改被拦截：${info.activeRelative} 不在活动事务 ${manifest.change_id} 的 changed_files 中。先让 revision-governor 重算影响链并重新生成 active.json；事务未关闭前也不得穿插正常续写。`
+  }
+  return null
 }
 
 function proseBlockReason(root, absolute) {
@@ -1519,6 +1613,8 @@ module.exports = {
   continuityFindings,
   extractProseTargets,
   extractPatchTargets,
+  revisionSourceInfo,
+  revisionBlockReason,
   proseBlockReason,
   isProsePath,
   wordcountFinding,

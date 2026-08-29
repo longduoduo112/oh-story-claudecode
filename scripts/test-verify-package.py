@@ -347,7 +347,7 @@ class VerifyPackageTests(unittest.TestCase):
             return subprocess.CompletedProcess(
                 command,
                 0,
-                stdout="\x1b[?25l Found \x1b[32m17\x1b[0m skills\n",
+                stdout="\x1b[?25l Found \x1b[32m18\x1b[0m skills\n",
                 stderr="",
             )
 
@@ -357,7 +357,7 @@ class VerifyPackageTests(unittest.TestCase):
             runner=fake_runner,
         )
 
-        self.assertEqual(result.discovered_skills, 17)
+        self.assertEqual(result.discovered_skills, 18)
         self.assertEqual(len(calls), 1)
         command, kwargs = calls[0]
         self.assertEqual(command[:4], ["npx", "--yes", "skills@1.5.22", "add"])
@@ -398,7 +398,7 @@ class VerifyPackageTests(unittest.TestCase):
 
         def should_not_run(command, **kwargs):
             calls.append(command)
-            return subprocess.CompletedProcess(command, 0, stdout="Found 17 skills\n", stderr="")
+            return subprocess.CompletedProcess(command, 0, stdout="Found 18 skills\n", stderr="")
 
         with self.assertRaisesRegex(verify_package.VerificationError, "escapes archive_root"):
             verify_package.verify_package(

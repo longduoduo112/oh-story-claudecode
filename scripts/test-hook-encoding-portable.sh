@@ -189,7 +189,7 @@ else
   [ "$(rg '中文测试书/正文/第1章_开端.md')" = 0 ] && pass "[GBK] legacy v27 allows missing state" || bad "[GBK] legacy v27 should allow missing state"
   printf '%s\n' 'agents_version: 28' > "$P2/.story-deployed"
   [ "$(rg '中文测试书/正文/第1章_开端.md')" = 2 ] && pass "[GBK] v28 blocks missing state" || bad "[GBK] v28 missing-state gate failed"
-  printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":0}' > "$BOOK/追踪/_tracking-state.json"
+  printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":0}' > "$BOOK/追踪/_tracking-state.json"
   printf '%s\n' '> 状态修订：0' > "$BOOK/追踪/上下文.md"
   [ "$(rg '中文测试书/正文/第1章_开端.md')" = 0 ] && pass "[GBK] v28 allows valid tracking state" || bad "[GBK] valid state did not reach shared prose guard cleanly"
   rm -f "$P2/.story-deployed" "$BOOK/追踪/_tracking-state.json" "$BOOK/追踪/上下文.md"

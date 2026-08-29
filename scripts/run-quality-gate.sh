@@ -38,8 +38,11 @@ node scripts/test-scan-runtime.js
 bash scripts/test-ai-patterns.sh
 bash scripts/test-degeneration.sh
 bash scripts/test-language-gate.sh
+bash scripts/test-style-hygiene.sh
 python3 scripts/test-deslop-guard.py
 bash scripts/test-dialogue-drift-gate.sh
+python3 scripts/test-prose-metrics.py
+bash scripts/test-outline-copy.sh
 bash scripts/test-prose-backstop-hook.sh
 bash scripts/test-prose-net-parity.sh
 bash scripts/test-story-continuity.sh
@@ -50,9 +53,15 @@ python3 -m unittest discover -s skills/story-data-analyze/tests -p 'test_*.py' -
 step "tracking and deployment contracts"
 python3 scripts/test-tracking-workflow-contracts.py
 python3 scripts/test-tracking-commit.py
+python3 scripts/test-outline-forecast.py
+python3 scripts/test-chapter-candidate.py
+python3 scripts/test-voice-profile.py
+python3 scripts/test-cold-read-ledger.py
+python3 scripts/test-copy-path-safety.py
 bash scripts/check-story-setup-deployment.sh
 
 step "runtime adapters"
+python3 scripts/test-story-publish.py
 bash scripts/check-claude-adapter.sh
 bash scripts/check-codex-adapter.sh
 bash scripts/check-opencode-adapter.sh

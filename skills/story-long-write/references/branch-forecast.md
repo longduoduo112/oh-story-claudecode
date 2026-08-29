@@ -44,7 +44,7 @@
 - 连载中项目的 `追踪/上下文.md`
 - 用户本次明确的作者意图
 
-把会决定分支有效性的文件作为 `--base` 传入初始化脚本。脚本记录内容指纹；任一基础文件改变，推演即为 stale。
+把会决定分支有效性的文件作为 `--base` 传入初始化脚本。脚本记录内容指纹，并在追踪状态存在时自动绑定当前 `state_revision`；任一基础文件或权威状态修订号改变，推演即为 stale。
 
 ## 输出比较维度
 
@@ -83,7 +83,8 @@ for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
 ```text
 大纲/推演/{forecast-id}/
 ├── forecast.json
-└── selected-plan.md   # 只有选择后才生成
+├── selected-plan.md        # 只有选择后才生成
+└── selection-receipt.json  # 绑定用户选择说明、分支摘要和上下文指纹
 ```
 
 Agent 填写 `forecast.json` 中各分支，再运行陈旧检测：
@@ -99,10 +100,11 @@ for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
 
 ```bash
 for PYBIN in python3 python py; do "$PYBIN" -c "" 2>/dev/null && break; done
-"$PYBIN" skills/story-long-write/scripts/outline_forecast.py select "{推演目录}" --branch B1
+"$PYBIN" skills/story-long-write/scripts/outline_forecast.py select "{推演目录}" \
+  --branch B1 --confirm SELECT --approval-note "用户明确选择 B1"
 ```
 
-`select` 只生成选择计划文件，不提供自动写回命令。选择分支和修改正式大纲是两次授权：
+`select` 没有 `--confirm SELECT` 和用户选择说明时直接失败；选择后只生成选择计划与选择凭证，不提供自动写回命令。选择分支和修改正式大纲是两次授权：
 
 1. 用户选择分支，生成选择计划。
 2. Agent 说明将修改哪些总纲、卷纲、剧情单元或细纲文件。

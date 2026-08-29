@@ -20,6 +20,34 @@
       ]
     },
     {
+      "name": "accepted-prose-voice-profile",
+      "source": "skills/story-deslop/scripts/voice_profile.py",
+      "targets": [
+        "skills/story-long-write/scripts/voice_profile.py"
+      ]
+    },
+    {
+      "name": "cross-chapter-shape-gate",
+      "source": "skills/story-deslop/scripts/chapter_shape_gate.py",
+      "targets": [
+        "skills/story-long-write/scripts/chapter_shape_gate.py"
+      ]
+    },
+    {
+      "name": "deterministic-prose-metrics",
+      "source": "skills/story-deslop/scripts/prose_metrics.py",
+      "targets": [
+        "skills/story-long-write/scripts/prose_metrics.py"
+      ]
+    },
+    {
+      "name": "outline-copy-detector",
+      "source": "skills/story-deslop/scripts/check-outline-copy.js",
+      "targets": [
+        "skills/story-long-write/scripts/check-outline-copy.js"
+      ]
+    },
+    {
       "name": "prose-deslop-guard",
       "source": "skills/story-deslop/scripts/deslop_guard.py",
       "targets": [
@@ -34,6 +62,15 @@
         "skills/story-long-write/scripts/language_gate.js",
         "skills/story-review/scripts/language_gate.js",
         "skills/story-short-write/scripts/language_gate.js"
+      ]
+    },
+    {
+      "name": "prose-style-hygiene-gate",
+      "source": "skills/story-deslop/scripts/check-style-hygiene.js",
+      "targets": [
+        "skills/story-long-write/scripts/check-style-hygiene.js",
+        "skills/story-review/scripts/check-style-hygiene.js",
+        "skills/story-short-write/scripts/check-style-hygiene.js"
       ]
     },
     {
@@ -117,6 +154,30 @@
       "targets": [
         "skills/story-long-write/references/pattern-governance.md",
         "skills/story-short-write/references/pattern-governance.md"
+      ]
+    },
+    {
+      "name": "reference-accepted-voice-profile",
+      "source": "skills/story-deslop/references/accepted-voice-profile.md",
+      "targets": [
+        "skills/story-long-write/references/accepted-voice-profile.md"
+      ]
+    },
+    {
+      "name": "reference-style-hygiene",
+      "source": "skills/story-deslop/references/style-hygiene.md",
+      "targets": [
+        "skills/story-long-write/references/style-hygiene.md",
+        "skills/story-review/references/style-hygiene.md",
+        "skills/story-setup/references/agent-references/style-hygiene.md",
+        "skills/story-short-write/references/style-hygiene.md"
+      ]
+    },
+    {
+      "name": "reference-cross-chapter-shape",
+      "source": "skills/story-deslop/references/cross-chapter-shape.md",
+      "targets": [
+        "skills/story-long-write/references/cross-chapter-shape.md"
       ]
     },
     {

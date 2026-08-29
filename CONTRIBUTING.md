@@ -72,7 +72,7 @@ PR 自动运行 `.github/workflows/cross-platform.yml`。`main` 的发行候选�
 - `scripts/check-openclaw-skills.sh` — OpenClaw 单行 frontmatter、`metadata.openclaw` 与可选真实 CLI 发现检查
 - `scripts/check-codex-adapter.sh` — Codex repo skills symlink、custom-agent TOML、hook 生成确定性与 launcher 契约
 - `scripts/test-codex-hooks.sh` — Codex hooks 合成事件测试
-- `scripts/check-zcode-adapter.sh` — ZCode plugin/marketplace、17 Skills/Commands、受支持 Hook 事件与部署锚点检查
+- `scripts/check-zcode-adapter.sh` — ZCode plugin/marketplace、18 Skills/Commands、受支持 Hook 事件与部署锚点检查
 - `scripts/test-zcode-hooks.sh` — ZCode 严格 JSON Hook 契约、正文守卫、连续性与跨平台 Node runner 测试
 - `scripts/manage-version.py` + `test-manage-version.py` — 公开 SemVer 版本面一致性与 tag/changelog 规则
 - `scripts/build-package.py` + `test-build-package.py` — 可复现 dev/release 包、单根目录、排除清单、manifest 和 checksum
@@ -253,7 +253,7 @@ OPENCLAW_REAL_CHECK=1 bash scripts/check-openclaw-skills.sh  # 本机安装 open
 
 ZCode 采用「原生 plugin + `story-setup` workspace 部署」双入口：
 
-- `.zcode-plugin/plugin.json` 与根 `marketplace.json` 暴露同一组 17 Skills、17 Commands 和 ZCode Hooks；版本必须与 `skills/story/VERSION` 同步。
+- `.zcode-plugin/plugin.json` 与根 `marketplace.json` 暴露同一组 18 Skills、18 Commands 和 ZCode Hooks；版本必须与 `skills/story/VERSION` 同步。
 - `skills/story-setup/references/zcode/` 是 workspace 部署模板，包含 `AGENTS.md.tmpl`、Commands、`config.json.patch` 与无第三方依赖的 Node Hook runner。
 - ZCode 3.3.4 只支持 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`PostToolUseFailure`、`Stop`。不要复制 Claude 的 `PreCompact`、`PostCompact`、`SessionEnd`、`SubagentStop` 或 `Notification`。
 - Hook stdout 为空表示放行；只要非空就必须满足严格 JSON schema。诊断只写 stderr，异常 fail-open；优先使用 `process` + `node`，不要引入 shell/Python launcher 的跨平台分支。
@@ -274,7 +274,7 @@ bash scripts/test-prose-net-parity.sh
 Reasonix（DeepSeek-Reasonix CLI）目前是 Phase 1：只有 skills + 原生 plugin manifest，无项目级 `story-setup` 部署、无 hooks、无 custom agents（涉及专业 Agent 的 Skill 走 solo/direct fallback）：
 
 - 根 `reasonix-plugin.json` 是 plugin manifest；`version` 必须与 `skills/story/VERSION` 同步（`check-reasonix-adapter.sh` 守卫）。
-- Reasonix 原生扫描 `.agents/skills`（指向 `skills/` 的 symlink，与 Codex 共用）发现 17 个 skill。
+- Reasonix 原生扫描 `.agents/skills`（指向 `skills/` 的 symlink，与 Codex 共用）发现 18 个 skill。
 - 真实 CLI 校验 `reasonix doctor capabilities` 不在 CI 内，发版前可手动跑。
 
 ### Reasonix 检查步骤

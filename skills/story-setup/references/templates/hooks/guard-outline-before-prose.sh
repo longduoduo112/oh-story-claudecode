@@ -102,6 +102,16 @@ case "$TARGET" in
   *)  ABS="$ROOT/$TARGET" ;;
 esac
 
+# 旧正文/既有大纲/设定的修改必须先有 revision-governor 影响计划。该门放在正文专用
+# 细纲门之前，因此同一脚本也能覆盖总纲、卷纲、细纲和设定写入。
+if node -e "" >/dev/null 2>&1 && [ -f "$CLI" ]; then
+  REVISION_BLOCK="$(node "$CLI" revision-block-reason "$ROOT" "$ABS" 2>/dev/null || true)"
+  if [ -n "$REVISION_BLOCK" ]; then
+    printf '%s\n' "$REVISION_BLOCK" >&2
+    exit 2
+  fi
+fi
+
 # 核判据：OpenCode / ZCode / Codex 三端写正文前都调 core.proseBlockReason，唯独本端
 # 早先只有下面的纯 bash 细纲检查，于是「首建第 N+1 章前必须先提交第 N 章追踪事务」这条
 # 顺序校验在 Claude Code 上从不触发——跨章连续性守卫在这一端是开环的：模型不主动跑

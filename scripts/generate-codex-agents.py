@@ -16,12 +16,13 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-READ_ONLY_AGENTS = {"chapter-extractor", "consistency-checker", "story-explorer"}
+READ_ONLY_AGENTS = {"chapter-extractor", "consistency-checker", "revision-governor", "story-explorer"}
 NICKNAMES = {
     "chapter-extractor": ["Chapter Extractor", "Scene Splitter"],
     "character-designer": ["Character Designer", "Voice Crafter"],
     "consistency-checker": ["Consistency Checker", "Continuity Guard"],
     "narrative-writer": ["Narrative Writer", "Prose Crafter"],
+    "revision-governor": ["Revision Governor", "Canon Change Auditor"],
     "story-architect": ["Story Architect", "Plot Architect"],
     "story-explorer": ["Story Explorer", "Lore Scout"],
     "story-researcher": ["Story Researcher", "Source Scout"],

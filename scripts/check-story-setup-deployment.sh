@@ -12,6 +12,7 @@ AGENT_REFS_DIR="$SKILL_DIR/references/agent-references"
 SKILL_FILE="$SKILL_DIR/SKILL.md"
 SETTINGS_FILE="$SKILL_DIR/references/templates/settings-hooks.json"
 CLAUDE_MERGE="$SKILL_DIR/scripts/merge-claude-settings.py"
+COPY_SAFETY="$SKILL_DIR/scripts/copy-path-safety.py"
 TMP_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -61,8 +62,8 @@ write_sentinel() {
   local root="$1"
   cat > "$root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 30
-setup_skill_version: 1.2.13
+agents_version: 36
+setup_skill_version: 1.2.19
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
@@ -115,6 +116,7 @@ echo "Repo: $REPO_ROOT"
 # TS1 — Hook dependency completeness
 assert_file "$HOOKS_DIR/lib/common.sh"
 assert_file "$HOOKS_DIR/lib/sentinel.sh"
+assert_file "$COPY_SAFETY"
 runtime_artifacts="$(find "$HOOKS_DIR" -maxdepth 4 \( -path '*/.omc*' -o -name '.DS_Store' -o -name '*.tmp' -o -name '*.log' \) -print 2>/dev/null || true)"
 [ -z "$runtime_artifacts" ] || fail "hook templates contain runtime artifacts that would be recursively deployed: $runtime_artifacts"
 while IFS= read -r src; do
@@ -258,7 +260,7 @@ cmp -s "$TMP_DIR/claude-current.json" "$TMP_DIR/claude-current-again.json" \
 
 # 重部署时 sentinel 的 target_cli 是权威：不认它就会每次重问，且 skills-only 三端根本无从探测。
 assert_grep '已部署项目以 sentinel 里的值为准' "$SKILL_FILE" "story-setup must reuse the deployed target_cli on redeploy"
-# metadata.openclaw 在 17 个 skill 上全都有，拿它判定会把 reasonix / generic 项目误认成 OpenClaw。
+# metadata.openclaw 在 18 个 skill 上全都有，拿它判定会把 reasonix / generic 项目误认成 OpenClaw。
 assert_no_grep '中的 `metadata\.openclaw`' "$SKILL_FILE" "story-setup must not detect OpenClaw from the skills bundle it deploys itself"
 assert_grep '不作 OpenClaw 信号' "$SKILL_FILE" "story-setup must explain why metadata.openclaw is not a detection signal"
 # skills-only 三端只能靠各自 AGENTS.md 的标题行区分；SKILL.md 引用的标记必须在模板里真的存在。
@@ -352,8 +354,8 @@ setup_git_repo "$bad_sentinel_root"
 copy_hooks "$bad_sentinel_root"
 cat > "$bad_sentinel_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 30
-setup_skill_version: 1.2.13
+agents_version: 36
+setup_skill_version: 1.2.19
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
@@ -377,8 +379,8 @@ printf '# ref
 ' > "$multi_refs_root/skills/story-setup/references/agent-references/ref.md"
 cat > "$multi_refs_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 30
-setup_skill_version: 1.2.13
+agents_version: 36
+setup_skill_version: 1.2.19
 target_cli: claude-code,codex,generic
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references,.codex/skills/story-setup/references/agent-references,skills/story-setup/references/agent-references
@@ -403,14 +405,14 @@ setup_git_repo "$stale_previous_root"
 copy_hooks "$stale_previous_root"
 cat > "$stale_previous_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 29
-setup_skill_version: 1.2.12
+agents_version: 34
+setup_skill_version: 1.2.17
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
 stale_previous_out="$(run_from_nested "$stale_previous_root" session-start.sh 2>&1 || true)"
-echo "$stale_previous_out" | grep -q '低于 v30' || fail "session-start did not warn for agents_version 29 stale v30 deployment"
+echo "$stale_previous_out" | grep -q '低于 v36' || fail "session-start did not warn for agents_version 34 stale v36 deployment"
 
 newer_project_root="$TMP_DIR/newer-project"
 mkdir -p "$newer_project_root/.claude/skills/story-setup/references/agent-references"
@@ -418,14 +420,14 @@ setup_git_repo "$newer_project_root"
 copy_hooks "$newer_project_root"
 cat > "$newer_project_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 31
+agents_version: 37
 setup_skill_version: 1.3.0
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
 newer_project_out="$(run_from_nested "$newer_project_root" session-start.sh 2>&1 || true)"
-echo "$newer_project_out" | grep -q '高于本 hook 支持的 v30' || fail "session-start did not reject agents_version 31 downgrade"
+echo "$newer_project_out" | grep -q '高于本 hook 支持的 v36' || fail "session-start did not reject agents_version 37 downgrade"
 echo "$newer_project_out" | grep -q '不要降级覆盖' || fail "session-start did not explain future-version safety"
 
 mixed_version_root="$TMP_DIR/mixed-version"
@@ -435,7 +437,7 @@ copy_hooks "$mixed_version_root"
 touch "$mixed_version_root/.claude/skills/story-setup/references/agent-references/dummy.md"
 cat > "$mixed_version_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 30
+agents_version: 36
 setup_skill_version: 1.2.6
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
@@ -443,11 +445,11 @@ references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
 mixed_version_out="$(run_from_nested "$mixed_version_root" session-start.sh 2>&1 || true)"
 # agents_version 是唯一运行时过期权威；setup_skill_version 落后不触发重部署（设计如此）
-if echo "$mixed_version_out" | grep -q '低于 v30'; then
-  fail "session-start incorrectly nagged '低于 v30' for current agents_version=30 just because setup_skill_version lags"
+if echo "$mixed_version_out" | grep -q '低于 v36'; then
+  fail "session-start incorrectly nagged '低于 v36' for current agents_version=36 just because setup_skill_version lags"
 fi
 if echo "$mixed_version_out" | grep -q '高于本 hook'; then
-  fail "session-start incorrectly nagged '高于本 hook' for current agents_version=30 just because setup_skill_version lags"
+  fail "session-start incorrectly nagged '高于本 hook' for current agents_version=36 just because setup_skill_version lags"
 fi
 
 # 多端部署的 references_dir 是逗号分隔多条路径。整串当一条路径查会每次开会话都误报缺失，
@@ -461,8 +463,8 @@ touch "$multi_end_root/.claude/skills/story-setup/references/agent-references/du
 touch "$multi_end_root/.codex/skills/story-setup/references/agent-references/dummy.md"
 cat > "$multi_end_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 30
-setup_skill_version: 1.2.13
+agents_version: 36
+setup_skill_version: 1.2.19
 target_cli: claude-code,codex
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references,.codex/skills/story-setup/references/agent-references
@@ -574,21 +576,25 @@ echo "  OK TS9 settings JSON"
 # agent 模板要带住关键行为规则。原先还夹着一批「UPGRADING.md/README 必须写到某句话」
 # 的文档完整性断言——那种改一个词就红、测的是措辞不是行为，已随 check-story-long-write-contract.sh
 # 一并去掉，发版是否补 UPGRADING 由发版清单和人把关，不靠 CI 钉死措辞。
-assert_grep 'AGENTS_VERSION.*-lt 30|AGENTS_VERSION" -lt 30' "$HOOKS_DIR/session-start.sh" "session-start must warn for agents_version 29 under v30 deployment"
-assert_grep 'AGENTS_VERSION.*-gt 30|AGENTS_VERSION" -gt 30' "$HOOKS_DIR/session-start.sh" "session-start must reject a newer agents_version as a downgrade"
+assert_grep 'AGENTS_VERSION.*-lt 36|AGENTS_VERSION" -lt 36' "$HOOKS_DIR/session-start.sh" "session-start must warn for agents_version 35 under v36 deployment"
+assert_grep 'AGENTS_VERSION.*-gt 36|AGENTS_VERSION" -gt 36' "$HOOKS_DIR/session-start.sh" "session-start must reject a newer agents_version as a downgrade"
 assert_grep 'TRACKING_REQUIRED_AGENTS_VERSION[[:space:]]*=[[:space:]]*28' "$HOOKS_DIR/guard-outline-before-prose.sh" "Claude bash tracking gate must activate at agents_version 28"
 assert_grep 'TRACKING_REQUIRED_AGENTS_VERSION[[:space:]]*=[[:space:]]*28' "$HOOKS_DIR/story_hook_cli.js" "Claude CLI tracking gate must activate at agents_version 28"
-assert_grep 'agents_version.*小于 `30`|版本 < 30' "$SKILL_DIR/SKILL.md" "story-setup redeploy branch must treat agents_version 29 as stale"
-assert_grep 'agents_version.*大于 `30`' "$SKILL_DIR/SKILL.md" "story-setup must stop before downgrading a newer deployment"
+assert_grep 'agents_version.*小于 `36`|版本 < 36' "$SKILL_DIR/SKILL.md" "story-setup redeploy branch must treat agents_version 35 as stale"
+assert_grep 'agents_version.*大于 `36`' "$SKILL_DIR/SKILL.md" "story-setup must stop before downgrading a newer deployment"
 assert_grep 'Notice: agents bundle 版本不匹配' "$REPO_ROOT/skills/story-review/SKILL.md" "story-review must surface an agents_version mismatch"
-assert_grep '大于 30 时额外提示先更新 oh-story-claudecode' "$REPO_ROOT/skills/story-review/SKILL.md" "story-review must tell newer deployments to update the package first"
-assert_grep '^version:[[:space:]]*1\.2\.13$' "$SKILL_FILE" "story-setup frontmatter must match the deployed setup version"
+assert_grep '大于 36 时额外提示先更新 oh-story-claudecode' "$REPO_ROOT/skills/story-review/SKILL.md" "story-review must tell newer deployments to update the package first"
+assert_grep '^version:[[:space:]]*1\.2\.19$' "$SKILL_FILE" "story-setup frontmatter must match the deployed setup version"
 
 # Phase 1 自检的目录名单是硬编码的，必须与实际 references/ 子目录集合一致。
 # 漏写一个 → 半装的包检不出；名单里多出已删除的目录 → 完好的包被判残缺，fail-closed 卡死所有部署。
 selfcheck_line="$(grep -n '先自检参考目录' "$SKILL_FILE" | head -1 | cut -d: -f1)"
 [ -n "$selfcheck_line" ] || fail "story-setup Phase 1 reference self-check paragraph not found"
 selfcheck_text="$(sed -n "${selfcheck_line}p" "$SKILL_FILE")"
+case "$selfcheck_text" in
+  *'scripts/copy-path-safety.py'*) ;;
+  *) fail "story-setup Phase 1 self-check is missing copy-path-safety.py" ;;
+esac
 for ref_dir in "$SKILL_DIR"/references/*/; do
   ref_name="$(basename "$ref_dir")"
   case "$selfcheck_text" in
@@ -607,11 +613,11 @@ assert_grep 'missing_primary_contract' "$REPO_ROOT/skills/story-long-write/SKILL
 assert_grep '内容概括（五段式）|情节安排（多线）|人物关系和出场顺序|结尾设定和钩子' "$SKILL_DIR/references/templates/agents/story-architect.md" "story-architect must output v13 chapter blueprint fields"
 assert_grep '逻辑线|人物关系变化|行动成本（可无）/收益归属|结尾设定' "$SKILL_DIR/references/templates/agents/consistency-checker.md" "consistency-checker must consume current outline blueprint fields"
 assert_grep '语气标点谱系' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must enforce v13 tone punctuation"
-assert_grep '不用.*……|不使用.*……|不保留.*……|不残留.*……' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must reject ellipsis pause punctuation"
-assert_grep '不用.*——|不使用.*——|不保留.*——|不残留.*——' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must reject dialogue dash exception"
+assert_grep '吞咽、未尽、截断、拖音.*可保留|有明确声线功能.*可保留' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must review pause punctuation by function"
+assert_no_grep '正文.*不使用.*……|正文和对话都.*不用.*——|正文无 .*…….*——' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must not universally ban pause punctuation"
 assert_grep '语气标点谱系' "$AGENT_REFS_DIR/format-and-structure.md" "agent references must include v13 tone punctuation format rules"
-assert_grep '不用.*……|不使用.*……|不保留.*……|不残留.*……' "$AGENT_REFS_DIR/format-and-structure.md" "agent references must forbid ellipsis pause punctuation"
-assert_grep '不用.*——|不使用.*——|不保留.*——|不残留.*——|正文和对话都禁止.*——' "$AGENT_REFS_DIR/format-and-structure.md" "agent references must forbid dialogue dash exception"
+assert_grep '吞咽、未尽、截断、拖音.*保留|确有吞回话、拖音或悬置功能.*保留' "$AGENT_REFS_DIR/format-and-structure.md" "agent references must review pause punctuation by function"
+assert_no_grep '正文不使用破折号|正文和对话都禁止.*——' "$AGENT_REFS_DIR/format-and-structure.md" "agent references must not universally ban pause punctuation"
 assert_grep '禁止高置信否定铺垫后再肯定翻转|禁止高置信否定翻转句式' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must hard-ban high-confidence not-then-is flips"
 assert_grep '跨段.*不是A / 也不是B / 只是C.*(只作语义复核|advisory)' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must treat cross-paragraph negation as advisory"
 assert_grep '承担辩解、悬念排除或情绪递进时可保留|承担辩解、悬念排除、情绪递进等功能时可保留' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must preserve functional cross-paragraph negation"
@@ -644,8 +650,9 @@ done
 assert_grep '裸调用.*不得自动进入正文写作|不得自动进入正文写作.*裸调用' "$REPO_ROOT/skills/story-long-write/SKILL.md" "story-long-write bare invocation must not auto-write prose"
 assert_grep '不得把已有项目默认为日更 3 章|默认为日更 3 章' "$REPO_ROOT/skills/story-long-write/SKILL.md" "story-long-write must not default existing projects to daily 3 chapters on bare invocation"
 assert_grep '默认停在细纲交付|默认停靠.*Phase 1→3' "$REPO_ROOT/skills/story-long-write/SKILL.md" "story-long-write opening flow must stop after outline by default"
-assert_grep '3 章只是内部质检粒度，不是任务总量上限|微批次最多 3 章.*自动进入下一微批次' "$REPO_ROOT/skills/story-long-write/SKILL.md" "explicit long-form targets must continue across quality micro-batches"
-assert_grep 'T 未完成且无阻塞.*自动回到 Step 1/2|自动回到 Step 1/2.*不得询问' "$REPO_ROOT/skills/story-long-write/references/workflow-daily.md" "daily workflow must continue after a checked micro-batch"
+assert_grep '未明确.*自动定稿.*review.*只生成精确下一章候选|正文候选与连续任务' "$REPO_ROOT/skills/story-long-write/SKILL.md" "long-form prose must default to one review candidate"
+assert_grep 'auto.*T 未完成且无阻塞.*自动回到 Step 1/2|auto.*自动回到 Step 1/2' "$REPO_ROOT/skills/story-long-write/references/workflow-daily.md" "only explicitly authorized auto mode may continue after a checked micro-batch"
+assert_grep '继续/续写/日更.*不得被解释为.*接纳门|这些词不等于接纳' "$REPO_ROOT/skills/story-long-write/references/workflow-daily.md" "continuation intent must not silently accept candidate prose"
 assert_grep '细纲边界|outline_underfilled|不得自造剧情' "$SKILL_DIR/references/templates/agents/narrative-writer.md" "narrative-writer must enforce outline boundary and report outline_underfilled"
 assert_grep 'outline_underfilled' "$SKILL_DIR/references/opencode/agents/narrative-writer.md" "opencode narrative-writer must inherit outline_underfilled boundary"
 assert_grep 'outline_underfilled' "$SKILL_DIR/references/codex/agents/narrative-writer.toml" "codex narrative-writer must inherit outline_underfilled boundary"
@@ -693,7 +700,7 @@ PY
 # 从不触发，跨章连续性守卫在这一端是开环的。下面三条锁住：已迁移项目拿到顺序校验、
 # 未迁移项目行为不变（core 的 requireState=true 会把老项目一律卡死，必须以 state 在场为门槛）。
 mkdir -p "$guard_root/book/追踪"
-printf '%s\n' '{"schema_version":4,"state_revision":0,"last_committed_chapter":1}' > "$guard_root/book/追踪/_tracking-state.json"
+printf '%s\n' '{"schema_version":5,"state_revision":0,"last_committed_chapter":1}' > "$guard_root/book/追踪/_tracking-state.json"
 # 派生视图必须同在：核会比对 上下文.md 的状态修订与 state 的 state_revision，
 # 只造 state 不造派生视图会被正确判为「派生视图不一致」，那是另一条判据，不是本组要测的。
 printf '# ctx\n\n> 状态修订：0。\n' > "$guard_root/book/追踪/上下文.md"
@@ -714,8 +721,8 @@ printf '%s\n' 'agents_version: 28' > "$guard_root/.story-deployed"
 [ "$(run_guard 'book/正文/第3章_跳章.md')" = "2" ] || fail "agents_version 28 must BLOCK long prose when tracking state is missing"
 [ "$(run_guard 'book/正文/第9章_x.md')" = "2" ] || fail "agents_version 28 must BLOCK edits to existing long prose when tracking state is missing"
 [ "$(run_guard 'impbook/正文/第1章_x.md')" = "0" ] || fail "agents_version 28 must preserve the strict core story-import window"
-printf '%s\n' 'agents_version: 30' > "$guard_root/.story-deployed"
-[ "$(run_guard 'book/正文/第3章_跳章.md')" = "2" ] || fail "future agents_version 30 must inherit the fail-closed tracking gate"
+printf '%s\n' 'agents_version: 36' > "$guard_root/.story-deployed"
+[ "$(run_guard 'book/正文/第3章_跳章.md')" = "2" ] || fail "future agents_version 36 must inherit the fail-closed tracking gate"
 rm -f "$guard_root/.story-deployed"
 
 # state 一旦在场，sentinel 版本不得绕过共享 proseBlockReason 的结构校验。

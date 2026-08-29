@@ -100,10 +100,24 @@ def fingerprint_entries(project_root: Path, raw_paths: list[str]) -> list[dict[s
     return entries
 
 
-def context_fingerprint(entries: list[dict[str, Any]], state_revision: str | None) -> str:
+def context_fingerprint(entries: list[dict[str, Any]], state_revision: int | None) -> str:
     payload = {"base_files": entries, "base_state_revision": state_revision}
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def current_state_revision(project_root: Path) -> int | None:
+    path = project_root / "追踪" / "_tracking-state.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ForecastError(f"追踪权威状态 JSON 无效: {exc}") from exc
+    revision = data.get("state_revision") if isinstance(data, dict) else None
+    if not isinstance(revision, int) or revision < 0:
+        raise ForecastError("追踪权威状态缺少有效 state_revision")
+    return revision
 
 
 def check_freshness(data: dict[str, Any]) -> dict[str, Any]:
@@ -120,12 +134,18 @@ def check_freshness(data: dict[str, Any]) -> dict[str, Any]:
         current_entries.append(current)
         if current["sha256"] != entry.get("sha256"):
             changed.append({"path": relative, "reason": "content_changed"})
-    current_fingerprint = context_fingerprint(current_entries, data.get("base_state_revision"))
+    stored_revision = data.get("base_state_revision")
+    current_revision = current_state_revision(project_root) if stored_revision is not None else None
+    if stored_revision is not None and current_revision != stored_revision:
+        changed.append({"path": "追踪/_tracking-state.json", "reason": "state_revision_changed"})
+    current_fingerprint = context_fingerprint(current_entries, current_revision)
     return {
         "status": "stale" if changed or current_fingerprint != data.get("context_fingerprint") else "fresh",
         "changed": changed,
         "stored_fingerprint": data.get("context_fingerprint"),
         "current_fingerprint": current_fingerprint,
+        "stored_state_revision": stored_revision,
+        "current_state_revision": current_revision,
     }
 
 
@@ -164,6 +184,9 @@ def cmd_init(args: argparse.Namespace) -> int:
     if directory.exists():
         raise ForecastError(f"推演目录已存在: {directory}")
     entries = fingerprint_entries(project_root, args.base)
+    state_revision = args.state_revision
+    if state_revision is None:
+        state_revision = current_state_revision(project_root)
     payload: dict[str, Any] = {
         "forecast_version": FORECAST_VERSION,
         "forecast_id": forecast_id,
@@ -174,9 +197,9 @@ def cmd_init(args: argparse.Namespace) -> int:
         "horizon_chapters": horizon,
         "divergence_point": args.divergence,
         "author_intent": args.author_intent or "",
-        "base_state_revision": args.state_revision,
+        "base_state_revision": state_revision,
         "base_files": entries,
-        "context_fingerprint": context_fingerprint(entries, args.state_revision),
+        "context_fingerprint": context_fingerprint(entries, state_revision),
         "branches": [branch_skeleton(index) for index in range(1, args.branches + 1)],
         "comparison": {"recommended_branch": "", "rationale": "", "tradeoffs": []},
         "selection": None,
@@ -244,8 +267,12 @@ def render_selected(data: dict[str, Any], branch: dict[str, Any]) -> str:
 
 
 def cmd_select(args: argparse.Namespace) -> int:
+    if args.confirm != "SELECT":
+        raise ForecastError("选择分支必须显式传入 --confirm SELECT")
     directory = Path(args.forecast_dir).expanduser().resolve()
     path, data = load_forecast(directory)
+    if data.get("status") != "draft":
+        raise ForecastError(f"只有 draft 推演可以选择，当前状态: {data.get('status')}")
     freshness = check_freshness(data)
     if freshness["status"] != "fresh":
         changed = ", ".join(item["path"] for item in freshness["changed"]) or "上下文指纹变化"
@@ -254,11 +281,35 @@ def cmd_select(args: argparse.Namespace) -> int:
     if branch is None:
         raise ForecastError(f"分支不存在: {args.branch}")
     validate_selectable(branch)
+    approval_note = (args.approval_note or "").strip()
+    if not approval_note:
+        raise ForecastError("必须记录用户明确选择该分支的说明")
+    branch_digest = hashlib.sha256(
+        json.dumps(branch, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     data["status"] = "selected"
-    data["selection"] = {"branch_id": args.branch, "selected_at": utc_now()}
+    data["selection"] = {
+        "branch_id": args.branch,
+        "selected_at": utc_now(),
+        "approval_note": approval_note,
+        "branch_sha256": branch_digest,
+    }
     atomic_write_json(path, data)
     selected_path = directory / "selected-plan.md"
     atomic_write_text(selected_path, render_selected(data, branch))
+    atomic_write_json(
+        directory / "selection-receipt.json",
+        {
+            "forecast_version": FORECAST_VERSION,
+            "forecast_id": data["forecast_id"],
+            "branch_id": args.branch,
+            "selected_at": data["selection"]["selected_at"],
+            "approval_note": approval_note,
+            "branch_sha256": branch_digest,
+            "context_fingerprint": data["context_fingerprint"],
+            "canonical_writeback_allowed": False,
+        },
+    )
     print(selected_path)
     return 0
 
@@ -274,7 +325,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--divergence", required=True)
     init_parser.add_argument("--author-intent")
     init_parser.add_argument("--base", action="append", required=True)
-    init_parser.add_argument("--state-revision")
+    init_parser.add_argument("--state-revision", type=int)
     init_parser.add_argument("--branches", type=int, choices=(2, 3), default=3)
     init_parser.add_argument("--id")
     init_parser.set_defaults(func=cmd_init)
@@ -286,6 +337,8 @@ def build_parser() -> argparse.ArgumentParser:
     select_parser = sub.add_parser("select", help="在用户明确选择后生成 selected-plan.md")
     select_parser.add_argument("forecast_dir")
     select_parser.add_argument("--branch", required=True)
+    select_parser.add_argument("--confirm", required=True)
+    select_parser.add_argument("--approval-note", required=True)
     select_parser.set_defaults(func=cmd_select)
     return parser
 

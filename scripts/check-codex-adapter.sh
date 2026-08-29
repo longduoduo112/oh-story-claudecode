@@ -113,7 +113,7 @@ echo "  OK prose backstop parity surface (Stop net + SessionStart continuity)"
 target="$(readlink .agents/skills)"
 [ "$target" = "../skills" ] || fail ".agents/skills symlink target must be relative '../skills', got '$target'"
 skill_count="$(find skills -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')"
-[ "$skill_count" = "17" ] || fail "expected 17 skills, found $skill_count"
+[ "$skill_count" = "18" ] || fail "expected 18 skills, found $skill_count"
 for skill in skills/*/SKILL.md; do
   name="$(basename "$(dirname "$skill")")"
   assert_file ".agents/skills/$name/SKILL.md"
@@ -319,9 +319,9 @@ except ModuleNotFoundError:
 from pathlib import Path
 expected = {
     'chapter-extractor', 'character-designer', 'consistency-checker',
-    'narrative-writer', 'story-architect', 'story-explorer', 'story-researcher',
+    'narrative-writer', 'revision-governor', 'story-architect', 'story-explorer', 'story-researcher',
 }
-read_only = {'chapter-extractor', 'consistency-checker', 'story-explorer'}
+read_only = {'chapter-extractor', 'consistency-checker', 'revision-governor', 'story-explorer'}
 found = set()
 for path in sorted(Path('skills/story-setup/references/codex/agents').glob('*.toml')):
     data = tomllib.loads(path.read_text())

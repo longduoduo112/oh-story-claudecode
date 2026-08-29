@@ -202,9 +202,9 @@ if (command === "extract-target") {
       const absolute = core.resolveTarget(root, target, base)
       if (seen.has(absolute)) continue
       seen.add(absolute)
-      const reason = deploymentAwareProseBlockReason(root, absolute)
+      const reason = core.revisionBlockReason(root, absolute) || deploymentAwareProseBlockReason(root, absolute)
       if (reason) {
-        process.stdout.write(`${reason}（已从 Bash 命令识别到正文写入目标。）`)
+        process.stdout.write(`${reason}（已从 Bash 命令识别到写入目标。）`)
         break
       }
     }
@@ -260,6 +260,15 @@ if (command === "extract-target") {
   const absolute = args[1]
   try {
     const reason = deploymentAwareProseBlockReason(root, absolute)
+    if (reason) process.stdout.write(reason)
+  } catch {
+    process.exit(0)
+  }
+} else if (command === "revision-block-reason") {
+  const root = args[0]
+  const absolute = args[1]
+  try {
+    const reason = core.revisionBlockReason(root, absolute)
     if (reason) process.stdout.write(reason)
   } catch {
     process.exit(0)

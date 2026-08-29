@@ -268,7 +268,7 @@
       "description": "多视角对抗式审查。full/lean 模式在已部署 reviewer agents 时并行 spawn；agents 缺失、异常、过旧或启动失败时自动降级 solo，参考文件不可读时使用内置 rubric fallback。内置番茄/起点/知乎三平台评分标准。",
       "source": "./",
       "strict": false,
-      "version": "1.1.1",
+      "version": "1.1.2",
       "category": "novel-quality",
       "keywords": [
         "review",
@@ -341,6 +341,27 @@
       ],
       "skills": [
         "./skills/story-release-package"
+      ]
+    },
+    {
+      "name": "story-publish",
+      "description": "通过项目关联的本地适配器预览、预检并发布已批准章节，支持番茄草稿、修改、立即发布和排期。",
+      "source": "./",
+      "strict": false,
+      "version": "1.0.0",
+      "category": "novel-publish",
+      "keywords": [
+        "publish",
+        "fanqie",
+        "adapter",
+        "auto-publish",
+        "番茄",
+        "自动发布",
+        "草稿",
+        "chinese"
+      ],
+      "skills": [
+        "./skills/story-publish"
       ]
     }
   ]

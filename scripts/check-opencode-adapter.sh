@@ -334,9 +334,9 @@ python3 - <<'PY'
 from pathlib import Path
 expected = {
     'chapter-extractor', 'character-designer', 'consistency-checker',
-    'narrative-writer', 'story-architect', 'story-explorer', 'story-researcher',
+    'narrative-writer', 'revision-governor', 'story-architect', 'story-explorer', 'story-researcher',
 }
-read_only = {'chapter-extractor', 'consistency-checker', 'story-explorer'}
+read_only = {'chapter-extractor', 'consistency-checker', 'revision-governor', 'story-explorer'}
 base = Path('skills/story-setup/references/opencode/agents')
 found = {p.stem for p in base.glob('*.md')}
 assert found == expected, found
@@ -558,7 +558,7 @@ ESCAPES = [
     ('bash -c "cat /etc/passwd"', ['bash -c "cat /etc/passwd"']),
 ]
 
-read_only = {'chapter-extractor', 'consistency-checker', 'story-explorer'}
+read_only = {'chapter-extractor', 'consistency-checker', 'revision-governor', 'story-explorer'}
 base = Path('skills/story-setup/references/opencode/agents')
 for name in sorted(read_only):
     fm_text = (base / f'{name}.md').read_text(encoding='utf-8').split('\n---\n', 1)[0]

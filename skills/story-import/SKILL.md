@@ -14,7 +14,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 > Agent 兼容性：检查专业 agent 是否可用时，按 `.claude/agents/{agent}.md` → `.opencode/agents/{agent}.md` → `.codex/agents/{agent}.toml` 的顺序查找。Codex 原生子代理调用优先使用同名 `agent_type`；如果当前 Codex 运行时返回 `unknown agent_type` 或未暴露 custom-agent registry，必须降级为 solo/direct。检测到 `.zcode/` 时同样直接 solo/direct，因为 ZCode 3.3.4 不执行项目 custom agents；报告 `Fallback: project custom agents unavailable -> solo`。Claude/OpenCode 兼容面保留 `subagent_type`。
 >
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 30` 不一致时（标记缺失、字段缺失/非整数、小于或大于 30）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 30）` 并提示重新运行 `/story-setup` 后新开会话；大于 30 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 36` 不一致时（标记缺失、字段缺失/非整数、小于或大于 36）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 36）` 并提示重新运行 `/story-setup` 后新开会话；大于 36 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 ## 核心原则
 
@@ -45,6 +45,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 2. **也可以直接 `/story-import`**：本 skill 会在进入深度分析前检测 `.story-deployed` 与专业 agent；未部署时会给出"先去 setup"或"继续导入（串行降级）"两种选择。
 3. **已导入过的当前协议项目**（书名目录下有 `追踪/_tracking-state.json`）：不要重复跑完整导入；直接进入书名目录，确认 `.active-book` 指向正确书目，再用 `/story-long-write 日更` 或 `/story-long-write 写第N章`。
 4. **v0.7.2 及更早的旧追踪项目**（有 `追踪/` 和正文，但没有 `追踪/_tracking-state.json`）：日更会停下要求重新导入，但**不需要重跑全书拆解**。只重建追踪即可，见下方「旧追踪项目迁移」。
+5. **schema 4 结构化追踪项目**（已有 `_tracking-state.json`，其 `schema_version=4`）：不重建、不重跑拆解。从正文/锁定设定提取高价值身世、血缘、关系、物权、权限与不可逆规则，执行 `tracking_commit.py migrate-v4`植入 `facts`，再运行 `check`。迁移不创建或重写旧章逐章记录。
 
 这段结论必须出现在任何导入源追问之前，避免用户只想确认流程却被直接要求贴原文。
 
@@ -102,7 +103,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 在进入 Phase 2 之前，先检测项目是否已部署 story-setup 基础设施：
 
 - 先读取 `.story-deployed` 并执行顶部 Spawn 版本门禁；旧版 `chapter-extractor` 文件即使仍在磁盘上也不可复用。
-- 只有 `agents_version: 30` 通过后，才按 `.claude/agents/chapter-extractor.md` → `.opencode/agents/chapter-extractor.md` → `.codex/agents/chapter-extractor.toml` 检查 Phase 2 长篇并行 agent。
+- 只有 `agents_version: 36` 通过后，才按 `.claude/agents/chapter-extractor.md` → `.opencode/agents/chapter-extractor.md` → `.codex/agents/chapter-extractor.toml` 检查 Phase 2 长篇并行 agent。
 - 如果 `.story-deployed` 的 `target_cli` 包含 `zcode`，项目 agents 缺失是 ZCode 3.3.4 的预期状态：不要提示重复部署，直接以串行 solo/direct 进入分析并报告 fallback。
 
 **部署标记缺失、版本无效/过期，或当前端的 agent 不可用，且不是已部署 ZCode 项目时**，提示用户：
@@ -410,8 +411,9 @@ name: {角色名}
 2. **核心角色当前快照**：从拆书产物反推主角、反派、核心配角的截至 N 章状态，按角色写入初始化 JSON 的 `character_snapshots`。输出由工具生成到 `追踪/角色状态/{角色名}.md`；算法见 [references/character-state-reverse.md](references/character-state-reverse.md)。
 3. **伏笔当前行**：从有正文证据的铺垫/回收事件生成 `foreshadow`。每个 ID 只保留当前状态一行；尚未实际埋设的未来设计留在大纲，不写 `伏笔.md`。
 4. **事实与读者认知**：把关键事件生成到 `timeline_events`。同一事件同时写客观事实、读者截至 N 章已知内容和实际揭示状态；未来计划揭示章不得伪装成已发生事实。
-5. **续写状态卡输入**：准备当前位置、长期约束、活跃核心角色、近三章速记、下一章承诺和连贯性风险。`上下文.md` 由工具生成固定 7 栏，不把文风、文件索引、普通待办或质检计数塞进续写状态卡。
-6. **执行初始化**：按当前平台探测 Python 3（`python3` → `python` → `py -3`），执行：
+5. **长期事实与关系**：把有证据、后面不知道就会写错的身份/血缘/亲属/婚姻/传承/从属/所有权/权限/规则/不可逆状态写入初始化 JSON 的 `facts`。每条有稳定 `K/R` ID、证据引用、读者揭示状态和禁止误读；没有证据的猜测不导入。
+6. **续写状态卡输入**：准备当前位置、长期约束、活跃核心角色、近三章速记、下一章承诺和连贯性风险。`上下文.md` 由工具生成固定 7 栏，不把文风、文件索引、普通待办或质检计数塞进续写状态卡。
+7. **执行初始化**：按当前平台探测 Python 3（`python3` → `python` → `py -3`），执行：
 
    > 项目 `追踪/` 里已有不属于当前协议的早期文件时不必手工清理：`init` 会先把它们按原样整体移入 `追踪/_旧追踪存档/`，再在原地建当前协议。旧内容保留供作者查阅，不参与解析，当前状态完全由本次导入输入决定；校验失败的 `init` 不移动任何文件。
 
@@ -428,6 +430,9 @@ name: {角色名}
 追踪/
 ├── _tracking-state.json
 ├── 上下文.md
+├── 长期事实.md
+├── 关系清单.md
+├── 事实档案/
 ├── 逐章记录/                 # 导入旧章不补造文件，续写从第 N+1 章开始
 ├── 角色状态/{角色名}.md
 ├── 伏笔.md

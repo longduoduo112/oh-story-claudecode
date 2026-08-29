@@ -49,7 +49,7 @@ assert_denied() {
 
 write_clean_state() {
   mkdir -p "$1/追踪"
-  printf '{"schema_version":4,"state_revision":0,"last_committed_chapter":%s}\n' "${2:-0}" > "$1/追踪/_tracking-state.json"
+  printf '{"schema_version":5,"state_revision":0,"last_committed_chapter":%s}\n' "${2:-0}" > "$1/追踪/_tracking-state.json"
   printf '%s\n' '> 状态修订：0' > "$1/追踪/上下文.md"
 }
 
@@ -92,7 +92,7 @@ out="$(run_hook pre-tool-prose-guard "$relative_payload")"
 assert_empty "$out" "relative prose target with cwd-local outline"
 
 : > "$ROOT/book/正文/第009章_已存在.md"
-printf '%s\n' '{"schema_version":4,"state_revision":1,"last_committed_chapter":0}' > "$ROOT/book/追踪/_tracking-state.json"
+printf '%s\n' '{"schema_version":5,"state_revision":1,"last_committed_chapter":0}' > "$ROOT/book/追踪/_tracking-state.json"
 out="$(run_hook pre-tool-prose-guard '{"tool_name":"Write","tool_input":{"file_path":"book/正文/第009章_已存在.md"}}')"
 assert_denied "$out" "existing prose rewrite with mismatched derived state"
 printf '%s' "$out" | grep -q 'mode=revision 事务重建派生视图' || fail "state mismatch denial missed retry action: $out"
@@ -134,7 +134,7 @@ out="$(run_hook pre-tool-prose-guard '{"tool_name":"Write","tool_input":{"file_p
 assert_empty "$out" "story-import long migration"
 mkdir -p "$ROOT/impbook/大纲" "$ROOT/impbook/追踪"
 : > "$ROOT/impbook/大纲/细纲_第2章.md"
-printf '%s\n' '{"schema_version":4,"state_revision":1,"last_committed_chapter":1}' > "$ROOT/impbook/追踪/_tracking-state.json"
+printf '%s\n' '{"schema_version":5,"state_revision":1,"last_committed_chapter":1}' > "$ROOT/impbook/追踪/_tracking-state.json"
 printf '%s\n' '> 状态修订：0' > "$ROOT/impbook/追踪/上下文.md"
 out="$(run_hook pre-tool-prose-guard '{"tool_name":"Write","tool_input":{"file_path":"impbook/正文/第2章_导入后续.md"}}')"
 assert_denied "$out" "imported project must not permanently bypass invalid tracking guard"
@@ -167,7 +167,7 @@ printf '# 上下文\n' > "$ROOT/book/追踪/上下文.md"
 out="$(run_hook session-start '{"hook_event_name":"SessionStart","source":"compact"}')"
 assert_contract "$out" SessionStart "session start"
 printf '%s' "$out" | grep -q '当前书目' || fail "session start missed active book"
-printf '%s\n' '{"schema_version":4,"state_revision":1,"last_committed_chapter":0}' > "$ROOT/book/追踪/_tracking-state.json"
+printf '%s\n' '{"schema_version":5,"state_revision":1,"last_committed_chapter":0}' > "$ROOT/book/追踪/_tracking-state.json"
 out="$(run_hook session-start '{"hook_event_name":"SessionStart","source":"resume"}')"
 assert_contract "$out" SessionStart "session tracking mismatch warning"
 printf '%s' "$out" | grep -q '状态修订' || fail "session start missed tracking revision mismatch"

@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-EXPECTED_COUNT=17
+EXPECTED_COUNT=18
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ohstory-codex-e2e.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
@@ -98,8 +98,8 @@ if extra:
     raise SystemExit(f"Codex discovered unexpected repository skills: {extra}")
 
 agents = sorted((repo_root / ".codex/agents").glob("*.toml"))
-if len(agents) != 7:
-    raise SystemExit(f"deployed fixture error: expected 7 custom agents, found {len(agents)}")
+if len(agents) != 8:
+    raise SystemExit(f"deployed fixture error: expected 8 custom agents, found {len(agents)}")
 for path in agents:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     for key in ("name", "description", "developer_instructions"):

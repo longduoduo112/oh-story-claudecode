@@ -7,6 +7,7 @@ story guardrails to Codex hook stdin/stdout JSON contracts.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shlex
@@ -817,8 +818,10 @@ def tracking_checkpoint_issue(
         document = json.loads(state.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return "追踪/_tracking-state.json 无法解析；停止写正文并重新 /story-import，不能猜测或手补状态"
-    if not isinstance(document, dict) or document.get("schema_version") != 4:
-        return "追踪/_tracking-state.json 不是当前 schema_version=4；停止写正文并重新 /story-import，不保留旧结构兼容路径"
+    if isinstance(document, dict) and document.get("schema_version") == 4:
+        return "追踪/_tracking-state.json 仍是 schema_version=4；停止写正文，用 tracking_commit.py migrate-v4 升级并植入长期事实后再 check"
+    if not isinstance(document, dict) or document.get("schema_version") != 5:
+        return "追踪/_tracking-state.json 不是当前 schema_version=5；停止写正文并重新 /story-import，不保留旧结构兼容路径"
     revision = document.get("state_revision")
     if type(revision) is not int:
         return "追踪/_tracking-state.json 缺少整数 state_revision；停止写正文并重新 /story-import"
@@ -1409,6 +1412,10 @@ def _join_posix(directory: str, name: str) -> str:
     return re.sub(r"[\\/]+$", "", directory) + "/" + name
 
 
+def _is_story_source_target(value: str) -> bool:
+    return re.search(r"(?:^|/)(?:正文|大纲|设定)(?:/|$)", value.replace("\\", "/")) is not None
+
+
 def _copy_like_targets(command: str, args: list[str]) -> list[str]:
     positionals: list[str] = []
     target_directory = ""
@@ -1478,15 +1485,13 @@ def extract_prose_targets_from_command(command: str, depth: int = 0) -> list[str
                 targets.extend(extract_prose_targets_from_command(nested, depth + 1))
         if command_name in ("tee", "touch"):
             targets.extend(
-                destination
-                for destination in _write_operands(command_name, command_args)
-                if "正文" in destination
+                destination for destination in _write_operands(command_name, command_args)
+                if _is_story_source_target(destination)
             )
         if command_name in ("cp", "mv", "install"):
             targets.extend(
-                destination
-                for destination in _copy_like_targets(command_name, command_args)
-                if "正文" in destination
+                destination for destination in _copy_like_targets(command_name, command_args)
+                if _is_story_source_target(destination)
             )
     return list(dict.fromkeys(target for target in targets if target))
 
@@ -1550,6 +1555,107 @@ def target_paths_from_hook(obj: dict[str, Any]) -> list[Path]:
             raw_targets.extend(extract_apply_patch_targets(command))
             raw_targets.extend(extract_prose_targets_from_command(command))
     return [resolve_target(root, t, base) for t in raw_targets if t]
+
+
+def revision_source_info(root: Path, abs_path: Path) -> dict[str, Any] | None:
+    target = abs_path.resolve()
+    try:
+        relative = target.relative_to(root.resolve())
+    except ValueError:
+        return None
+    parts = relative.parts
+    source_index = next((i for i, part in enumerate(parts) if part in ("正文", "大纲", "设定")), -1)
+    if source_index < 1 or len(parts) <= source_index + 1 or not parts[-1].endswith(".md"):
+        return None
+    if any(
+        "备份" in part or part in ("归档", "archive", "archives") or part.startswith(".")
+        for part in parts[source_index + 1:-1]
+    ):
+        return None
+    book_dir = root.resolve().joinpath(*parts[:source_index])
+    state_path = book_dir / "追踪" / "_tracking-state.json"
+    if not state_path.is_file():
+        return None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    last_committed = state.get("last_committed_chapter")
+    if not isinstance(last_committed, int) or isinstance(last_committed, bool):
+        last_committed = None
+    chapter: int | None = None
+    if parts[source_index] == "正文":
+        match = re.match(r"^第0*(\d+)章", parts[-1])
+        if match:
+            chapter = int(match.group(1))
+    elif parts[source_index] == "大纲":
+        match = re.match(r"^细纲_第0*(\d+)章", parts[-1])
+        if match:
+            chapter = int(match.group(1))
+    prior_canon = chapter <= last_committed if chapter is not None and last_committed is not None else target.exists()
+    return {
+        "target": target,
+        "book": book_dir,
+        "active_relative": Path(*parts[source_index:]).as_posix(),
+        "prior_canon": prior_canon,
+    }
+
+
+def revision_block_reason(root: Path, abs_path: Path) -> str | None:
+    info = revision_source_info(root, abs_path)
+    if info is None:
+        return None
+    manifest_path = info["book"] / "追踪" / "修改影响" / "active.json"
+    if not manifest_path.is_file():
+        if not info["prior_canon"]:
+            return None
+        return (
+            f"⛔ 修改旧内容被拦截：{safe_rel(root, info['target'])} 属于已提交内容或既有权威源。"
+            f"先调用 revision-governor（phase=plan），再用 revision_guard.py plan 生成 "
+            f"{safe_rel(root, manifest_path)}；不得只改单章而跳过关联项检查。"
+        )
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return f"⛔ 修改事务被拦截：{safe_rel(root, manifest_path)} 无法解析。修复或重新生成活动修改清单后再写。"
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema_version") != 1
+        or not isinstance(manifest.get("change_id"), str)
+        or not isinstance(manifest.get("changed_files"), list)
+    ):
+        return (
+            f"⛔ 修改事务被拦截：{safe_rel(root, manifest_path)} 缺少有效 "
+            "schema_version/change_id/changed_files；请重新运行 revision_guard.py plan。"
+        )
+    approved = False
+    stamp_path = manifest_path.parent / "active.approved.json"
+    try:
+        stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
+        approved = (
+            isinstance(stamp, dict)
+            and stamp.get("schema_version") == 1
+            and stamp.get("status") == "PASS"
+            and stamp.get("change_id") == manifest.get("change_id")
+            and stamp.get("manifest_sha256") == hashlib.sha256(manifest_bytes).hexdigest()
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        approved = False
+    if approved:
+        if not info["prior_canon"]:
+            return None
+        return (
+            f"⛔ 修改旧内容被拦截：活动事务 {manifest['change_id']} 已验收关闭，不能复用旧批准继续改 "
+            f"{info['active_relative']}。请重新调用 revision-governor（phase=plan）并生成新的 active.json。"
+        )
+    if info["active_relative"] not in manifest["changed_files"]:
+        return (
+            f"⛔ 计划外修改被拦截：{info['active_relative']} 不在活动事务 {manifest['change_id']} 的 "
+            "changed_files 中。先让 revision-governor 重算影响链并重新生成 active.json；"
+            "事务未关闭前也不得穿插正常续写。"
+        )
+    return None
 
 
 def prose_block_reason(root: Path, abs_path: Path) -> str | None:
@@ -1666,7 +1772,7 @@ def prose_block_reason(root: Path, abs_path: Path) -> str | None:
 def pre_tool_prose_guard(obj: dict[str, Any]) -> None:
     root = project_root()
     for path in target_paths_from_hook(obj):
-        reason = prose_block_reason(root, path)
+        reason = revision_block_reason(root, path) or prose_block_reason(root, path)
         if reason:
             emit({
                 "hookSpecificOutput": {
