@@ -74,6 +74,7 @@ def git_for_windows_bash() -> str:
         probe = subprocess.run(
             [str(candidate), "-lc", "uname -s"],
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
         )
@@ -118,6 +119,7 @@ def run_hook_process(
         env=environment,
         input=json.dumps(payload, ensure_ascii=False),
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=False,
     )
@@ -138,6 +140,7 @@ def run_hook_raw(
         env=environment,
         input=payload,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=False,
     )
@@ -210,6 +213,7 @@ def power_shell_targets(command: str) -> list[str]:
         ["node", "-e", script, str(RUNNER), command],
         cwd=ROOT,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=True,
     )
@@ -374,6 +378,7 @@ def test_project_hook_commands_cross_shell(temp: Path) -> None:
                     env=environment,
                     input="{}",
                     text=True,
+                    encoding="utf-8",
                     capture_output=True,
                     check=False,
                 )
@@ -421,6 +426,7 @@ runner.main(process.argv[2])
             env=environment,
             input=json.dumps(payload, ensure_ascii=False),
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
         )
