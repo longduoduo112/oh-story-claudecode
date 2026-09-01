@@ -11,7 +11,7 @@ SKILL.md 只保留场景路由与停靠规则；进入任一 Phase 前读本文�
 ### Phase 1：确认选题方向
 
 **先查选题决策**：如果项目根存在 `选题决策.md`（story-long-scan Phase 5 产出），读取它——取排在最前（可行性最高）的推荐选题作为开书起点，向用户确认：「扫榜建议写 X（能爆的原因 Y，差异化 Z），按这个开书？」并看 `扫榜日期`：距今较久则提示"市场数据可能过期，建议复扫"。用户认可 → 带该选题的题材/卖点/差异化进入 Phase 2。
-缺失时先自动找一遍：从项目根及其上一级目录起、向下最多 3 层按文件名搜 `选题决策.md`（跳过隐藏目录），按 mtime 由新到旧取最新 2 份。搜到 → 用 AskUserQuestion 列候选（路径 + 文件里的 `扫榜日期`，另加「我自己给路径」和「都不用」）；选中某份 → 复制到项目根，再按上一段读取；选「我自己给路径」→ 让用户粘路径，同样复制到项目根；选「都不用」→ 走下面的常规提问。搜不到 → 问一句：「有扫榜生成的 `选题决策.md` 吗？放到项目根或粘贴路径；没有就直接答下面的问题。」仍无 → 走下面的常规提问。
+缺失时先自动找一遍：从项目根及其上一级目录起、向下最多 3 层按文件名搜 `选题决策.md`（跳过隐藏目录），按 mtime 由新到旧取最新 2 份。搜到 → 用当前平台交互能力列候选（Claude 可用 `AskUserQuestion`；TRAE Code 直接列路径 + 文件里的 `扫榜日期`，另加「我自己给路径」和「都不用」，然后等待回复）；选中某份 → 复制到项目根，再按上一段读取；选「我自己给路径」→ 让用户粘路径，同样复制到项目根；选「都不用」→ 走下面的常规提问。搜不到 → 问一句：「有扫榜生成的 `选题决策.md` 吗？放到项目根或粘贴路径；没有就直接答下面的问题。」仍无 → 走下面的常规提问。
 
 如果用户已有方向 → 跳过下面的方向提问，但仍先做下方「对标上下文加载」（含对标发现），再进入 Phase 2。
 
@@ -27,7 +27,7 @@ SKILL.md 只保留场景路由与停靠规则；进入任一 Phase 前读本文�
 
 1. `ls 拆文库/`（数据源）与项目 `对标/`（引用视图）列已有书目；先按当前项目目录名、`.active-book` 和 `设定/题材定位.md` 中的本书信息识别当前作品，排除同名或来源指向当前正文的 `拆文库/{当前书}/`。story-import 为重建工程生成的本书拆文分析不是对标候选，也不得复制回 `对标/`。排除后都为空 → 跳到第 4 条。
 2. 逐本读题材（短篇读 `拆文库/{书}/_meta.json` 的 `genre_detected`；长篇读 `概要.md` 头部或 `拆文报告.md`「基本信息」的「题材」），与本书题材/方向比对，标 同题材 / 弱相关 / 不相关。
-3. 有同题材或弱相关候选 → 用 AskUserQuestion 推荐（列候选书 +「都不用」+「另拆一本」），主对标 1 本走文风/正文、其余作副对标。选定后写入 `设定/题材定位.md`「对标登记」的 `主对标书` / `对标书列表`（Phase 2 落文件，此处先记选择），并按 SKILL.md「路径与术语约定」的「首次引用对标书」规则把选中书从 `拆文库/{书}/` 复制到 `对标/{书}/`。
+3. 有同题材或弱相关候选 → 用当前平台交互能力推荐（Claude 可用 `AskUserQuestion`；TRAE Code 直接列候选书 +「都不用」+「另拆一本」并等待回复），主对标 1 本走文风/正文、其余作副对标。选定后写入 `设定/题材定位.md`「对标登记」的 `主对标书` / `对标书列表`（Phase 2 落文件，此处先记选择），并按 SKILL.md「路径与术语约定」的「首次引用对标书」规则把选中书从 `拆文库/{书}/` 复制到 `对标/{书}/`。
 4. 无候选 → 无对标继续（大纲按八节点自排，见 Phase 3）；用户想对标可先 `/story-long-analyze` 拆一本。
 
 如果用户提到对标书或工作目录下已存在 `对标/` 目录：
@@ -46,7 +46,7 @@ SKILL.md 只保留场景路由与停靠规则；进入任一 Phase 前读本文�
 
 #### Agent 调用：story-architect
 
-story-architect 属于高层级结构设计 agent。轻量题材定位优先由主会话完成；只有涉及复杂世界观、多线结构、强反转工程或用户明确要求时，才调用 story-architect。确认选题方向后，如果项目已部署 story-architect agent（检查 `.claude/agents/story-architect.md` 是否存在），可 spawn `Agent(subagent_type: "story-architect", prompt: "项目目录：{dir}\n任务类型：题材定位\n查询参数：{用户选择的方向+对标信息}")` 辅助题材分析和核心梗设计。如 agent 不可用，由主线程直接执行。
+story-architect 属于高层级结构设计 agent。轻量题材定位优先由主会话完成；只有涉及复杂世界观、多线结构、强反转工程或用户明确要求时，才调用 story-architect。确认选题方向后，按当前运行时检查 story-architect（Claude `.claude/agents/story-architect.md`、OpenCode `.opencode/agents/story-architect.md`、TRAE Code `.trae/agents/story-architect.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-architect.md`、Codex `.codex/agents/story-architect.toml`）。可用时调用同名 agent：TRAE Code 只用内置 `Agent` 按 `.trae/agents/story-architect.md` 的名称选择同名 Subagent，不传 Claude 的 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "story-architect", prompt: ...)`，plugin-only 仅在 Agent registry 真实返回 `oh-story:story-architect` 时用该精确值；Claude/OpenCode 可用等价 `subagent_type`，Codex 使用 `agent_type`。统一任务正文为 `项目目录：{dir}\n任务类型：题材定位\n查询参数：{用户选择的方向+对标信息}`。如 agent 不可用，由主线程直接执行。
 
 > **story-architect 契约摘要（spawn 时必须原样附带）**：部署的 story-architect agent 不认识本 skill 的 `references/reader-contract-and-progression.md`，只能靠 spawn prompt 里带的这段摘要对齐 schema，否则主线程和委托产出会用不同的推进规则。摘要内容：
 > - **终局储备边界**：终局底牌（头号宿敌/终极真相/金手指上限/身份终点/核心情感终点）是一次性资源，逐卷解锁，不得提前打光；升级台阶（境界/等级/地图/势力层级）按剩余档数逐级解锁，不得越级。
@@ -109,7 +109,7 @@ story-architect 属于高层级结构设计 agent。轻量题材定位优先由�
 
 #### Agent 调用：story-architect + character-designer
 
-核心设定阶段，如果项目已部署对应 agent（优先检查 `.claude/agents/` 下的 `story-architect.md` 和 `character-designer.md` 是否存在；不存在时再检查 `.opencode/agents/`，再不存在时检查 `.codex/agents/`），可 spawn 以下 agent 辅助：
+核心设定阶段，如果当前运行时对应目录已部署 story-architect 与 character-designer（Claude `.claude/agents/`、OpenCode `.opencode/agents/`、TRAE Code `.trae/agents/`、WorkBuddy 项目模式 `.codebuddy/agents/`、Codex `.codex/agents/`），可调用以下同名 agent 辅助。下列 `Agent(subagent_type: ...)` 只是 Claude/OpenCode/WorkBuddy 项目模式的调用示意；TRAE Code 只用内置 `Agent` 分别按 `.trae/agents/story-architect.md` 和 `.trae/agents/character-designer.md` 的名称选择同名 Subagent，把同一 prompt 作为任务正文，不传 `subagent_type`；WorkBuddy plugin-only 仅在 Agent registry 真实返回 `oh-story:story-architect` / `oh-story:character-designer` 时使用对应精确值；Codex 使用 `agent_type`：
 - `Agent(subagent_type: "story-architect", prompt: "项目目录：{dir}\n任务类型：核心设定\n查询参数：世界观构建+核心冲突设计")` — 辅助世界观和核心冲突设计；spawn prompt 必须原样附带 Phase 1 的「story-architect 契约摘要」（升级台阶检查约束力量体系设计）
 - `Agent(subagent_type: "character-designer", prompt: "项目目录：{dir}\n任务类型：角色设定\n查询参数：{主角设定信息}")` — 辅助角色设定和语言风格档案
 
@@ -278,7 +278,7 @@ story-architect 属于高层级结构设计 agent。轻量题材定位优先由�
 
 大纲搭建阶段优先由主会话产出卷纲+首批细纲；只有结构复杂、反转链多或主会话方案不稳时，才调用 story-architect agent。
 
-若已部署 story-architect agent（优先检查 `.claude/agents/story-architect.md`），可让它辅助：
+若当前运行时对应目录已部署 story-architect（TRAE Code `.trae/agents/story-architect.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-architect.md`），可按本文件顶部的运行时映射让它辅助。TRAE Code 只用内置 `Agent` 按 `.trae` 定义的名称选择同名 Subagent，不传 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "story-architect", prompt: ...)`，plugin-only 仅在 Agent registry 真实返回 `oh-story:story-architect` 时用该精确值：
 - 任务：卷级结构、首批细纲、钩子/反转/情绪弧线。
 - 章节定位：每章标高压/推进/修炼试错/关系回收/低压生活/信息整理；低压章可弱爽点，但仍要有往下看的理由。
 - 字数预算：每个情节点标密/疏和预算；密点展开，疏点带过；末尾写 `预算合计：X字（目标Y，范围Y-Z）`。

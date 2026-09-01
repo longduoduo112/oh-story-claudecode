@@ -15,6 +15,9 @@ from pathlib import Path
 CONTRACT_PATH = "scripts/current-contract.json"
 SETUP_SKILL_PATH = "skills/story-setup/SKILL.md"
 AGENTS_PAYLOAD_PATHS = (
+    ".codebuddy-plugin/plugin.json",
+    "scripts/generate-workbuddy-adapter.py",
+    "skills/story-data-analyze/agents",
     "skills/story-setup/references",
     "skills/story-setup/scripts",
 )

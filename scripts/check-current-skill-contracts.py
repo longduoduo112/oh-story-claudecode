@@ -218,10 +218,13 @@ LEGACY_RULES = (
 
 SPAWN_CAPABLE_SKILLS = (
     "skills/story/SKILL.md",
+    "skills/story-data-analyze/SKILL.md",
     "skills/story-deslop/SKILL.md",
+    "skills/story-explore/SKILL.md",
     "skills/story-import/SKILL.md",
     "skills/story-long-analyze/SKILL.md",
     "skills/story-long-write/SKILL.md",
+    "skills/story-research/SKILL.md",
     "skills/story-review/SKILL.md",
     "skills/story-short-write/SKILL.md",
 )

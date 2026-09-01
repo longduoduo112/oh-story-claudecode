@@ -2,10 +2,12 @@
 
 ## 当前版本
 
-- `setup_skill_version: 1.2.19`
-- `agents_version: 36`
+- `setup_skill_version: 1.2.22`
+- `agents_version: 39`
 
-`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `36`，都视为待更新部署。直接重新运行 `/story-setup`（Codex 用 `$story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `36`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v36 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
+> **未发布开发契约：** 以下 TRAE / WorkBuddy 增强仍属于 `Unreleased`。本轮只提升部署合同号，不调整产品版本，也不改变现有 Release 状态。
+
+`.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `39`，都视为待更新部署。直接重新运行 `/story-setup`（Codex / ZCode 用 `$story-setup`，TRAE / WorkBuddy 项目模式用 `/story-setup`，WorkBuddy plugin-only 用 `/oh-story:story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `39`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v39 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
 
 ## 升级策略
 
@@ -26,16 +28,23 @@
 - `.claude/agents/` — 所有 agent 定义
 - `.claude/rules/` — 所有 path-scoped 规则
 - `.claude/skills/story-setup/references/agent-references/` — Agent 参考资料副本
-- `.zcode/skills/{18 known skills}/`、`.zcode/commands/{18 known commands}.md` — 仅覆盖 oh-story 已知名称
+- `.zcode/skills/{canonical 18 skills}/`、`.zcode/commands/{canonical 18 同名 commands}.md` — 仅按中文主包 canonical 固定 18 名字集替换受管资产，保留其他用户资产
 - `.zcode/hooks/story_zcode_hook.js` — ZCode 专用 Hook runner
+- `.trae/skills/{canonical 18 skills}/`、`.trae/commands/{canonical 18 同名 commands}.md` — 仅按中文主包 canonical 固定 18 名字集替换受管资产，不从安装集合或项目扩展动态注入
+- `.trae/agents/{oh-story agents}.md`、`.trae/rules/{oh-story rules}.md`、`.trae/hooks/{story_trae_hook.js,story_hook_core.js}` — TRAE Code 原生受管资产
+- `.codebuddy/skills/{canonical 18 skills}/`、`.codebuddy/commands/{canonical 18 同名 commands}.md` — WorkBuddy / CodeBuddy 项目模式仅部署中文主包 canonical 固定 18 名字集，不从安装集合或项目扩展动态注入
+- `.codebuddy/agents/{oh-story agents}.md`、`.codebuddy/rules/{oh-story rules}.md`、`.codebuddy/hooks/{story_workbuddy_hook.js,story_hook_core.js}` — WorkBuddy 项目模式原生受管资产；plugin 模式不重复注册项目 Hook
 
 ### 用户与 story-setup 共同维护，只合并管理块
 
 这些文件可能含用户自定义内容：
 - `CLAUDE.md` — 按 marker/section 合并，用户独有 section 保留
 - `.claude/settings.local.json` — 按 command 识别 story hooks；受管 command 迁移到当前模板的 event/matcher/timeout/if，其他用户 hook 与配置保留
-- `AGENTS.md` — ZCode/OpenCode/Codex/OpenClaw/generic 按 marker/section 合并
+- `AGENTS.md` — ZCode/OpenCode/Codex/TRAE/WorkBuddy/OpenClaw/Reasonix/generic 按 marker/section 合并
 - `.zcode/config.json` — 仅按事件、matcher 和 process args 去重合并 oh-story Hooks，其他字段保留
+- `.trae/hooks.json` — 统一迁移/输出官方 `{version: 1, hooks: {...}}`；仅按事件、matcher 与稳定 command 身份更新 oh-story Hook，用户 Hook 和未知顶层字段保留，旧版事件直挂结构自动迁移
+- 根 `CODEBUDDY.md` / `.codebuddy/CODEBUDDY.md` — 只在既有规范位置合并 WorkBuddy 管理块；若已有 AGENTS，必须保留 fallback 或显式相对导入，不能用短 memory 遮蔽
+- `.codebuddy/settings.json` — 按稳定 runner 身份更新或移除项目 Hook，保留用户配置；已启用 plugin 时项目 oh-story Hook 注册必须为零
 
 ### 用户状态，不覆盖
 
@@ -43,7 +52,30 @@
 - `{书名}/设定/`、`大纲/`、`追踪/`
 - `.active-book`
 
-## v36 当前契约
+## v39 当前契约
+
+- 中文主包在 WorkBuddy / CodeBuddy Code 部署 10 张物理卡：8 个通用 Agent、`story-data-fetcher` 与 `story-data-readonly-runner`。其余四个只读数据逻辑角色由 pooled runner 按 `logical_role + role_card + 完整任务合同` 调度，不把逻辑角色名直接注册进 Task registry。
+- CodeBuddy agentic registry 的 20 个总槽位意味着 oh-story 项目物理卡总数不得超过 19；这是平台容量边界，不是中文主包实际部署数量。
+- TRAE 不受 WorkBuddy 的 registry 上限影响，中文主包继续按角色原生部署 13 张物理卡（8 通用 + 5 个数据分析精确角色）。
+- 部署后的设置页可见或 enabled 只证明配置被发现；必须新开会话并通过 `Agent` 工具实际调用基础 Agent、`story-data-fetcher` 与 `story-data-readonly-runner` 承载的一个逻辑角色，才算 Task registry 激活成功。
+
+## v38 承继契约
+
+- 新增 `target_cli=workbuddy`：项目模式原生部署 `.codebuddy/skills/`、`.codebuddy/commands/`、Agents、Rules 及 Hooks。v38 的名册假设已被 v39 的中文主包 10 卡合同与 19 卡平台容量边界取代，不得继续部署旧名册。WorkBuddy Desktop 与 CodeBuddy Code CLI 共享同一契约。
+- 新增规范 `.codebuddy-plugin/plugin.json`。plugin 模式只暴露命名空间化 Skills（`/oh-story:story-*`）、Agents 与 Hooks，不同时暴露同名 Commands；项目模式才提供裸 `/story-*` 命令。
+- plugin hooks 与 `.codebuddy/settings.json` 项目 hooks 严格互斥；memory 合并保护已有 `AGENTS.md` 不被短 `CODEBUDDY.md` 遮蔽；真实 CodeBuddy CLI manifest 校验和 Hook fixture 进入质量门。
+- TRAE 升级补齐 shared-core 旧版归属、`.claude/settings*.json` 双加载去重、Hooks review/enable 与 AGENTS/Rules 导入检查；磁盘存在其他 runtime 目录不再误触发 solo。
+- 中文主包仅从验证通过的 `canonical_root` 部署精确 18 个 Skill；`bootstrap_root` 只用于识别当前快照和选择新版 canonical，不从项目旁路注入独立工具或自定义 Skill。目标下的其他用户 Skill 保留不动。
+- 从 `target_cli` 移除 TRAE / WorkBuddy 时，先备份再收敛受管资产；TRAE 用 `disabled-hooks.json` 合并移除自己的 Hook 注册，两端 runner 在 sentinel 已不含当前端时静默返回。用户 hook、设置与自定义资产不动。
+- 书目发现排除任一路径分段含“备份”“归档”或 `archive(s)` 的历史树；WorkBuddy 项目 Hook 入口将 Windows 下 CodeBuddy CLI 导出的 `/c/...` 先归一化为盘符路径。
+
+## v37 承继契约
+
+- 新增 `target_cli=trae`：部署中文主包 `.trae/skills/` 和 `.trae/commands/`，同步 13 个 Subagent（8 通用 + 5 个数据分析精确角色），同时部署 path-scoped rules 与原生 Hooks。v39 起 Skill / Command 名册固定为 canonical 18。
+- TRAE Hook 只使用 `SessionStart` / `PreToolUse` / `PostToolUse` 等已支持事件，Hook 定义使用 `type: command` + 单字符串 `command` + 秒级 `timeout`；工具 matcher 使用 `RunCommand|Write|Edit`。
+- v37 开发期按目录枚举 Skill；v39 起验收精确名字集，防止“数量相同但被外来 Skill 替换”假绿。
+
+### v36 承继契约
 
 - 新增 `story-publish`：发布材料与远程写入分权，项目通过 `.story-publish.json` 关联本地适配器，不把本书配置或登录态打入工具包。
 - 番茄适配器接入保留 preview、preflight、防重、草稿确认、正式发布确认和显式 AI 申报；失败状态不明时禁止自动重放。
@@ -102,11 +134,11 @@
 
 - `story-import` 只把作者已有小说重建为写作工程：`拆文库/{导入书名}/` 迁移到正文/设定/大纲/追踪，不再自动登记成主/副对标，也不再复制到项目 `对标/`。只有用户明确选择、且来源为独立 `拆文库/{对标书名}/` 的外部作品才同步到 `对标/{对标书名}/`。
 - 无外部对标时只跳过对标模块、节奏和文风召回；项目题材卡仍从本书题材信息生成，不再被对标分支误伤。对标主产物缺失继续 fail-fast，只有单个可选模块卡未命中时才局部跳过。
-- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v36 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
+- 所有可能 spawn 项目 agent 的 Skill 都先读取 `.story-deployed.agents_version`：与 v39 不一致时**照常 spawn**，只在报告里提示版本不匹配、建议重跑 `/story-setup` 并新开会话。版本不匹配不阻断并行——bump 常常源于别的部署物变化而 agent 模板未动。真正降级 solo/direct 的信号是 agent 文件缺失或运行时不暴露 custom agent。
 - 写作与导入只接受当前拆文产物：`剧情/情绪模块.md` 与 `剧情/节奏.md` 缺失时 fail-fast，并给出重跑 Stage 3+ / 重新导入的修复动作。
 - 新建、补建、改纲的细纲只接受完整章节蓝图：缺少阶段位置、结构公式、禁止提前释放、内容概括、情节安排、人物关系、情节细化或结尾设定时，先补齐再写。旧版细纲缺这些字段不阻塞日更，回退消费旧字段（核心事件、情节点序列、目标情绪、章首/章尾钩子、字数目标）。
 - 细纲字段是本章「要发生什么」的内容规格，不规定正文形状：各字段都要在正文里兑现，但正文可合并、穿插、重排情节点，不按条目顺序一条一段平推。细纲「结尾 / 结尾设定」写本章最后落在什么动作、画面或台词上，不写状态判词。
-- 每个 agent adapter 只读取本目标的 canonical reference 路径：Claude `.claude/skills/`、OpenCode `skills/`、Codex `.codex/skills/`。
+- 每个 agent adapter 只读取本目标的 canonical reference 路径：Claude `.claude/skills/`、OpenCode `skills/`、Codex `.codex/skills/`、TRAE `.trae/skills/`、WorkBuddy 项目模式 `.codebuddy/skills/`；WorkBuddy plugin-only 使用 `${CODEBUDDY_PLUGIN_ROOT}/skills/`。
 - `_progress.md` 恢复只接受 `schema_version: 2` 与章节边界表，不再执行隐式历史迁移。
 - Codex hooks 升级使用稳定管理身份替换注册；会先移除旧直调 Python 命令与已有 launcher 命令，再写入当前 6 个注册，不会双重执行。
 - 定制 hook 如果调用了已删除的 `discover_book_dir()`，请改为 `discover_active_book()`。当前版不再保留该兼容别名。
@@ -116,7 +148,7 @@
 ## 升级步骤
 
 1. 在项目根目录重新运行 story-setup。
-2. 确认 `.story-deployed` 写入 `agents_version: 36` 与 `setup_skill_version: 1.2.19`。
+2. 确认 `.story-deployed` 写入 `agents_version: 39` 与 `setup_skill_version: 1.2.22`。
 3. 确认目标 CLI 的 agents、hooks/rules 和 reference bundle 都通过安装验证。
 4. 新开会话，使 custom agents 与 hooks 按当前文件重新注册。
 5. **长篇在写项目必做**：检查每本书的 `追踪/_tracking-state.json` 是否存在。不存在就是旧追踪结构，按下方「追踪模型迁移」重建，否则写下一章会被拦。
@@ -141,7 +173,7 @@
 | 情况 | 表现 |
 |------|------|
 | `追踪/_tracking-state.json` 存在且 `check` 通过 | 正常，无需处理 |
-| 缺 `_tracking-state.json` 但已有正文 | 日更停止；OpenCode / ZCode / Codex 上写正文被 hook 直接拦截 |
+| 缺 `_tracking-state.json` 但已有正文 | 日更停止；OpenCode / TRAE / WorkBuddy / ZCode / Codex 上写正文被 hook 直接拦截（各端静态命令解析仍以受测工具面为边界） |
 | 存在但派生视图被手改 | `check` 报 `derived view differs from _tracking-state.json` |
 
 迁移**不需要重跑全书拆解**：正文、`设定/`、`大纲/`、`拆文库/` 都不受影响，只重建 `追踪/`。执行 `/story-import` 的「旧追踪项目迁移」——数出最后完整章号 `N`，从旧追踪文件与最近几章正文重建当前状态，构造 `last_chapter=N` 的初始化事务跑 `tracking_commit.py init`。旧追踪结构会被按原样整体移入 `追踪/_旧追踪存档/`，不删除、不参与解析。
@@ -152,7 +184,25 @@
 
 ## 版本变更
 
-### v36（当前）
+### v39（当前）
+
+- `.story-deployed` 的 `agents_version` 升级到 `39`，`setup_skill_version` 升级到 `1.2.22`；产品版本保持 v0.8.0，本合同仍为未发布本地 dev。
+- WorkBuddy 中文主包物理名册由旧口径收敛为 10 张（8 通用 + `story-data-fetcher` + `story-data-readonly-runner`），其余四个只读数据逻辑角色走 pooled runner；19 张仅为平台容量边界。TRAE 保持 13 张逐角色部署。
+- 升级后必须新开会话实调基础 Agent、fetcher 与 readonly pooled runner 的一个逻辑角色；设置页 enabled 不构成 Task registry 验收。
+
+### v38
+
+- `.story-deployed` 的 `agents_version` 升级到 `38`，`setup_skill_version` 升级到 `1.2.21`。
+- 新增 WorkBuddy / CodeBuddy Code 原生 project/plugin 双模式，收紧 Hook 互斥、命名空间、memory 继承、版本哨兵与真实 CLI 验证。
+- 补强 TRAE 与 Claude 共存时的 Hook 去重、旧 shared-core 安全升级和设置启用验收。
+- v38 开发期曾尝试可变部署名册；v39 已收口为中文主包精确 18 Skill、TRAE 13 卡和 WorkBuddy 10 卡，不再注入项目旁路工具。历史备份/归档过滤、减端 runner 自锁、TRAE disabled-hook 合并和 WorkBuddy Windows `/c/...` 归一化保留。
+
+### v37
+
+- `.story-deployed` 的 `agents_version` 升级到 `37`，`setup_skill_version` 升级到 `1.2.20`。
+- 新增 TRAE Code 原生 Skills / Commands / Subagents / Rules / Hooks 部署与回归门。
+
+### v36
 
 - `.story-deployed` 的 `agents_version` 升级到 `36`，`setup_skill_version` 升级到 `1.2.19`。
 - 部署 story-publish、平台适配器关联协议及 18-Skill 多端路由；已部署项目需重跑 `/story-setup` 并新开会话。

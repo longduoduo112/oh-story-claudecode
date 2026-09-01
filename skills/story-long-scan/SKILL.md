@@ -162,7 +162,7 @@ node scripts/jjwxc-rank-scraper.js --type 12 --list-only                 # 只�
 
 **用户提供操作指引：**
 - 用户提供已有的扫描结果文件路径 → 直接加载进入「数据分析」
-- 用户提供链接 → 用 WebFetch 抓取
+- 用户提供链接 → 使用当前平台获准的联网抓取能力；Claude 可用 `WebFetch`，TRAE Code 优先使用平台浏览/联网工具，没有时路由只读 `/browser-cdp`，不得假装调用不存在的 `WebFetch`
 - 用户粘贴/截图 → 手动解析进入分析
 
 **内置知识操作指引：**

@@ -1,7 +1,7 @@
 ---
 name: story-long-write
-version: 1.4.1
-description: "长篇网文写作。从大纲到正文，辅助长篇网络小说的创作，包括世界观、人物、题材契约、情节线管理与分支推演。触发方式：/story-long-write、/写长篇、「帮我开书」「写大纲」「分支推演」「路线比较」「推演几个走向」「日更」「续写」「继续写」「修改第X章」「回炉」「重写第X章」。"
+version: 1.5.0
+description: "长篇网文写作。从大纲到正文，辅助中文长篇网络小说的创作，包括世界观、人物、题材契约、情节线管理、分支推演与作者文风蒸馏。触发方式：/story-long-write、/写长篇、「帮我开书」「写大纲」「分支推演」「作者文风蒸馏」「切换写作方法」「日更」「续写」「继续写」「修改第X章」「回炉」「重写第X章」。"
 metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-claudecode"}}
 ---
 # story-long-write：长篇网文写作
@@ -10,9 +10,9 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ---
 
-> 运行环境兼容性：Claude Code / OpenCode / Codex / ZCode / OpenClaw 是内置适配目标；NarraFork、Web AI、自定义 Agent 等能读取项目文件的环境，可按本 skill 执行长篇流程。检查专业 agent 时按 `.claude/agents/{agent}.md` → `.opencode/agents/{agent}.md` → `.codex/agents/{agent}.toml` 查找；找不到、Codex 返回 `unknown agent_type`，或检测到 `.zcode/`（ZCode 3.3.4 不执行项目 custom agents）时，直接 solo/direct 执行并报告 fallback。
+> 运行环境兼容性：Claude Code / OpenCode / TRAE Code / WorkBuddy（CodeBuddy Code）/ Codex / ZCode / OpenClaw 是内置适配目标；NarraFork、Web AI、自定义 Agent 等能读取项目文件的环境，可按本 skill 执行长篇流程。先识别当前运行时，只检查对应的专业 agent 定义：Claude `.claude/agents/{agent}.md`、OpenCode `.opencode/agents/{agent}.md`、TRAE Code `.trae/agents/{agent}.md`、WorkBuddy 项目模式 `.codebuddy/agents/{agent}.md`、Codex `.codex/agents/{agent}.toml`；运行时无法识别时才按上述顺序探测。TRAE Code 使用内置 `Agent` 智能体选择同名 subagent，并把下文 prompt 作为任务正文，不把 Claude 的 `subagent_type` 参数原样传给 TRAE；WorkBuddy 项目模式使用内置 `Agent` 智能体与原始 `subagent_type: "{agent}"`。WorkBuddy plugin-only 模式不凭磁盘文件猜注册名：只有当前 Agent registry 真实返回 `oh-story:{agent}` 时，才使用该精确命名空间值；未返回则按本 Skill 的 solo/direct fallback，不拿 plugin manifest 或另一端残留文件冒充 registry。Codex 使用同名 `agent_type`，Claude/OpenCode 保留 `subagent_type`。找不到当前运行时定义、当前运行时未暴露对应 Agent registry/tool，或 Codex 返回 `unknown agent_type` 时，直接 solo/direct 执行并报告 fallback。只有**当前运行时确实是 ZCode**时，才因 ZCode 3.3.4 不执行项目 custom agents 而强制 solo/direct；项目磁盘上仅仅并存 `.zcode/` 不是其他运行时降级的依据。
 >
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 36` 不一致时（标记缺失、字段缺失/非整数、小于或大于 36）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 36）` 并提示重新运行 `/story-setup` 后新开会话；大于 36 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 39` 不一致时（标记缺失、字段缺失/非整数、小于或大于 39）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 39）` 并提示重新运行 `/story-setup` 后新开会话；大于 39 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 **中文正文范围**：本 skill 只交付中文长篇正文。用户要求英文小说、中文改英文、native 化或海外发行时，改走 `story-globalize`；当前环境没有该 skill 时报告缺失并停止，不得用本中文写作流交付英文正稿。
 
@@ -30,6 +30,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 8. **正文先候选、接纳后入正史**。默认按 `references/chapter-acceptance-and-doctor.md` 一次只授权下一章候选稿；“继续写”不等于接纳。只有用户明确接纳，或在本次任务中明确授权自动定稿，才写入 `正文/`、提交追踪并过 `story_doctor.py`。
 9. **本书声音优先于跨书均值**。至少五章可信接纳正文后，按 `references/accepted-voice-profile.md` 建立已接纳基线；作者可从已接纳正文中另选黄金声线样本。候选章分别做双向漂移 advisory；两者都只指出复核位置，不负责打质量分，也不得把统计均值变成机械改写目标。
 10. **近章结构必须冷读**。有至少三章历史正文时，候选章自动生成最近六章的结构表面证据，按 `references/cross-chapter-shape.md` 检查场景发动机、问答教学化、信息交付和章尾同构。相似度只作 advisory，不自动改文或重排历史章。
+11. **写作方法分支必须显式治理**。无配置的旧项目继续使用 `A-standard` 标准直载；`B-distilled` 必须按 `references/style-method-branches.md` 经过跨作品可蒸馏性判定、训练/校准/留出、抽象规则编译、独立前向盲测和显式绑定。B 失效时硬停，不得静默退回 A；两条分支都不能覆盖细纲、连续性、题材契约和本书自定义文风。
 
 | 题材 | 核心情绪 | 重点参考 |
 |------|---------|---------|
@@ -53,6 +54,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 | **写指定章** | "写第 N 章" / "写第1章" / "开书并写首章" | Phase 4 单章候选写作；只写用户点名的章节，写完 Phase 5 检查后停在接纳边界。用户明确接纳后才入正式正文和追踪。空项目/无细纲先补 Phase 1→3 |
 | **补纲/扩纲** | "出细纲/补细纲/规划下一段剧情/接下来写XX剧情（先出细纲）" **且**项目已有大纲 | Phase 3「中途补纲/扩纲小流程」（见 `references/workflow-setup.md`）：选同类剧情单元→追加剧情单元卡→按剧情批滚动补细纲；**默认停在细纲交付，不自动写正文** |
 | **分支推演** | "分支推演/路线比较/推演几个走向/这几条路哪条更好" | 读取 `references/branch-forecast.md`；在总纲方向、卷纲/剧情单元或关键细纲层生成 2-3 个互斥方案并比较，默认停在选择报告；未经用户明确选择，不映射到正式大纲 |
+| **写作方法/文风蒸馏** | "作者文风蒸馏/货架文风蒸馏/切换A分支或B分支/编译写作方法" | 完整读取 `references/style-method-branches.md`；默认只构建或检查语料、编译候选与盲测包，不写正文。只有盲测通过并经用户明确绑定才修改项目 `设定/写作方法.json` |
 | **日更续写** | 关键词（"日更"/"续写"/"继续写"）**且**项目已有正文+追踪 | 加载 `references/workflow-daily.md` |
 | **大修** | "修改第X章" / "回滚" / "回炉" / "重写第X章" / 修改总纲、卷纲、细纲、身世、关系或世界规则 | 需要理解总体设计时先读 `references/continuity-governance-design.md`；执行时完整加载 `references/workflow-revision.md` + `references/revision-impact-and-canon.md`，修改前/后分别调用 `revision-governor` 的 `plan/verify`；语义修改必须过 `scripts/revision_guard.py` 活动清单、审批戳和追踪门禁 |
 
@@ -70,7 +72,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 **正文候选与连续任务**：写正文必须由用户显式给出章节范围、字数目标或日更意图。未明确“自动定稿/无需逐章确认/连续写完并自动定稿”时，一律使用 `review` 模式：只生成精确下一章候选，完成质检后停下等待接纳，不写正式正文、不推进追踪。用户在本次任务明确授权自动定稿时，才使用 `auto` 模式串行执行目标；每章仍单独创建许可、过 Gate、写入、提交追踪和 doctor，微批次最多 3 章。授权只对本次任务有效，用户中断、结构性路线分歧或任一门禁失败即暂停。
 
-**匹配优先级**：同时命中多行时，按 大修 → 写指定章 → 分支推演 → 补纲/扩纲 → 日更续写 → 开书 的顺序匹配。用户明确要求比较多个走向时必须先停在推演结果，不得把任一方案自动视为已选；用户点名要"细纲/补纲/规划剧情"而未要正文时，优先入 补纲/扩纲，不入日更。日更续写的 AND 条件（项目已有正文+追踪）不满足时，提示用户"项目还没有正文，建议先开书/写第1章"。
+**匹配优先级**：同时命中多行时，按 大修 → 写作方法/文风蒸馏 → 写指定章 → 分支推演 → 补纲/扩纲 → 日更续写 → 开书 的顺序匹配。用户明确要求比较多个走向时必须先停在推演结果，不得把任一方案自动视为已选；用户点名要"细纲/补纲/规划剧情"而未要正文时，优先入 补纲/扩纲，不入日更。日更续写的 AND 条件（项目已有正文+追踪）不满足时，提示用户"项目还没有正文，建议先开书/写第1章"。
 
 **日更续写保持在 workflow 内**：一旦本次请求路由到 `references/workflow-daily.md`，后续“继续/续写/日更”仍按候选协议解释，不得跳出 workflow 直接写正式正文，也不得把这些词冒充接纳指令。`review` 模式停在本章候选；只有本次任务已有明确 `auto` 授权才连续执行。细纲缺失、章节号冲突、结构性路线分歧或门禁失败都立即暂停。
 
@@ -132,7 +134,9 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 │   ├── 关系.md                # 角色关系映射
 │   ├── 题材定位.md            # 题材核心梗+对标分析+终局底牌/升级台阶（防写无可写）
 │   ├── 题材正文提示卡.md       # 题材正文核心：边界/期待/爽点/节奏/禁漂移
-│   └── 题材契约.json           # 项目级机器可读题材承诺、章节类型、节奏与审查门
+│   ├── 题材契约.json           # 项目级机器可读题材承诺、章节类型、节奏与审查门
+│   ├── 写作方法.json           # A-standard / B-distilled 项目级选择；缺失视为隐式 A
+│   └── 写作方法/               # B 分支编译方法、清单与前向盲测绑定副本
 ├── 大纲/
 │   ├── 大纲.md                # 全书卷级结构
 │   ├── 卷纲_第一卷.md         # 每卷一个：对标结构坐标+剧情单元+情绪弧线(含章节定位)+人物弧线+伏笔+反转
@@ -196,6 +200,8 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 | 追踪/冷读/{run-id}/ | 范围审查 | 卷末、大修后或关键发布前 | 按 `sequential-cold-read.md` 顺序推进；S1/S2 未清不得开新卷 |
 | 设定/角色/{角色名}.md、设定/势力/{名}.md | 角色/势力 | Phase 3 细纲后增量补全（首批含主角/主要角色） | Phase 4 状态筛选/写作 |
 | 设定/文风.md（自定义文风·优先级最高） | 本书 | 用户自写（Claude Code 可代写）；导入/拆解不覆盖 | Phase 4 每章写作前：含实质内容则取代对标文风作权威风格基 |
+| 设定/写作方法.json | 本书 | 缺失时隐式 A；用户明确切换或绑定 B 时由 `style_method.py` 原子生成 | 每章候选创建前与 doctor 批末检查；明确 B 失效时阻断，不降级 |
+| 设定/写作方法/{compiled-method.json,compiled-manifest.json,forward-test.json} | 本书/B 分支 | 合格跨作品语料编译、盲测通过并显式绑定后复制 | 每章按场景标签只解析最多 8 条抽象规则；不读语料原文和锚点 |
 | 对标/{书名}/文风.md | 对标书 | analyze Stage 6 输出 → story-import 显式绑定或本 skill 首次引用时同步 | Phase 4 每章写作前（文风召回；有自定义文风时降为参考/句长兜底） |
 | 大纲/卷纲_第X卷.md | 卷 | Phase 3 | Phase 4 写卷首章前 |
 | 追踪/_tracking-state.json | 全书 | Phase 3 初始化 | 唯一结构化权威，不进正文 prompt；每章运行 `tracking_commit.py check` 读取章号和修订号 |
@@ -216,15 +222,16 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 1. **角色状态文件缺失** → 当前协议项目先运行 `tracking_commit.py check`，再重跑产生该状态的完整事务；已有正文但 `_tracking-state.json` 缺失时重新 `/story-import`。不得从前文临时推断后直接手写快照。
 2. **角色、普通剧情单元或设定等非主产物子目录缺失** → 按「对标书路径查找」查找项目视图与根目录数据源，仍缺失则跳过该可选模块。本条不适用于 `剧情/情绪模块.md` 和 `剧情/节奏.md`。
 3. **`剧情/情绪模块.md` / `剧情/节奏.md` 缺失** → 写前准备必须停下，设置 `missing_primary_contract: true` 并给出 `repair_action`：重跑 `/story-long-analyze` Stage 3+ 或重新 `/story-import`，不得用摘要文件假装已召回权威模块。
-4. **有对标书但 `文风.md` 缺失** → 若有 `设定/文风.md`（含实质内容）走自定义文风模式继续；否则日更文风召回 fail-fast，提示先运行 `/story-long-analyze` Stage 6 并 `/story-import` 同步。**完全无对标项目**则跳过文风召回、不阻塞（有 `设定/文风.md` 时用它写作）。情绪/节奏轴（`missing_primary_contract`）独立，自定义文风模式不豁免其 fail-fast。
+4. **A 分支有对标书但 `文风.md` 缺失** → 若有 `设定/文风.md`（含实质内容）走自定义文风模式继续；否则日更文风召回 fail-fast，提示先运行 `/story-long-analyze` Stage 6 并 `/story-import` 同步。**A 分支完全无对标项目**则跳过文风召回、不阻塞（有 `设定/文风.md` 时用它写作）。B 分支不依赖对标 `文风.md`，只验证已绑定的编译方法包。情绪/节奏轴（`missing_primary_contract`）独立，自定义文风模式不豁免其 fail-fast。
 5. **伏笔/时间线文件缺失** → 视为当前语义检查点损坏，停止写正文；先运行 `tracking_commit.py check`，再用事务修复。卷纲/大纲中的计划不能代替已发生事实的当前检查点。
 6. **`设定/题材正文提示卡.md` 缺失** → 不阻塞；写前从 `设定/题材定位.md` 精确匹配 `references/genre-prose-cards.md` 索引，并只读取 `references/genre-prose-cards/` 中对应题材单卡（高/中/低置信照原卡标注），无命中再用 `references/style-genre-modules.md` 通用流派模块即时生成短 `genre_prose_card`。只有 `设定/题材定位.md` 也缺失时，退回细纲和目标平台做低置信题材卡，并在意图确认写明。
 7. **`设定/题材契约.json` 缺失** → 旧项目不阻塞正文；按 `references/genre-contracts.md` 尝试从题材定位物化。未命中内置契约时生成最小项目契约并标注 `confidence: low`，不得伪造数值规则或把偏好写成硬门。命中地下城核心、温馨奇幻、爬塔升级、数值冒险时必须先物化对应内置契约再继续建纲。
+8. **`设定/写作方法.json` 缺失** → 兼容旧项目，按隐式 `A-standard` 继续；文件明确选择 `B-distilled` 时，必须先通过 `scripts/style_method.py check --project`。编译方法、清单、盲测或哈希任一缺失/变化都停止写作，重新走 qualify/compile/盲测/bind，不得改读 A 的锚点冒充降级。
 
 **对标分析权威优先级（权威读取顺序）**：
 1. `剧情/情绪模块.md` 是读者需求 / 情绪引擎、爽文套路框架、可复现模块和重组指南的权威来源。
 2. `剧情/节奏.md` 是关键信息推进、章节扩写技法聚合、情绪触动点和爆发节奏的权威来源。
-3. `文风.md` 只管句长、标点、对话潜台词、原文锚点等风格；它不能覆盖情绪模块或节奏意图。**自定义文风 `设定/文风.md`（用户自写、不被导入/拆解覆盖）优先级高于对标 `文风.md`**：含实质内容时作权威风格基，对标文风降为参考与句长数值兜底。随机标点堆砌、英文点号投机、Markdown 分隔线和项目/平台明确禁用项仍走格式门；有功能的 `……` / `——` 先按本书声线与场景复核，不把标点本身当 AI 身份证据。
+3. A 分支的对标 `文风.md` 只管句长、标点、对话潜台词、原文锚点等风格；B 分支以已验证的 `compiled_method_packet` 代替这一输入。二者都不能覆盖情绪模块或节奏意图。**自定义文风 `设定/文风.md`（用户自写、不被导入/拆解覆盖）优先级高于两条分支的方法输入**：含实质内容时作权威风格基，A 的对标文风或 B 的编译规则降为参考。随机标点堆砌、英文点号投机、Markdown 分隔线和项目/平台明确禁用项仍走格式门；有功能的 `……` / `——` 先按本书声线与场景复核，不把标点本身当 AI 身份证据。
 4. `章节/第K章_摘要.md` 是具体章节证据，用来校验和补足权威索引，不反向覆盖 `情绪模块.md` / `节奏.md`。
 5. `拆文报告.md`、`剧情/故事线.md` 是投影/摘要；若与 `剧情/情绪模块.md` 或 `剧情/节奏.md` 冲突，写作以两个权威文件为准，并在写前准备 `gaps.conflict` 记录冲突来源。
 
@@ -245,7 +252,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 **上一章中文正稿旧债门**：写第 N 章正文前，先确认第 N-1 章没有未清的 blocking 毒句式、语言泄漏、HTML 标记或文风卫生污染。写前 hook 不可用时，对上一章先运行 `node scripts/language_gate.js 正文/第{N-1}章_*.md`，该独立语言门返回零后，再依次运行 `node scripts/check-style-hygiene.js --check --fail-on=blocking 正文/第{N-1}章_*.md`、`node scripts/check-ai-patterns.js --check --fail-on=blocking 正文/第{N-1}章_*.md` 与 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文/第{N-1}章_*.md`；有欠账先清零，再进入本章生成。去味跳过不得豁免语言门或文风卫生门，也不得在正文内写 HTML 豁免标记。
 
 1. **检查细纲**：读取 `大纲/细纲_第{N}章.md`，并从对应 `大纲/卷纲_第X卷.md` 读取当前剧情单元（单元ID/位置、卷契约、本卷主推线/战果、终局底牌边界、风险等级）。如果不存在或缺少当前章节蓝图的必需字段，**必须先补建细纲再写正文**，不允许跳过细纲直接写作。补建时参考卷纲中本章对应的事件规划和上下文，补齐阶段位置、结构公式、禁止提前释放、内容概括、情节安排、人物关系/出场顺序、情节细化、结尾设定；无法从已有证据判断的字段写 `[待补充]`，不杜撰副线或关系。
-2. **读取上下文**（按需选择；缺失时遵循各项及上方「缺失文件处理」，仅明确标为可选的非主产物跳过。可选快捷路径：如果项目已部署 story-explorer agent（优先检查 `.claude/agents/story-explorer.md` 是否存在；不存在时再检查 `.opencode/agents/`，再不存在时检查 `.codex/agents/`），可 spawn `Agent(subagent_type: "story-explorer", prompt: "项目目录：{dir}\n查询类型：context_load\n查询参数：准备写第 {N} 章\n追踪状态：last_committed_chapter={check 的值}，state_revision={check 的值}")` 一次获取上下文）：
+2. **读取上下文**（按需选择；缺失时遵循各项及上方「缺失文件处理」，仅明确标为可选的非主产物跳过。可选快捷路径：如果当前运行时对应目录已部署 story-explorer agent（Claude `.claude/agents/story-explorer.md`、OpenCode `.opencode/agents/story-explorer.md`、TRAE Code `.trae/agents/story-explorer.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-explorer.md`、Codex `.codex/agents/story-explorer.toml`），可调用同名 agent 一次获取上下文；TRAE Code 只用内置 `Agent` 按 `.trae/agents/story-explorer.md` 的名称选择同名 Subagent，不传 Claude 的 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "story-explorer", prompt: ...)`，plugin-only 模式仅在当前 Agent registry 真实返回 `oh-story:story-explorer` 时使用该精确值；Claude/OpenCode 可用等价 `subagent_type`，Codex 使用 `agent_type`，任务正文统一为 `项目目录：{dir}\n查询类型：context_load\n查询参数：准备写第 {N} 章\n追踪状态：last_committed_chapter={check 的值}，state_revision={check 的值}`）：
    - (1) `正文/第{N-1}章_*.md` — 上一章正文
    - (2) `大纲/细纲_第{N}章.md` — 本章细纲（含钩子设计）
    - (2a) `大纲/卷纲_第X卷.md` — 当前剧情单元、卷契约与终局储备（主推线/战果、终局底牌边界）
@@ -267,12 +274,13 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
      - (a) **情绪模块召回**：按「对标书路径查找」规则读 `{对标书路径}/剧情/情绪模块.md`，选出 1 个与本章目标情绪最贴近的 `selected_emotion_module`（读者需求、触发器、戏剧单元、可替换要素、反抄袭提醒）。缺失时设置 `missing_primary_contract: true`，返回明确 `repair_action` 后停止准备
      - (b) **节奏召回**：读 `{对标书路径}/剧情/节奏.md`，选出 1 条 `rhythm_reference`（关键信息 → 扩写技法 → 情绪触动点 → 爆发/冷却）。缺失时设置 `missing_primary_contract: true`，返回明确 `repair_action` 后停止准备
      - (c) **题材正文提示卡召回**：优先读 `设定/题材正文提示卡.md`；缺失则先读 `设定/题材定位.md` + `references/genre-prose-cards.md` 索引，按主题材精确匹配后只读取 `references/genre-prose-cards/` 中对应单题材卡（如 都市脑洞 / 豪门总裁 / 年代 / 双男主；低置信卡必须在意图确认标注低置信，并要求同题材对标校准），无命中再读 `references/style-genre-modules.md` 通用流派模块。跨题材时主题材抽 3-5 条、辅题材抽 1-2 条，生成短 `genre_prose_card`（题材边界、核心逻辑、读者期待、核心爽点/情绪、正文落点、前中后期打法、节奏密度、场景颗粒、禁止漂移、本章取舍、卡片置信度）。题材卡只约束正文层题材味，不改细纲剧情、不覆盖 `selected_emotion_module` / `rhythm_reference` / `设定/文风.md`；只在内部校准取舍，正文里不得出现卡名/标签/置信度/条目/合规自评
-     - (d) **文风召回**：先直接读 `设定/文风.md`（不经 explorer）：含实质内容（去空白 ≥200 字，或含 句长 / 标点 / 对话 / 锚点 / 笔调 小节且小节内有可执行约束：比例 / 例句 / 禁止或偏好描述）则置 `custom_style=true`、进入「自定义文风模式」，它作权威风格基（句长 / 软标点 / 潜台词 / 情绪交替），对标 / 拆文 `文风.md` 降为参考（锚点 + 句长兜底）；空 / 仅空白 / 仅标题 / 占位 stub（待办 / 待补充 / ___）视为不存在。否则按「对标书路径查找」规则读 `{对标书路径}/文风.md`（路径优先 `{项目}/对标/{书名}/`，回退 `拆文库/{书名}/`）；多本对标书时从 `设定/题材定位.md` 读 `主对标书` 字段。**未进入自定义文风模式且**文风文件不存在 → **fail-fast 报错**：「对标书 X 缺少 文风.md。请用 `/story-long-analyze` 跑 Stage 6 生成文风，再 `/story-import` 同步。」不 inline 生成（自定义文风模式则不 fail-fast；情绪 / 节奏轴 `missing_primary_contract` 仍独立阻塞）
-     - (e) **匹配章节挑选**：从 `{对标书路径}/章节/*_摘要.md` grep `基调：(紧张|轻松|悲伤|热血|爽|甜|温馨|恐怖|压抑|其他)`（全角冒号），按本章目标情绪挑章 K——多章同基调时选择规则：先看爽点类型是否接近，再看情节点数量/原文章节估算字数是否接近本章目标字数，最后取章节号最小者；必读 `{对标书路径}/章节/第K章_摘要.md`，若同章存在 `第K章_深度拆解.md` 则加读，否则回退黄金三章深度拆解/文风文件里的可借鉴技巧，不因非黄金三章缺少深度拆解而失败
+     - (c1) **写作方法分支解析**：从细纲提取 3-6 个场景标签，运行 `scripts/style_method.py resolve --project {项目目录} --scene-tag ...`。返回 A 时执行下方原有文风召回；返回 B 时把最多 8 条 `selected_rules` 作为 `compiled_method_packet`，跳过对标 `文风.md`、匹配章原文锚点和 `benchmark_style_load` 的文风部分，但仍单独加载 `剧情/情绪模块.md`、`剧情/节奏.md`、题材卡和 fresh 声音画像。显式 B 的 resolve/check 失败立即停止。
+     - (d) **文风召回**：先直接读 `设定/文风.md`（不经 explorer）：含实质内容（去空白 ≥200 字，或含 句长 / 标点 / 对话 / 锚点 / 笔调 小节且小节内有可执行约束：比例 / 例句 / 禁止或偏好描述）则置 `custom_style=true`、进入「自定义文风模式」，它作权威风格基（句长 / 软标点 / 潜台词 / 情绪交替）。A 分支把对标 / 拆文 `文风.md` 降为参考（锚点 + 句长兜底）；B 分支把 `compiled_method_packet` 降为参考，且始终不读取来源锚点。空 / 仅空白 / 仅标题 / 占位 stub（待办 / 待补充 / ___）视为不存在。没有自定义文风时，A 按「对标书路径查找」规则读 `{对标书路径}/文风.md`（路径优先 `{项目}/对标/{书名}/`，回退 `拆文库/{书名}/`），多本对标书时从 `设定/题材定位.md` 读 `主对标书` 字段；A 未进入自定义文风模式且文风文件不存在则 fail-fast。B 直接使用已验证的 `compiled_method_packet`，不要求对标 `文风.md`，但情绪 / 节奏轴 `missing_primary_contract` 仍独立阻塞
+     - (e) **A 分支匹配章节挑选**：仅 A 从 `{对标书路径}/章节/*_摘要.md` grep `基调：(紧张|轻松|悲伤|热血|爽|甜|温馨|恐怖|压抑|其他)`（全角冒号），按本章目标情绪挑章 K——多章同基调时选择规则：先看爽点类型是否接近，再看情节点数量/原文章节估算字数是否接近本章目标字数，最后取章节号最小者；必读 `{对标书路径}/章节/第K章_摘要.md`，若同章存在 `第K章_深度拆解.md` 则加读，否则回退黄金三章深度拆解/文风文件里的可借鉴技巧，不因非黄金三章缺少深度拆解而失败。B 跳过本步
      - (f) **结构化模块召回**：从对标的结构化子目录（角色/剧情/设定）中按本章情节检索相关模块；若与 `剧情/情绪模块.md` / `剧情/节奏.md` 冲突，权威文件优先，记录 `conflict`
-     - (g) 输出"主对标召回摘要 + 副对标召回摘要 + selected_emotion_module + rhythm_reference + genre_prose_card + 文风召回指令 + 原文锚点片段引用"，作为 narrative-writer 的输入。**多对标书时**参 `references/cross-book-recall.md`：主对标提供文风、原文锚点与 selected_emotion_module / rhythm_reference；副对标/参考对标按阶段预算提供结构化摘要，不限制登记书目，不读取副书 `文风.md` / 原文，超过预算时裁条目不裁书目记录。
+     - (g) **分支化输出**：A 输出"主对标召回摘要 + 副对标召回摘要 + selected_emotion_module + rhythm_reference + genre_prose_card + 文风召回指令 + 原文锚点片段引用"；B 输出"selected_emotion_module + rhythm_reference + genre_prose_card + compiled_method_packet"，不带匹配章、原文锚点、来源名或证据定位。**A 的多对标书召回**参 `references/cross-book-recall.md`：主对标提供文风、原文锚点与 selected_emotion_module / rhythm_reference；副对标/参考对标按阶段预算提供结构化摘要，不限制登记书目，不读取副书 `文风.md` / 原文，超过预算时裁条目不裁书目记录。
      - **快捷路径**：项目已部署 story-explorer agent 时，可一次性召回文风/模块材料。
-       - 检查顺序：`.claude/agents/story-explorer.md` → `.opencode/agents/` → `.codex/agents/`。
+       - 按当前运行时检查：Claude `.claude/agents/story-explorer.md`、OpenCode `.opencode/agents/story-explorer.md`、TRAE Code `.trae/agents/story-explorer.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-explorer.md`、Codex `.codex/agents/story-explorer.toml`。TRAE Code 用内置 `Agent` 按该 `.trae` 定义的名称选择同名 Subagent，不传 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "story-explorer", prompt: ...)`，plugin-only 仅在 registry 返回 `oh-story:story-explorer` 时用该精确值。
        - 查询类型：`benchmark_style_load`；传入项目目录、章节号、目标基调/字数和爽点类型。
        - 需要返回：`style_profile_path`、`style_profile_summary`、`selected_emotion_module`、`rhythm_reference`、来源路径、匹配章节、锚点片段、`gaps`。
        - `gaps.missing_primary_contract` 为 true 时先按 `repair_action` 修复，不进入正文生成。
@@ -286,20 +294,21 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 	     - 检查任务卡点：本章如果有“办事被卡住”，它必须卡出信息、关系、代价、选择或伏笔变化；没有就不强补。
 	     - 契约风险检查：按 `references/reader-contract-and-progression.md` 判定 契约安全 / 需补强 / 契约破坏；若高光/收益被配角、机构或偶然性拿走且没有可见交换，先修纲再写。
      - 例：「快节奏打脸——账单暴露→逼问→反证→公开代价；读者等了三章，这章必须一拳到位。」
-4. **资料研究**（按需）：如果写作中遇到需要查证的外部事实（历史年代、地理方位、职业细节等），如果项目已部署 story-researcher agent（优先检查 `.claude/agents/` 下的 `story-researcher.md` 是否存在；不存在时再检查 `.opencode/agents/`，再不存在时检查 `.codex/agents/`），spawn `story-researcher` agent 搜索并输出到 `参考资料/` 目录。如 agent 不可用，由主线程直接执行。研究完成后再继续写作。
+4. **资料研究**（按需）：如果写作中遇到需要查证的外部事实（历史年代、地理方位、职业细节等），按当前运行时检查 story-researcher（Claude `.claude/agents/story-researcher.md`、OpenCode `.opencode/agents/story-researcher.md`、TRAE Code `.trae/agents/story-researcher.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-researcher.md`、Codex `.codex/agents/story-researcher.toml`）。可用时调用同名 agent 搜索并输出到 `参考资料/`；TRAE Code 只用内置 `Agent` 按 `.trae/agents/story-researcher.md` 的名称选择同名 Subagent，不传 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "story-researcher", prompt: ...)`，plugin-only 仅在 registry 返回 `oh-story:story-researcher` 时用该精确值。TRAE Code 使用当前平台的联网能力或只读 `browser-cdp` 路由，不调用不存在的 `WebFetch`。如 agent 或联网能力不可用，由主线程在可用能力范围内执行并明确证据缺口。研究完成后再继续写作。
 5. **标题预检**：写正文前从细纲读取章名；如与既有章节同名或明显重复，先按本章核心事件改名，并同步细纲标题与正文文件名。
 	6. **写作**：第 1 章如果以内心戏、设定认知或独处开场，必须先把内心变化外化为可见事件（决定、误判、对话、物件变化、外部压力），再按字数目标展开；不得用大段心理独白凑字。若第 1 章低于目标，或正文代入感/推进感偏薄，优先回到细纲补有用子事件、对话交锋或选择代价，不要补解释性内心戏；任务卡点只在角色本来有要办的事、且能卡出信息/关系/代价/选择/伏笔变化时使用，没有就不强补。
 	   - **正文元信息隔离**：`章节：第{N}章`、`上一章：正文/第{N-1}章_*.md`、`匹配第K章`、`细纲文件` 等只用于定位材料。标题行以外的正文不得出现 `第[一二三四五六七八九十百千万两0-9]+章|上一章|上章|前一章|本章|这一章|前文|后文|伏笔|细纲|读者|ch\d+ 等英文章号缩写` 这类写作工程词。需要承接前文时，改成角色能感知的事件锚点或相对时间，例如“比第一章那三秒开火更疼”必须写成“比那三秒开火更疼”。例外：角色在故事世界内真实阅读/讨论“第X章”文本，或真实身为作者/读者并谈论读者身份时，可保留相应词。
 	   - **生成前中文锁**：正文叙述、对话、心理和场景一律使用中文；外国人对话也先译成中文并在场内注明语种。英文、缩写、型号和剧情代号不得由模型自行豁免；URL、邮箱、代码、路径和文件名只有在明确属于非叙事结构时才由检测器机械保护。用户明确要求逐字保留的其他外语，必须单独确认后在 `.deslop-whitelist` 精确登记；HTML 标签、注释和实体不得进入交付正文。
 7. **正文执行**：
-   - 先检查 narrative-writer agent：`.claude/agents/narrative-writer.md` → `.opencode/agents/` → `.codex/agents/`。
-   - 如可用，spawn `Agent(subagent_type: "narrative-writer", prompt: ...)`，prompt 只传本章必需材料：
+    - 按当前运行时检查 narrative-writer agent：Claude `.claude/agents/narrative-writer.md`、OpenCode `.opencode/agents/narrative-writer.md`、TRAE Code `.trae/agents/narrative-writer.md`、WorkBuddy 项目模式 `.codebuddy/agents/narrative-writer.md`、Codex `.codex/agents/narrative-writer.toml`。
+    - 如可用，TRAE Code 只用内置 `Agent` 按 `.trae/agents/narrative-writer.md` 的名称选择同名 Subagent，把下列 prompt 作为任务正文，不传 Claude 的 `subagent_type`；WorkBuddy 项目模式 spawn `Agent(subagent_type: "narrative-writer", prompt: ...)`，plugin-only 仅在 Agent registry 真实返回 `oh-story:narrative-writer` 时用该精确值；Claude/OpenCode 可用等价 `subagent_type`，Codex 用 `agent_type`。prompt 只传本章必需材料：
      - 项目目录、章节、细纲文件、上一章、输出路径。
      - 写前准备输出：本节速记、情绪目标、涉及角色、参考技法。
      - 主对标/拆文路径、主/副对标召回摘要。
      - `selected_emotion_module`、`rhythm_reference` 及来源路径。
      - `genre_prose_card`（题材正文提示卡摘要，只含本章相关条目）。
-	     - 文风路径、文风召回指令、原文锚点片段。
+	     - A 的文风路径、文风召回指令、原文锚点片段；B 不传这三项。
+	     - 写作方法分支与 `compiled_method_packet`：A 不传；B 只传本章命中的抽象规则，不传整包、来源名、证据定位或语料原文。
 	     - 已接纳正文声音画像摘要（若存在且验证为 fresh）：只传本章相关漂移项和早期/近期范围，不传全量逐章统计；画像缺失或样本不足不阻断写作。
 	     - 阶段位置、本章结构公式、本章可释放信息、本章禁止提前释放信息。
 	     - 字数目标、情节点预算、格式硬约束。
@@ -377,7 +386,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 > 历史教训：本节曾写作"如果项目已部署...可以 spawn"，软性措辞导致执行者在写完多章后反复自行判断"要不要跑"，实际结果是连续数章漏跑却无人发现，直到用户主动追问"是否严格按工具流程"才暴露。现改为无条件必须执行，唯一的分支是"谁来执行"，不是"要不要执行"。
 
 质量检查阶段**必须**执行一致性检查，检测事实冲突、伏笔断线、角色属性不一致，覆盖范围至少含本次新写的章节。执行方式二选一，不存在"跳过"选项：
-- 项目已部署 consistency-checker agent（优先检查 `.claude/agents/consistency-checker.md` 是否存在；不存在时再检查 `.opencode/agents/`，再不存在时检查 `.codex/agents/`）：spawn `Agent(subagent_type: "consistency-checker", prompt: "项目目录：{dir}\n检查范围：{本次写作的章节}\n检查类型：事实冲突+伏笔断线+角色属性不一致")`，获取 S1-S4 分级报告。
+- 当前运行时已部署 consistency-checker（Claude `.claude/agents/consistency-checker.md`、OpenCode `.opencode/agents/consistency-checker.md`、TRAE Code `.trae/agents/consistency-checker.md`、WorkBuddy 项目模式 `.codebuddy/agents/consistency-checker.md`、Codex `.codex/agents/consistency-checker.toml`）：调用同名 agent 获取 S1-S4 分级报告。TRAE Code 只用内置 `Agent` 按 `.trae/agents/consistency-checker.md` 的名称选择同名 Subagent，不传 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "consistency-checker", prompt: ...)`，plugin-only 仅在 registry 真实返回 `oh-story:consistency-checker` 时用该精确值；Claude/OpenCode 可用等价 `subagent_type`，Codex 使用 `agent_type`；任务正文为 `项目目录：{dir}\n检查范围：{本次写作的章节}\n检查类型：事实冲突+伏笔断线+角色属性不一致`。
 - agent 不可用：由主线程参照 quality-checklist.md 手动执行同等深度的检查，不得以"agent 未部署"为由整项跳过。
 
 执行完成后，在 `追踪/质检进度.md`（若项目已部署此文件，见 story-setup 2.5）对应章节行的「consistency-checker」列打 `✓`（无未解决问题）或 `○`（有 advisory/S3 待复核）；文件不存在不阻塞写作，但下次有 story-setup 部署机会时应补建。
@@ -387,13 +396,13 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 > 历史教训：与 consistency-checker 同源问题——"可 spawn"的软性措辞导致这一步被反复跳过，且这是一次**独立于写作时脚本检测**的语义级复审（脚本抓不住的解释腔/上帝视角/精致戏剧反应堆叠，只有通读才能判断），不能用写作时顺带的自检替代。
 
 质量检查阶段**必须**对本次新写的章节执行一次独立于写作过程的去AI味审查，不是写作 agent 顺手做的自检，是另开一次专门审查：
-- 项目已部署 narrative-writer agent（优先检查 `.claude/agents/` 下的 `narrative-writer.md` 是否存在；不存在时再检查 `.opencode/agents/`，再不存在时检查 `.codex/agents/`）：spawn `Agent(subagent_type: "narrative-writer", prompt: "项目目录：{dir}\n任务描述：审查+去AI味\n检查范围：{本次写作的章节}\n删除优先：每条 AI 味项先判能否删除——删后不丢伏笔/钩子/角色/情节/必要信息的直接删，会丢才润色（删除受比例上限与字数下限约束，跌破下限改降AI重写）\n必须检查：先否定再肯定的翻转句式，发现后直接改成后项或动作细节；检查作者解释总结/意义尾巴（他意识到/这意味着/真正重要的是/这次成长），优先删掉或落回场内动作、对话、物件状态；检查像/好像/仿佛/如同等比喻是否成片堆叠，确属堆叠时只留最有功能的少数比喻，其余回到具体画面；检查是否连续使用头皮发紧/眼皮一跳/心口一沉/胃里翻涌等精致戏剧反应，能写普通动作/普通感觉就写普通动作/普通感觉，且同一生理反应词跨多章重复出现时视为模板化指纹，收窄到专属语境或替换为其他生理反应；已有手机/屏幕/公告/门牌/表单/账单/物证/规则行信息，保留为角色看到或处理的场内载体，不改成叙述者解释；任务卡点只在角色本来有要办的事且能卡出信息/关系/代价/选择/伏笔变化时使用，不为自然感或字数补流程")` 执行文字质量审查和去AI味检查。
+- 当前运行时已部署 narrative-writer（Claude `.claude/agents/narrative-writer.md`、OpenCode `.opencode/agents/narrative-writer.md`、TRAE Code `.trae/agents/narrative-writer.md`、WorkBuddy 项目模式 `.codebuddy/agents/narrative-writer.md`、Codex `.codex/agents/narrative-writer.toml`）：调用同名 agent 执行文字质量审查和去AI味检查。TRAE Code 只用内置 `Agent` 按 `.trae/agents/narrative-writer.md` 的名称选择同名 Subagent，不传 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "narrative-writer", prompt: ...)`，plugin-only 仅在 registry 真实返回 `oh-story:narrative-writer` 时用该精确值；Claude/OpenCode 可用等价 `subagent_type`，Codex 使用 `agent_type`；任务正文为 `项目目录：{dir}\n任务描述：审查+去AI味\n检查范围：{本次写作的章节}\n删除优先：每条 AI 味项先判能否删除——删后不丢伏笔/钩子/角色/情节/必要信息的直接删，会丢才润色（删除受比例上限与字数下限约束，跌破下限改降AI重写）\n必须检查：先否定再肯定的翻转句式，发现后直接改成后项或动作细节；检查作者解释总结/意义尾巴（他意识到/这意味着/真正重要的是/这次成长），优先删掉或落回场内动作、对话、物件状态；检查像/好像/仿佛/如同等比喻是否成片堆叠，确属堆叠时只留最有功能的少数比喻，其余回到具体画面；检查是否连续使用头皮发紧/眼皮一跳/心口一沉/胃里翻涌等精致戏剧反应，能写普通动作/普通感觉就写普通动作/普通感觉，且同一生理反应词跨多章重复出现时视为模板化指纹，收窄到专属语境或替换为其他生理反应；已有手机/屏幕/公告/门牌/表单/账单/物证/规则行信息，保留为角色看到或处理的场内载体，不改成叙述者解释；任务卡点只在角色本来有要办的事且能卡出信息/关系/代价/选择/伏笔变化时使用，不为自然感或字数补流程`。
 - agent 不可用：由主线程直接执行，同样按上述检查项逐条通读，不得省略。
 
 执行完成后，在 `追踪/质检进度.md` 对应章节行的「去AI味独立审查」列打 `✓`/`○`。
 
 检查后更新 `追踪/质检进度.md`（若已部署）对应章节行：三个脚本、元信息扫描、consistency-checker、去AI味独立审查、字数核实、对话密度实测（读 check-ai-patterns.js 的 `dialogue-density-stat` info 输出，不必手写脚本现算）逐列打勾。伏笔与时间线不再手改派生文件，统一走下面的追踪事务。
-质量检查阶段，如果项目已部署 narrative-writer agent（优先检查 `.claude/agents/` 下的 `narrative-writer.md` 是否存在；不存在时再检查 `.opencode/agents/`，再不存在时检查 `.codex/agents/`），可 spawn `Agent(subagent_type: "narrative-writer", prompt: "项目目录：{dir}\n任务描述：审查+去AI味\n检查范围：{本次写作的章节}\n删除优先：每条 AI 味项先判能否删除——删后不丢伏笔/钩子/角色/情节/必要信息的直接删，会丢才润色（删除受比例上限与字数下限约束，跌破下限改降AI重写）\n必须检查：先否定再肯定的翻转句式，含跨段‘不是A/也不是B/只是C’；对话也检查‘至于X不X，怎么X’和同动词‘不V A，不V B’工整清单，不能因脚本豁免台词而跳过；检查正文是否把细纲多个字段里重复的同一要求逐项复述，重复字段只算一个语义点；检查作者解释总结/意义尾巴（他意识到/这意味着/真正重要的是/这次成长），优先删掉或落回场内动作、对话、物件状态；检查像/好像/仿佛/如同等比喻是否成片堆叠，确属堆叠时只留最有功能的少数比喻，其余回到具体画面；检查是否连续使用头皮发紧/眼皮一跳/心口一沉/胃里翻涌等精致戏剧反应，能写普通动作/普通感觉就写普通动作/普通感觉；已有手机/屏幕/公告/门牌/表单/账单/物证/规则行信息，保留为角色看到或处理的场内载体，不改成叙述者解释；任务卡点只在角色本来有要办的事且能卡出信息/关系/代价/选择/伏笔变化时使用，不为自然感或字数补流程")` 执行文字质量审查和去AI味检查。如 agent 不可用，由主线程直接执行。
+质量检查阶段，如果当前运行时对应目录已部署 narrative-writer（Claude `.claude/agents/narrative-writer.md`、OpenCode `.opencode/agents/narrative-writer.md`、TRAE Code `.trae/agents/narrative-writer.md`、WorkBuddy 项目模式 `.codebuddy/agents/narrative-writer.md`、Codex `.codex/agents/narrative-writer.toml`），可调用同名 agent；TRAE Code 只用内置 `Agent` 按 `.trae/agents/narrative-writer.md` 的名称选择同名 Subagent，不传 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "narrative-writer", prompt: ...)`，plugin-only 仅在 registry 真实返回 `oh-story:narrative-writer` 时用该精确值；Claude/OpenCode 可用等价 `subagent_type`，Codex 使用 `agent_type`。任务正文为 `项目目录：{dir}\n任务描述：审查+去AI味\n检查范围：{本次写作的章节}\n删除优先：每条 AI 味项先判能否删除——删后不丢伏笔/钩子/角色/情节/必要信息的直接删，会丢才润色（删除受比例上限与字数下限约束，跌破下限改降AI重写）\n必须检查：先否定再肯定的翻转句式，含跨段‘不是A/也不是B/只是C’；对话也检查‘至于X不X，怎么X’和同动词‘不V A，不V B’工整清单，不能因脚本豁免台词而跳过；检查正文是否把细纲多个字段里重复的同一要求逐项复述，重复字段只算一个语义点；检查作者解释总结/意义尾巴（他意识到/这意味着/真正重要的是/这次成长），优先删掉或落回场内动作、对话、物件状态；检查像/好像/仿佛/如同等比喻是否成片堆叠，确属堆叠时只留最有功能的少数比喻，其余回到具体画面；检查是否连续使用头皮发紧/眼皮一跳/心口一沉/胃里翻涌等精致戏剧反应，能写普通动作/普通感觉就写普通动作/普通感觉；已有手机/屏幕/公告/门牌/表单/账单/物证/规则行信息，保留为角色看到或处理的场内载体，不改成叙述者解释；任务卡点只在角色本来有要办的事且能卡出信息/关系/代价/选择/伏笔变化时使用，不为自然感或字数补流程`。如 agent 不可用，由主线程直接执行。
 
 检查后若正文修订改变了连续性事实，必须构造 `mode=revision` 的同章追踪事务并执行 `scripts/tracking_commit.py commit`：
 - 伏笔变化用 `foreshadow_changes` 更新同一 ID 的当前行，不追加重复历史；
@@ -482,6 +491,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 | 近章结构指纹与语义五问 | `references/cross-chapter-shape.md` + `scripts/chapter_shape_gate.py` |
 | 卷末/大修后顺序冷读 | `references/sequential-cold-read.md` + `scripts/cold_read_ledger.py` |
 | 当前剧情单元与契约校准 | `references/reader-contract-and-progression.md` |
+| A 标准直载 / B 蒸馏编译、跨作品语料与运行时规则 | `references/style-method-branches.md` + `scripts/style_method.py` |
 
 ### Phase 5：质量检查
 

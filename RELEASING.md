@@ -15,14 +15,14 @@ https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download
 | 版本轴 | 当前权威 | 用途 | 何时变更 |
 |---|---|---|---|
 | 产品 SemVer | `skills/story/VERSION`，当前 `0.8.0` | GitHub Release、安装包和各 plugin manifest 的公开版本 | 每次正式发版；用 `scripts/manage-version.py` 同步所有公开版本面 |
-| `setup_skill_version` | `scripts/current-contract.json`，当前 `1.2.19` | `story-setup` 部署流程/哨兵协议的版本 | 只在该部署协议本身需要新版识别时改 |
-| `agents_version` | `scripts/current-contract.json`，当前 `36` | 已部署 hooks / agents / rules / references 是否过期的唯一运行时权威 | 只在部署包行为变更、需要用户重跑 `story-setup` 时改 |
+| `setup_skill_version` | `scripts/current-contract.json`，当前 `1.2.22` | `story-setup` 部署流程/哨兵协议的版本 | 只在该部署协议本身需要新版识别时改 |
+| `agents_version` | `scripts/current-contract.json`，当前 `39` | 已部署 hooks / agents / rules / references 是否过期的唯一运行时权威 | 只在部署包行为变更、需要用户重跑 `story-setup` 时改 |
 
 三条轴互相独立。发一个产品 patch 不代表必须改 `setup_skill_version` 或 `agents_version`；只改文档/打包管道时不要顺手 bump 后两者。
 
 ## SemVer 政策
 
-- 公开版本只使用稳定 `X.Y.Z`，不把 prerelease/build metadata 写入五个公开版本面。
+- 公开版本只使用稳定 `X.Y.Z`，不把 prerelease/build metadata 写入六个公开版本面。
 - PATCH：兼容的修复、规则校正、文档或发行管道修复。
 - MINOR：向后兼容的新能力、新 skill 或显著新流程。`0.x` 阶段若引入用户可见的破坏性变更，至少升 MINOR 并在 `CHANGELOG.md` 标红迁移。
 - MAJOR：进入稳定主版后的破坏性改动。
@@ -38,7 +38,7 @@ https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download
    python3 scripts/manage-version.py set 0.8.0
    ```
 
-   该命令只同步五个公开产品版本面，不改 `setup_skill_version` 或 `agents_version`。
+   该命令只同步六个公开产品版本面（含 `.codebuddy-plugin/plugin.json`），不改 `setup_skill_version` 或 `agents_version`。
 
 2. 在 `CHANGELOG.md` 新增顶层 `v0.8.0` 条目，并检查版本一致性：
 
@@ -46,7 +46,7 @@ https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download
    python3 scripts/manage-version.py check --require-changelog
    ```
 
-   当前候选新增候选章接纳门、修改治理 Agent、长期事实/声线门和平台发布适配层，已将 `setup_skill_version` 提升至 `1.2.19`、`agents_version` 提升至 `36`，并同步 `scripts/current-contract.json`、`SKILL.md`、`UPGRADING.md`、hook 与契约锚点。提交候选后用下列门禁确认；门禁会按实际 diff 判断，不要求无关发版乱 bump：
+   当前未发布候选新增 TRAE Code 与 WorkBuddy / CodeBuddy Code 原生适配。中文主包的 TRAE 名册为 13 张（8 通用 + 5 个数据分析精确角色），WorkBuddy 名册为 10 张（8 通用 + `story-data-fetcher` + `story-data-readonly-runner`）；19 张只是 WorkBuddy 平台容量边界。`setup_skill_version` 提升至 `1.2.22`、`agents_version` 提升至 `39`，须同步 `scripts/current-contract.json`、`SKILL.md`、`UPGRADING.md`、hook 与契约锚点。WorkBuddy manifest 还必须用真实 `codebuddy plugin validate .` 通过；新会话中必须实际调用基础 Agent、fetcher 和 readonly pooled runner 的一个逻辑角色，设置页显示为 enabled 不能替代 Task registry 调度证据。提交候选后用下列门禁确认；门禁会按实际 diff 判断，不要求无关发版乱 bump：
 
    ```bash
    python3 scripts/check-release-contract-bumps.py --base-tag v0.7.10

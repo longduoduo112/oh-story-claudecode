@@ -4,7 +4,7 @@
 
 # oh-story
 
-A web novel writing skill pack with built-in adapters for Claude Code, OpenCode, ZCode, OpenClaw, Codex CLI, Reasonix, and workbuddy. Web AI / agent environments that can read project files can use the generic skills path. Covers the full pipeline for long-form and short-form Chinese web novels: trend scanning, deconstruction, writing, AI tone removal, and cover generation.
+A web novel writing skill pack with built-in adapters for Claude Code, OpenCode, TRAE Code, WorkBuddy / CodeBuddy Code, ZCode, OpenClaw, Codex CLI, and Reasonix. Web AI / agent environments that can read project files can use the generic skills path. Covers the full pipeline for long-form and short-form Chinese web novels: trend scanning, deconstruction, writing, AI tone removal, and cover generation.
 
 > **Independent repository and release line:** This is the active, independently operated product repository and release line for oh-story. It is not part of GitHub's fork network and does not automatically sync from any external repository. Future features, versions, Dev/Release channels, and commercial development are planned and maintained independently. Its early code evolved from MIT-licensed open-source work; the complete Git history preserves source and contribution attribution, and [`LICENSE`](LICENSE) governs distribution and use.
 >
@@ -35,6 +35,10 @@ Professional authors follow a three-step method:
 
 Built around four pillars: reverse-engineering hits · plot modularization · layered state management · human-AI collaboration.
 
+> **Unreleased development note:** current `main` adds native discovery and project-deployment adapters for TRAE Code and WorkBuddy / CodeBuddy Code, but it does not change the existing Release status or product version. The Chinese core package deploys 13 TRAE Agents (8 general + 5 exact data-analysis roles). WorkBuddy deploys 10 physical cards (8 general Agents, `story-data-fetcher`, and `story-data-readonly-runner`); the pooled runner executes the other four read-only data roles from Skill-local role cards. CodeBuddy's 20-slot agentic registry means an oh-story project may contain no more than 19 physical cards, but that is a platform capacity boundary rather than the core package's actual card count. TRAE also deduplicates Hooks when it reads `.claude/settings*.json`; WorkBuddy supports both the namespaced `/oh-story:story-*` plugin mode and the bare `/story-*` project mode. Both require redeployment and a fresh session; the development deployment contract is `setup_skill_version: 1.2.22` / `agents_version: 39`.
+>
+> The upgrade-safety chain now locks the Chinese core package to an exact 18-Skill inventory. Build, verification, and TRAE/WorkBuddy project deployment do not absorb independent tools from adjacent project directories. Separate tools are neither shipped in the Chinese distribution nor injected into this adapter rollout. Book discovery excludes backup/archive trees; removing a runtime from `target_cli` first backs up and removes only managed registrations, while stale runners silently disable themselves when the sentinel no longer names that runtime.
+>
 > Starting in v0.7.10: fixes Chinese novels unexpectedly switching into English mid-draft with a three-layer language gate. Chinese long/short-form generation is locked to `zh`; the standalone `language_gate.js` runs before every other prose check and blocks unauthorized foreign letters in narrative prose or dialogue, including acronyms, model numbers, and story codes. URLs, email addresses, code, paths, and filenames are mechanically protected only when they are clearly non-narrative structures. Any other foreign text requires a separate, explicit user confirmation and an exact `.deslop-whitelist` entry. HTML tags, comments, and entities are blocking. Post-write hooks scan the saved prose, and the long-form preflight blocks the next chapter while the previous chapter still carries language debt. Blocking findings must be repaired and rescanned. `agents_version` is now 29; redeploy with `/story-setup` and start a new session.
 >
 > Starting in v0.7.9: this fork begins shipping verified fixes for known gaps that upstream has not implemented. New deployments fail closed when Claude attempts ordinary long-form writing without tracking state, while legacy deployments and the controlled `story-import` migration window for an existing analysis library remain compatible; new chapter-extractor tasks prefer strict JSON validation plus deterministic Markdown rendering; the prose detector adds an advisory for sensory objects used as perceiving subjects; and all long/short chart scrapers reuse one run clock while exposing both the UTC capture instant and the local filename date. `agents_version` is now 28; redeploy with `/story-setup` and start a new session.
@@ -119,7 +123,7 @@ flowchart LR
 
 ## Installation
 
-**Option 1** Tell Claude Code / OpenCode / ZCode / OpenClaw / Codex, or another Web AI / agent platform that can import a skill archive:
+**Option 1** Tell Claude Code / OpenCode / TRAE Code / WorkBuddy / CodeBuddy Code / ZCode / OpenClaw / Codex, or another Web AI / agent platform that can import a skill archive:
 
 ```
 Install this skill https://github.com/qin1473692580-ux/oh-story-claudecode/releases/latest/download/oh-story-release.zip
@@ -136,20 +140,24 @@ npx skills add https://github.com/qin1473692580-ux/oh-story-claudecode/releases/
 > After updating, if a project has already run `/story-setup`, re-run `/story-setup` from the project root to sync hooks / agents / references. Per-version changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/qin1473692580-ux/oh-story-claudecode/releases); the release process is in [RELEASING.md](RELEASING.md).
 >
 
-> **Codex developers (dev-only):** Use the repository in-place only when developing this repository or testing unreleased `main`: Codex scans `$REPO_ROOT/.agents/skills` (a symlink to `skills/`) and discovers all 14 skills; invoke via `$story`, `$story-setup`, or `/skills`. This is not a stable installation/update path. On Windows, enable git `core.symlinks=true` or use the Release archive above.
+> **Codex developers (dev-only):** Use the repository in-place only when developing this repository or testing unreleased `main`: Codex scans `$REPO_ROOT/.agents/skills` (a symlink to `skills/`) and discovers all 18 skills; invoke via `$story`, `$story-setup`, or `/skills`. This is not a stable installation/update path. On Windows, enable git `core.symlinks=true` or use the Release archive above.
 > After `$story-setup` deploys into a writing project, it creates `.codex/agents/*.toml`, `.codex/hooks.json`, `.codex/hooks/{story_codex_hook.py,run-story-hook.sh,run-story-hook.cmd}`, and `.codex/skills/story-setup/references/agent-references/`. Trust the project `.codex/` layer, review/trust hooks in `/hooks`, and open a fresh Codex session so custom agents load.
 >
-> **ZCode users:** Install the stable Release archive above. Adding the moving repository as a Plugin Management marketplace is for development testing only (dev-only). Once installed, invoke the 14 Skills/Commands through `$story`, `$story-setup`, or the `/` panel. With `target_cli=zcode`, `$story-setup` deploys `.zcode/skills/`, `.zcode/commands/`, and `.zcode/hooks/story_zcode_hook.js`, then safely merges `.zcode/config.json` and the root `AGENTS.md`. Hooks require `node` on PATH. ZCode 3.3.4 does not execute project/plugin custom agents and has no `PreCompact` or `SessionEnd`; affected workflows report a solo/direct fallback, while `SessionStart` restores context after compaction.
+> **TRAE Code users:** Invoke `story-setup` in natural language from the writing-project root and set `target_cli=trae`. The deployer dynamically creates `.trae/skills/` and `.trae/commands/` from the Chinese core package, installs `.trae/agents/` (8 general Agents + 5 exact data-analysis roles, 13 total), `.trae/rules/`, and native `.trae/hooks.json`, and preserves existing user hooks and custom assets. Hook configuration is emitted in the official `{version: 1, hooks: {...}}` shape, with legacy top-level event maps migrated during upgrade. Hooks require `node` on PATH. Review/enable the project Hooks in TRAE Settings, confirm project `AGENTS.md` / Rules imports are enabled, then reload the project or start a fresh session. If Subagents do not appear, enable their directory discovery under Settings > Beta and reload again.
+>
+> **WorkBuddy / CodeBuddy Code users:** Two native modes are supported. Project mode runs `story-setup` with `target_cli=workbuddy` and deploys `.codebuddy/skills/`, bare `/story-*` Commands, 10 Chinese-core physical cards (8 general Agents, `story-data-fetcher`, and `story-data-readonly-runner`), Rules, memory, and Hooks. Plugin-only mode uses the canonical `.codebuddy-plugin/plugin.json` and exposes namespaced `/oh-story:story-*` Skills, Agents, and Hooks without registering same-named Commands. Plugin hooks and project hooks in `.codebuddy/settings.json` are mutually exclusive; setup preserves user settings and prevents a short `CODEBUDDY.md` from hiding an existing `AGENTS.md`. The 19-card ceiling is only the CodeBuddy platform capacity boundary; the core package itself deploys 10 cards. Start a fresh session and actually invoke Agents to verify the registry after deployment: a role shown as enabled in Settings is not proof that the `Agent` tool can dispatch it. Bash/PowerShell parsing covers tested static forms and tool allowlists are not directory sandboxes.
+>
+> **ZCode users:** Install the stable Release archive above. Adding the moving repository as a Plugin Management marketplace is for development testing only (dev-only). Once installed, invoke the 18 Skills/Commands through `$story`, `$story-setup`, or the `/` panel. With `target_cli=zcode`, `$story-setup` deploys `.zcode/skills/`, `.zcode/commands/`, and `.zcode/hooks/story_zcode_hook.js`, then safely merges `.zcode/config.json` and the root `AGENTS.md`. Hooks require `node` on PATH. ZCode 3.3.4 does not execute project/plugin custom agents and has no `PreCompact` or `SessionEnd`; affected workflows report a solo/direct fallback, while `SessionStart` restores context after compaction.
 >
 > **OpenCode users:** After global install, opencode auto-discovers skills from `~/.claude/skills/`; trigger story-setup with natural language on first use (e.g., "use story-setup to deploy the web novel environment"), then **exit and re-enter with `opencode -c`** for slash commands to work. Some hook behaviors differ from Claude Code (session-start / session-end / compact, etc.) — see the OpenCode section in [CONTRIBUTING.md](CONTRIBUTING.md).
 >
-> **OpenClaw users:** Current support is skills-only. OpenClaw can discover the 14 story skills from workspace `skills/`, `.agents/skills`, `~/.agents/skills`, `~/.openclaw/skills`, or configured extra skill roots. `SKILL.md` files use OpenClaw-compatible single-line `name` / `description` plus single-line JSON `metadata.openclaw`. When `story-setup` targets OpenClaw, it copies the skills into project `skills/` and writes an OpenClaw `AGENTS.md`; agents/hooks are intentionally deferred, so outline-before-prose guards are soft skill checks rather than runtime enforcement. If new skills do not appear immediately, open a fresh OpenClaw session or wait for the skills watcher to refresh.
+> **OpenClaw users:** Current support is skills-only. OpenClaw can discover the 18 story skills from workspace `skills/`, `.agents/skills`, `~/.agents/skills`, `~/.openclaw/skills`, or configured extra skill roots. `SKILL.md` files use OpenClaw-compatible single-line `name` / `description` plus single-line JSON `metadata.openclaw`. When `story-setup` targets OpenClaw, it copies the skills into project `skills/` and writes an OpenClaw `AGENTS.md`; agents/hooks are intentionally deferred, so outline-before-prose guards are soft skill checks rather than runtime enforcement. If new skills do not appear immediately, open a fresh OpenClaw session or wait for the skills watcher to refresh.
 >
-> **Reasonix users:** Current support is Skills + a native plugin manifest (Phase 1). Reasonix natively scans `.agents/skills` (a symlink to `skills/`) and discovers all 14 skills — verify with `reasonix doctor capabilities`; you can also `reasonix plugin install` via the root `reasonix-plugin.json`. Project-level `story-setup` deployment and hooks are later phases. If Windows symlinks are disabled, use the native plugin instead.
+> **Reasonix users:** Current support is Skills + a native plugin manifest (Phase 1). Reasonix natively scans `.agents/skills` (a symlink to `skills/`) and discovers all 18 skills — verify with `reasonix doctor capabilities`; you can also `reasonix plugin install` via the root `reasonix-plugin.json`. Project-level `story-setup` deployment and hooks are later phases. If Windows symlinks are disabled, use the native plugin instead.
 >
 > **Generic Web AI / agent users:** Download and extract the Release asset above, then have the agent read its `skills/*/SKILL.md` plus the relevant `references/`. Reading the moving GitHub repository directly is dev-only testing. For local project copies, run `story-setup` with `target_cli=generic`; it only writes a generic `AGENTS.md` and `skills/`. Without this project's hooks/custom agents, checks run as skill-level soft constraints or solo/direct fallbacks.
 
-> **Multi-agent collaboration needs setup + a fresh session**: the 7 specialist agents (story-architect, narrative-writer, consistency-checker, etc.) are written into your project's `.claude/agents/` by `/story-setup`, or into `.codex/agents/*.toml` by `$story-setup`. Claude Code and Codex register custom agents most reliably at session start; ZCode 3.3.4, OpenClaw Phase 1, Reasonix Phase 1, and the generic path default to skills + solo fallback. To check Claude/Codex agents: run `/story-review` in the new session — `Effective Mode: full/lean` means agents registered, `Fallback: ... -> solo` means they are unavailable.
+> **Multi-agent collaboration needs setup + a fresh session**: the Chinese core package deploys 8 general specialist Agents (story-architect, narrative-writer, consistency-checker, revision-governor, and others) plus 5 exact data-analysis Agents on TRAE, for 13 total. WorkBuddy deploys the same 8 general Agents plus `story-data-fetcher` and `story-data-readonly-runner`, for 10 physical cards; the pooled runner carries the other four read-only data roles. Claude Code, Codex, TRAE Code, and WorkBuddy should all start a fresh session after deployment. ZCode 3.3.4, OpenClaw Phase 1, Reasonix Phase 1, and the generic path default to skills + solo fallback. Run `/story-review` in the new session (or `/oh-story:story-review` in WorkBuddy plugin-only mode): `Effective Mode: full/lean` means agents registered, while `Fallback: ... -> solo` means they are unavailable. On WorkBuddy, also invoke a base Agent, `story-data-fetcher`, and one logical role through `story-data-readonly-runner`; Settings visibility alone is not a runtime pass.
 
 ## Local Writing Dashboard
 
@@ -161,7 +169,7 @@ Dashboard tests generate neutral fixtures at runtime; they do not copy, display,
 
 | Skill | Trigger | Description |
 |:------|:--------|:------------|
-| `story-setup` | `/story-setup` / `$story-setup` | Environment setup — Claude/OpenCode/Codex/ZCode/OpenClaw plus generic (safe merge) |
+| `story-setup` | `/story-setup` / `$story-setup` | Environment setup — Claude/OpenCode/Codex/TRAE/WorkBuddy/ZCode/OpenClaw plus generic (safe merge) |
 | `story` | `/story` / `$story` | Toolbox router — routes intents and launches the local Dashboard |
 | `story-long-write` | `/story-long-write` | Long-form writing — outline building, character design, prose output |
 | `story-long-analyze` | `/story-long-analyze` | Long-form deconstruction — Golden First 3 Chapters, payoff design, pacing analysis |
@@ -181,7 +189,7 @@ Natural language also triggers: `帮我开书` ("help me start writing") → `st
 
 ## Agent System
 
-Writing skills internally coordinate 7 specialized agents:
+Writing skills internally coordinate 8 general specialized agents:
 
 | Agent | Model | Role |
 |:------|:------|:-----|
@@ -192,8 +200,11 @@ Writing skills internally coordinate 7 specialized agents:
 | **story-researcher** | Sonnet | Research — CDP search + full-text extraction, multi-source cross-verification, structured reference files |
 | **story-explorer** | Haiku | Story query — read-only character/foreshadowing/setting/progress lookup, quick context loading |
 | **chapter-extractor** | Haiku | Chapter extraction — summaries, plot points, character mentions, parallel deconstruction unit |
+| **revision-governor** | Haiku | Revision governance — read-only cross-artifact impact planning and closure verification |
 
 Agents load writing theory from `references/` on demand (character design, dialogue techniques, twist toolbox, etc. — 100+ methodology files), without reserving context window space.
+
+In TRAE project deployments, these 8 general Agents plus 5 exact data-analysis roles form the Chinese core package's 13 physical cards. WorkBuddy deploys 10 physical cards (8 general Agents, `story-data-fetcher`, and `story-data-readonly-runner`); the pooled runner executes the other four read-only data roles from Skill-local role cards. WorkBuddy's 19-card ceiling is only a platform capacity boundary, not the core package's deployed count.
 
 ## Automation Hooks
 

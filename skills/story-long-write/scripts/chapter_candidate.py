@@ -95,6 +95,45 @@ def tracking_snapshot(project: Path) -> tuple[int, int]:
     return last, revision
 
 
+def writing_method_snapshot(project: Path) -> dict[str, Any]:
+    tool = Path(__file__).resolve().parent / "style_method.py"
+    completed = subprocess.run(
+        [sys.executable, str(tool), "check", "--project", str(project)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "写作方法门禁失败").strip()[-4000:]
+        raise CandidateError(detail)
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise CandidateError("style_method.py check 未返回有效 JSON") from exc
+    if not isinstance(result, dict) or result.get("status") != "ready":
+        raise CandidateError("写作方法状态无效")
+    return {
+        "method_branch": result.get("method_branch"),
+        "method_id": result.get("method_id"),
+        "implicit_default": bool(result.get("implicit_default")),
+    }
+
+
+def writing_method_files(project: Path) -> list[Path]:
+    config_path = project / "设定" / "写作方法.json"
+    if not config_path.is_file():
+        return []
+    config = load_json(config_path, "写作方法配置")
+    output = [config_path]
+    if config.get("method_branch") == "B-distilled":
+        for key in ("compiled_method_path", "compiled_manifest_path", "forward_test_path"):
+            raw = config.get(key)
+            if isinstance(raw, str) and raw.strip():
+                path, _ = resolve_inside(project, raw, must_exist=True, label=f"写作方法 {key}")
+                output.append(path)
+    return output
+
+
 def chapter_number(path: Path) -> int | None:
     match = CHAPTER_PATTERN.match(path.name)
     return int(match.group(1)) if match else None
@@ -183,6 +222,11 @@ def freshness(project: Path, data: dict[str, Any]) -> dict[str, Any]:
         changed.append({"path": "追踪/_tracking-state.json", "reason": "last_committed_chapter_changed"})
     if revision != data.get("expected_state_revision"):
         changed.append({"path": "追踪/_tracking-state.json", "reason": "state_revision_changed"})
+    stored_method = data.get("writing_method")
+    if isinstance(stored_method, dict):
+        current_method = writing_method_snapshot(project)
+        if current_method != stored_method:
+            changed.append({"path": "设定/写作方法.json", "reason": "writing_method_changed"})
     current_entries: list[dict[str, Any]] = []
     for entry in data.get("base_files", []):
         relative = str(entry.get("path", ""))
@@ -231,6 +275,10 @@ def candidate_outline(project: Path, data: dict[str, Any]) -> Path:
 def prose_gate_commands(project: Path, candidate: Path, outline: Path, chapter: int) -> list[tuple[str, list[str]]]:
     scripts = Path(__file__).resolve().parent
     return [
+        (
+            "writing_method",
+            [sys.executable, str(scripts / "style_method.py"), "check", "--project", str(project)],
+        ),
         ("language", ["node", str(scripts / "language_gate.js"), str(candidate)]),
         ("ai_patterns", ["node", str(scripts / "check-ai-patterns.js"), "--check", "--fail-on=blocking", str(candidate)]),
         (
@@ -356,6 +404,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         raise CandidateError("正文目标文件名章号与 --chapter 不一致")
     if args.approval_mode == "auto" and not (args.authorization_note or "").strip():
         raise CandidateError("自动定稿模式必须记录用户的明确授权说明")
+    method_snapshot = writing_method_snapshot(project)
     run_id = args.id or datetime.now().strftime("C%Y%m%d-%H%M%S")
     if not ID_PATTERN.fullmatch(run_id):
         raise CandidateError("candidate id 只能包含字母、数字、点、下划线和连字符")
@@ -374,6 +423,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     for raw in args.base or []:
         path, _ = resolve_inside(project, raw, must_exist=True, label="基础文件")
         base_paths.append(path)
+    base_paths.extend(writing_method_files(project))
     entries = fingerprint(project, base_paths)
     candidate_relative = (run / "candidate.md").relative_to(project).as_posix()
     payload: dict[str, Any] = {
@@ -390,6 +440,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         "authorization_note": (args.authorization_note or "").strip(),
         "expected_last_committed_chapter": last,
         "expected_state_revision": revision,
+        "writing_method": method_snapshot,
         "base_files": entries,
         "context_digest": context_digest(entries, last, revision, target_relative),
         "validation": None,

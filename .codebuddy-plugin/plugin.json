@@ -1,0 +1,24 @@
+{
+  "name": "oh-story",
+  "version": "0.8.0",
+  "description": "中文网络小说创作工具箱：扫榜、拆文、写作、审查、去 AI 味、封面、数据分析与发布。",
+  "author": {
+    "name": "星河上人"
+  },
+  "homepage": "https://github.com/qin1473692580-ux/oh-story-claudecode",
+  "repository": "https://github.com/qin1473692580-ux/oh-story-claudecode",
+  "license": "MIT",
+  "keywords": [
+    "novel",
+    "web-novel",
+    "chinese",
+    "writing",
+    "网文"
+  ],
+  "skills": "./skills/",
+  "agents": [
+    "./skills/story-setup/references/workbuddy/agents/",
+    "./skills/story-data-analyze/agents/workbuddy/"
+  ],
+  "hooks": "./skills/story-setup/references/workbuddy/hooks/hooks.json"
+}

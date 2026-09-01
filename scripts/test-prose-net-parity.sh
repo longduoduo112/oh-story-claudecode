@@ -1,9 +1,9 @@
 #!/bin/bash
-# test-prose-net-parity.sh — 正文兜底「轻量确定性网」四端 parity 守卫
-# 网的 canonical JS 核由 Claude/OpenCode/ZCode 三端共用并保持字节一致；Codex 侧保留同构
+# test-prose-net-parity.sh — 正文兜底「轻量确定性网」多端 parity 守卫
+# 网的 canonical JS 核由 Claude/OpenCode/ZCode/TRAE/WorkBuddy 五端共用并保持字节一致；Codex 侧保留同构
 # Python 实现，以 fixture 逐字 parity 锁定行为。
-# 四份必须同检同放。本测试五层保证：
-#   A. 规范串一致（CI 安全、零运行时依赖）：每条 net 正则/常量/阈值的规范文本必须在四份里都出现，
+# 六端必须同检同放。本测试五层保证：
+#   A. 规范串一致（CI 安全、零运行时依赖）：每条 net 正则/常量/阈值的规范文本必须在 canonical/同构实现里出现，
 #      改一处漏改另一处即 fail——直接锚定漂移（参照 check-hook-regex-sync.sh 的做法）。
 #   B. 功能 parity（best-effort，无 TS 运行时则自跳过）：codex python 网、opencode TS 网、
 #      zcode JS 网在同一组 fixture 上逐字相等。
@@ -547,7 +547,7 @@ PY
 # Claude 的 4 个 bash hook（check-prose-after-write / guard-outline-before-prose /
 # validate-story-commit / detect-story-gaps）不再内嵌 heredoc python，改调本目录同一份 node
 # 共享核 story_hook_core.js（经 story_hook_cli.js）——正文网/字数/大纲守卫/git-commit 侦测/
-# 连续性。这份核与 OpenCode/ZCode 是同一份（check-shared-files 保证字节相同），已由 Part B/C
+# 连续性。这份核与 OpenCode/ZCode/TRAE/WorkBuddy 是同一份（check-shared-files 保证字节相同），已由 Part B/C
 # 锁到 codex，故 claude==codex 结构性闭环，无需再抽 heredoc 重跑。这里守两条防回退：
 # ① 4 个 hook 里不得再出现 heredoc python（防有人手抄回退成第 5 份实现）；② 必须经
 # story_hook_cli.js 调核。字节一致另由 check-shared-files 保证。
@@ -926,7 +926,7 @@ run_claude_core_check
 rc_claude=$?
 set -e
 case "$rc_claude" in
-  0) echo "Claude 归核回归：4 个 bash hook 无内嵌 python、均经 story_hook_cli.js 调共享核（与 OpenCode/ZCode 同一份，经 B/C 锁到 codex）。" ;;
+  0) echo "Claude 归核回归：4 个 bash hook 无内嵌 python、均经 story_hook_cli.js 调共享核（与 OpenCode/ZCode/TRAE/WorkBuddy 同一份，经 B/C 锁到 codex）。" ;;
   *) fails=$((fails + 1)) ;;
 esac
 

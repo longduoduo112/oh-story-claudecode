@@ -6,6 +6,8 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 # story-data-analyze：指标体系驱动的小说数据诊断工作流
 
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 39` 不一致时（标记缺失、字段缺失/非整数、小于或大于 39）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 39）` 并提示重新运行 `/story-setup` 后新开会话；大于 39 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。本 Skill 的具体落点仍按 lane 降级矩阵映射为 `degraded` / `solo`；当前运行时定义 malformed 与 registry 缺失同样视为 agent 不可用。
+
 ## 目标
 
 本 Skill 是多 Agent 工作流的唯一入口，不是一份逐项看数清单。它以机器可读指标目录、指标树和诊断路由为共同语义层，完成以下闭环，不要停在“数字总结”或“样本不足”：
@@ -76,7 +78,11 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 - `degraded`：某一 lane 不可用，按 workflow contract 的降级矩阵执行并在报告中列出缺失能力。
 - `solo`：runtime 无 custom agents 时由主 Agent 严格分阶段执行，但不得声称做过独立复算或监督；结论强度按缺失 gate 下调。
 
-Codex 环境优先使用以下项目 Agent：
+支持 custom agents 的运行时优先使用以下逻辑角色。先识别当前运行时，只检查对应目录：TRAE Code 为 `.trae/agents/{agent}.md`，Codex 为 `.codex/agents/{agent}.toml`；其他运行时只有部署了等价定义且暴露子 Agent 工具时才能进入 `full`。TRAE Code 的 `.md` 必须含合法 YAML frontmatter（`name`、`description` 必填，`tools` / `disallowedTools` 为逗号字符串），并通过内置 `Agent` 智能体选择同名 subagent；不要把 Claude 的 `subagent_type` 参数原样传给 TRAE。Codex 使用同名 `agent_type`。当前运行时对应目录或 registry 不完整时，按 [references/workflow-contract.md](references/workflow-contract.md) 的 lane 降级矩阵进入 `degraded` / `solo`，不得拿磁盘上其他端残留定义冒充已注册 Agent。项目中仅并存 `.zcode/` 不是当前运行时降级的依据。
+
+WorkBuddy 使用有上限的物理 Agent 池，不再把五个逻辑角色全部注册为同名物理卡。WorkBuddy 物理注册只检查 `story-data-fetcher` 与 `story-data-readonly-runner`：前者保留 Bash 拉取能力，后者仅有 `Read, Glob, Grep`，承载其余四个只读逻辑角色。项目模式要求 `.codebuddy/agents/` registry 真实列出这两个原始名称；plugin-only 模式只在当前 registry 真实列出时使用 `oh-story:story-data-fetcher` 与 `oh-story:story-data-readonly-runner`，不从 manifest 或磁盘文件推测注册成功。
+
+五个逻辑角色为：
 
 1. `story-data-fetcher`
 2. `story-data-metrics-analyst`
@@ -84,7 +90,20 @@ Codex 环境优先使用以下项目 Agent：
 4. `story-data-text-improvement-planner`
 5. `story-data-supervisor`
 
-主 Agent 是唯一编排器和最终报告写入者。所有子 Agent 的 prompt 必须自包含 `run_id`、作品身份、冻结输入及 hash、截止日、改动事件、允许输出和禁区；子 Agent 不得递归 spawn。
+主 Agent 是唯一编排器和最终报告写入者。所有子 Agent 的 prompt 必须自包含 `run_id`、作品身份、冻结输入及 hash、截止日、改动事件、允许输出和禁区；子 Agent 不得递归 spawn。TRAE Code 每次调用都在内置 `Agent` 中明确选择上表的精确名称，并把完整自包含合同作为任务正文；若 `Agent` 工具未列出该名称，立即按 lane 降级，不通过普通对话假装完成独立角色复算。
+
+WorkBuddy 的 `story-data-fetcher` 仍把完整 `raw_capture` 合同直接放进物理 fetcher 的 `prompt`。调用其余四个逻辑角色时，主 Agent 必须调用物理 `story-data-readonly-runner`，且 prompt 只能用以下封装：
+
+```json
+{
+  "logical_role": "<story-data-metrics-analyst|story-data-method-validator|story-data-text-improvement-planner|story-data-supervisor>",
+  "logical_role_card_path": "<已解析的真实绝对路径>",
+  "project_abs_path": "<当前作品项目真实绝对路径>",
+  "task_contract": {"role": "<与 logical_role 相同>", "run_id": "<run_id>", "lane": "<该角色 lane>", "project_abs_path": "<与顶层字节一致>", "...": "<该逻辑角色的其余完整合同>"}
+}
+```
+
+`logical_role_card_path` 项目模式只能解析到 `<项目根>/.codebuddy/skills/story-data-analyze/references/workbuddy-role-cards/<logical_role>.md`；plugin-only 模式只能解析到 CodeBuddy 已内联替换后的 `<CODEBUDDY_PLUGIN_ROOT>/skills/story-data-analyze/references/workbuddy-role-cards/<logical_role>.md`。传入 Runner 前必须取真实绝对路径，确认文件存在、直接父目录为该模式的固定 role-card 根、文件名与 `logical_role` 精确对应，且不含未解析占位符。Runner 或对应角色卡缺失、frontmatter 不合同、逻辑映射不唯一，均立即按该 lane 降级；不得改用旧的同名物理卡，不得把磁盘卡片存在冒充 registry 可用。
 
 ### 固定状态链
 

@@ -12,6 +12,13 @@ AGENT_REFS_DIR="$SKILL_DIR/references/agent-references"
 SKILL_FILE="$SKILL_DIR/SKILL.md"
 SETTINGS_FILE="$SKILL_DIR/references/templates/settings-hooks.json"
 CLAUDE_MERGE="$SKILL_DIR/scripts/merge-claude-settings.py"
+TRAE_DIR="$SKILL_DIR/references/trae"
+TRAE_HOOKS_TEMPLATE="$TRAE_DIR/hooks/hooks.json"
+TRAE_DISABLED_TEMPLATE="$TRAE_DIR/hooks/disabled-hooks.json"
+TRAE_MERGE="$SKILL_DIR/scripts/merge-trae-hooks.py"
+TRAE_CORE_OWNERSHIP="$SKILL_DIR/scripts/trae-core-ownership.py"
+WORKBUDDY_DIR="$SKILL_DIR/references/workbuddy"
+WORKBUDDY_MERGE="$SKILL_DIR/scripts/merge-workbuddy-settings.py"
 COPY_SAFETY="$SKILL_DIR/scripts/copy-path-safety.py"
 TMP_DIR="$(mktemp -d)"
 
@@ -62,8 +69,8 @@ write_sentinel() {
   local root="$1"
   cat > "$root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 36
-setup_skill_version: 1.2.19
+agents_version: 39
+setup_skill_version: 1.2.22
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
@@ -146,6 +153,8 @@ fi
 assert_grep '递归复制完整目录树|recursive' "$SKILL_FILE" "SKILL.md must require recursive hook deployment"
 assert_grep 'lib/common\.sh' "$SKILL_FILE" "SKILL.md must mention hooks/lib/common.sh"
 assert_grep 'lib/sentinel\.sh' "$SKILL_FILE" "SKILL.md must mention hooks/lib/sentinel.sh"
+assert_grep 'TRAE_PROJECT_DIR' "$HOOKS_DIR/lib/common.sh" "Claude hook common library must yield when imported by TraeCode"
+assert_grep 'exit 0' "$HOOKS_DIR/lib/common.sh" "TraeCode-imported Claude hooks must exit successfully and silently"
 echo "  OK TS1 hook dependency completeness"
 
 # TS1b — SessionStart 部署自检名单必须覆盖所有 hook 脚本（防新增 hook 漏登记，#195 review）。
@@ -183,6 +192,26 @@ assert_file "$SKILL_DIR/references/zcode/config.json.patch"
 assert_file "$SKILL_DIR/references/zcode/hooks/hooks.json"
 assert_file "$SKILL_DIR/references/zcode/hooks/story_zcode_hook.js"
 assert_file "$SKILL_DIR/references/zcode/hooks/story_hook_core.js"
+assert_file "$TRAE_DIR/AGENTS.md.tmpl"
+assert_file "$TRAE_HOOKS_TEMPLATE"
+assert_file "$TRAE_DISABLED_TEMPLATE"
+assert_file "$TRAE_DIR/hooks/story_trae_hook.js"
+assert_file "$TRAE_DIR/hooks/story_hook_core.js"
+assert_file "$TRAE_DIR/legacy-managed-sha256.json"
+assert_file "$TRAE_CORE_OWNERSHIP"
+assert_file "$TRAE_DIR/rules/oh-story.md"
+assert_file "$TRAE_DIR/runtime-activation.md"
+assert_file "$TRAE_MERGE"
+assert_file "$WORKBUDDY_DIR/CODEBUDDY.md.tmpl"
+assert_file "$WORKBUDDY_DIR/runtime-activation.md"
+assert_file "$WORKBUDDY_DIR/hooks/hooks.json"
+assert_file "$WORKBUDDY_DIR/hooks/project-hooks.json"
+assert_file "$WORKBUDDY_DIR/hooks/disabled-hooks.json"
+assert_file "$WORKBUDDY_DIR/hooks/story_workbuddy_hook.js"
+assert_file "$WORKBUDDY_DIR/hooks/story_hook_core.js"
+assert_file "$WORKBUDDY_DIR/rules/oh-story.md"
+assert_file "$WORKBUDDY_MERGE"
+assert_file "$REPO_ROOT/.codebuddy-plugin/plugin.json"
 # OpenCode shares the same prose-guard core (byte-identity guarded by check-opencode-adapter.sh);
 # it deploys alongside plugin.ts as .opencode/plugins/lib/story_hook_core.js (lib/ subdir so it
 # escapes OpenCode's single-level .opencode/plugins/*.js plugin auto-discovery).
@@ -198,6 +227,131 @@ assert_grep 'references/zcode/AGENTS\.md\.tmpl' "$SKILL_FILE" "deployment manife
 assert_grep 'target_cli 含 zcode|target_cli = zcode' "$SKILL_FILE" "story-setup must document ZCode deployment"
 assert_grep '\.zcode/config\.json' "$SKILL_FILE" "story-setup must document ZCode config merge"
 assert_grep '不部署.*\.zcode/agents|不创建.*\.zcode/agents' "$SKILL_FILE" "story-setup must document ZCode agent boundary"
+assert_grep 'references/trae/AGENTS\.md\.tmpl' "$SKILL_FILE" "deployment manifest missing TRAE AGENTS template"
+assert_grep 'target_cli 含 trae|target_cli = trae' "$SKILL_FILE" "story-setup must document TRAE deployment"
+assert_grep '\.trae/skills/' "$SKILL_FILE" "story-setup must deploy native TRAE skills"
+assert_grep '\.trae/agents/' "$SKILL_FILE" "story-setup must deploy native TRAE subagents"
+assert_grep '\.trae/commands/' "$SKILL_FILE" "story-setup must deploy native TRAE commands"
+assert_grep '\.trae/rules/' "$SKILL_FILE" "story-setup must deploy native TRAE rules"
+assert_grep 'merge-trae-hooks\.py' "$SKILL_FILE" "story-setup must merge rather than replace TRAE hooks"
+assert_grep 'canonical 中文主包 Skill 清单' "$SKILL_FILE" "story-setup must define the fixed Chinese skill inventory"
+assert_grep '精确包含这 18 个可部署 Skill|canonical 18' "$SKILL_FILE" "story-setup must lock deployment to the canonical 18 Chinese skills"
+assert_grep 'copy-path-safety\.py.*same.*no-op|same.*no-op.*copy-path-safety\.py' "$SKILL_FILE" "TRAE recursive copies must treat identical source/target as a no-op"
+assert_grep 'TRAE 归属与备份门' "$SKILL_FILE" "TRAE deployment must back up managed assets before replacing them"
+assert_grep 'TRAE / WorkBuddy 固定 Agent 名册' "$SKILL_FILE" "TRAE/WorkBuddy deployment must use fixed Chinese Agent rosters"
+assert_grep 'TRAE 物理名册.*精确.*13 张|TRAE 名册固定为 13 张' "$SKILL_FILE" "TRAE must deploy exactly 13 Chinese Agent cards"
+assert_grep 'WorkBuddy 物理名册.*精确.*10 张|WorkBuddy 名册固定为 10 张' "$SKILL_FILE" "WorkBuddy must deploy exactly 10 Chinese Agent cards"
+assert_grep 'target_cli 含 workbuddy|target_cli = workbuddy' "$SKILL_FILE" "story-setup must document WorkBuddy deployment"
+assert_grep '\.codebuddy/skills/' "$SKILL_FILE" "story-setup must deploy native WorkBuddy skills"
+assert_grep '\.codebuddy/agents/' "$SKILL_FILE" "story-setup must deploy native WorkBuddy agents"
+assert_grep '\.codebuddy/commands/' "$SKILL_FILE" "story-setup must deploy native WorkBuddy commands"
+assert_grep 'merge-workbuddy-settings\.py' "$SKILL_FILE" "story-setup must merge rather than replace WorkBuddy settings"
+assert_grep 'plugin.*project.*互斥|plugin/project.*互斥' "$SKILL_FILE" "story-setup must document WorkBuddy plugin/project hook mutex"
+python3 - "$WORKBUDDY_DIR/hooks/hooks.json" "$WORKBUDDY_DIR/hooks/project-hooks.json" "$WORKBUDDY_DIR/hooks/disabled-hooks.json" <<'PY' \
+  || fail "WorkBuddy plugin/project Chinese hook templates drifted"
+import json, sys
+
+plugin, project, disabled = [json.load(open(path, encoding="utf-8")) for path in sys.argv[1:]]
+assert disabled == {"hooks": {}}
+
+def managed(doc):
+    rows=[]
+    for event, groups in doc["hooks"].items():
+        for group in groups:
+            for hook in group.get("hooks", []):
+                if "story_workbuddy_hook.js" in hook.get("command", ""):
+                    rows.append((event, group.get("matcher"), hook["command"]))
+    return rows
+
+for doc in (plugin, project):
+    rows=managed(doc)
+    assert len(rows) == 4, rows
+    assert {row[0] for row in rows} == {"SessionStart", "PreToolUse", "PostToolUse"}, rows
+assert [(event, matcher, command.rsplit(" ", 1)[-1]) for event, matcher, command in managed(plugin)] == [
+    (event, matcher, command.rsplit(" ", 1)[-1]) for event, matcher, command in managed(project)
+]
+PY
+python3 - "$REPO_ROOT" "$SKILL_FILE" <<'PY' || fail "TRAE/WorkBuddy exact roster or Chinese-package boundary drifted"
+import re
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+skill_file = Path(sys.argv[2])
+general = {
+    "chapter-extractor", "character-designer", "consistency-checker",
+    "narrative-writer", "revision-governor", "story-architect",
+    "story-explorer", "story-researcher",
+}
+trae_data = {
+    "story-data-fetcher", "story-data-method-validator",
+    "story-data-metrics-analyst", "story-data-supervisor",
+    "story-data-text-improvement-planner",
+}
+workbuddy_data = {"story-data-fetcher", "story-data-readonly-runner"}
+workbuddy_roles = trae_data - {"story-data-fetcher"}
+inventories = {
+    root / "skills/story-setup/references/trae/agents": general,
+    root / "skills/story-data-analyze/agents/trae": trae_data,
+    root / "skills/story-setup/references/workbuddy/agents": general,
+    root / "skills/story-data-analyze/agents/workbuddy": workbuddy_data,
+    root / "skills/story-data-analyze/references/workbuddy-role-cards": workbuddy_roles,
+}
+for directory, expected in inventories.items():
+    actual = {path.stem for path in directory.iterdir() if path.is_file() and path.suffix == ".md"}
+    assert actual == expected, (
+        directory,
+        f"missing={sorted(expected - actual)}",
+        f"extra={sorted(actual - expected)}",
+    )
+
+adapter_roots = (
+    root / "skills/story-setup/references/trae",
+    root / "skills/story-setup/references/workbuddy",
+    root / "skills/story-data-analyze/agents/trae",
+    root / "skills/story-data-analyze/agents/workbuddy",
+    root / "skills/story-data-analyze/references/workbuddy-role-cards",
+)
+language_route_allowlist = {
+    root / "skills/story-setup/references/trae/AGENTS.md.tmpl",
+    root / "skills/story-setup/references/trae/agents/narrative-writer.md",
+    root / "skills/story-setup/references/workbuddy/agents/narrative-writer.md",
+}
+for directory in adapter_roots:
+    for path in (item for item in directory.rglob("*") if item.is_file()):
+        text = path.read_text(encoding="utf-8")
+        for pattern in (
+            r"story_globalize_gate_core", r"loadGlobalizeGates",
+            r"International[\\/]+(?:drafts|chapters)", r"project_extension_root",
+            r"managed-skill-ownership", r"SubagentStop",
+        ):
+            assert not re.search(pattern, text, re.I), (path, pattern)
+        if re.search(r"globalize", text, re.I):
+            assert path in language_route_allowlist, path
+
+deployment = skill_file.read_text(encoding="utf-8")
+for pattern in (
+    r"story_globalize_gate_core", r"loadGlobalizeGates",
+    r"International[\\/]+(?:drafts|chapters)", r"project_extension_root",
+    r"managed-skill-ownership",
+):
+    assert not re.search(pattern, deployment, re.I), pattern
+assert not re.search(r"globalize", deployment, re.I), "deployment contract must not contain overseas runtime semantics"
+bad_subagent_stop = [
+    line for line in deployment.splitlines()
+    if "SubagentStop" in line and not re.search(r"不复制|不得出现", line)
+]
+assert not bad_subagent_stop, bad_subagent_stop
+PY
+for managed_file in "$TRAE_DIR"/commands/*.md; do
+  assert_grep 'oh-story-managed: command/' "$managed_file" "TRAE command is missing its ownership marker"
+done
+for managed_file in "$TRAE_DIR"/agents/*.md "$REPO_ROOT"/skills/story-data-analyze/agents/trae/*.md; do
+  assert_grep 'oh-story-managed: agent/' "$managed_file" "TRAE agent is missing its ownership marker"
+done
+assert_grep 'oh-story-managed: rule/' "$TRAE_DIR/rules/oh-story.md" "TRAE rule is missing its ownership marker"
+assert_grep '^alwaysApply:[[:space:]]*false' "$TRAE_DIR/rules/oh-story.md" "TRAE rule must use native alwaysApply frontmatter"
+assert_grep '^globs:' "$TRAE_DIR/rules/oh-story.md" "TRAE rule must use native globs frontmatter"
 assert_grep 'references_dir' "$SKILL_FILE" "sentinel references_dir must be documented"
 assert_grep 'resolver_strategy' "$SKILL_FILE" "sentinel resolver_strategy must be documented"
 assert_grep 'target_cli' "$SKILL_FILE" "sentinel target_cli must be documented"
@@ -258,6 +412,107 @@ python3 "$CLAUDE_MERGE" --existing "$TMP_DIR/claude-current.json" --template "$S
 cmp -s "$TMP_DIR/claude-current.json" "$TMP_DIR/claude-current-again.json" \
   || fail "Claude settings merge is not idempotent"
 
+# TRAE hooks 走官方 command schema；重部署只迁移 oh-story runner 注册，不能覆盖用户 hooks.json。
+cat > "$TMP_DIR/trae-legacy.json" <<'JSON'
+{
+  "version": 1,
+  "customTop": {"keep": true},
+  "PreToolUse": [
+    {
+      "matcher": "Write|Edit",
+      "hooks": [
+        {"type": "command", "command": "node ${TRAE_PROJECT_DIR}/.trae/hooks/story_trae_hook.js old-guard", "timeout": 7},
+        {"type": "command", "command": "bash ./user-trae-hook.sh", "timeout": 99},
+        {"type": "command", "command": "printf '%s' '.trae/hooks/story_trae_hook.js'", "timeout": 8}
+      ]
+    }
+  ],
+  "Notification": [
+    {"hooks": [{"type": "command", "command": "bash ./user-notify.sh", "timeout": 5}]}
+  ]
+}
+JSON
+python3 "$TRAE_MERGE" --existing "$TMP_DIR/trae-legacy.json" --template "$TRAE_HOOKS_TEMPLATE" --output "$TMP_DIR/trae-current.json"
+python3 - "$TMP_DIR/trae-current.json" "$TRAE_HOOKS_TEMPLATE" <<'PY' || fail "TRAE hooks schema/merge contract failed"
+import json, sys
+from collections import Counter
+
+doc=json.load(open(sys.argv[1],encoding="utf-8"))
+template=json.load(open(sys.argv[2],encoding="utf-8"))
+assert doc["version"] == 1 and doc["customTop"] == {"keep": True}
+assert "PreToolUse" not in doc and "Notification" not in doc
+assert set(template["hooks"]) <= {"SessionStart","UserPromptSubmit","PreToolUse","PostToolUse","Stop","Notification"}
+assert not (set(template["hooks"]) & {"SessionEnd","PreCompact","PostCompact","SubagentStop"})
+
+def commands(tree):
+    values=[]
+    for groups in tree["hooks"].values():
+        if not isinstance(groups,list): continue
+        for group in groups:
+            if not isinstance(group,dict): continue
+            for hook in group.get("hooks",[]):
+                if isinstance(hook,dict): values.append(hook.get("command",""))
+    return values
+
+template_commands=[value for value in commands(template) if ".trae/hooks/story_trae_hook.js" in value]
+result_commands=commands(doc)
+counts=Counter(result_commands)
+assert template_commands and all(counts[value] == 1 for value in template_commands), counts
+assert not any("old-guard" in value for value in result_commands)
+assert counts["bash ./user-trae-hook.sh"] == 1
+assert counts["printf '%s' '.trae/hooks/story_trae_hook.js'"] == 1
+assert counts["bash ./user-notify.sh"] == 1
+user_groups=[group for group in doc["hooks"]["PreToolUse"] if group.get("matcher") == "Write|Edit"]
+assert len(user_groups) == 1 and user_groups[0]["matcher"] == "Write|Edit"
+assert {hook["command"] for hook in user_groups[0]["hooks"]} == {
+    "bash ./user-trae-hook.sh",
+    "printf '%s' '.trae/hooks/story_trae_hook.js'",
+}
+
+for event, groups in template["hooks"].items():
+    assert isinstance(groups,list)
+    for group in groups:
+        assert isinstance(group.get("hooks"),list)
+        for hook in group["hooks"]:
+            assert set(hook) <= {"type","command","timeout"}, (event,hook)
+            assert hook["type"] == "command" and isinstance(hook["command"],str)
+            assert isinstance(hook["timeout"],(int,float))
+assert any(group.get("matcher") == "RunCommand|Write|Edit" for group in template["hooks"]["PreToolUse"])
+assert any(group.get("matcher") == "RunCommand" for group in template["hooks"]["PreToolUse"])
+PY
+python3 "$TRAE_MERGE" --existing "$TMP_DIR/trae-current.json" --template "$TRAE_HOOKS_TEMPLATE" --output "$TMP_DIR/trae-current-again.json"
+cmp -s "$TMP_DIR/trae-current.json" "$TMP_DIR/trae-current-again.json" \
+  || fail "TRAE hooks merge is not idempotent"
+
+# 减端/plugin 互斥时必须只移除 oh-story runner，不能把用户 Hook 和顶层设置一起清空。
+python3 "$TRAE_MERGE" --existing "$TMP_DIR/trae-current.json" --template "$TRAE_DISABLED_TEMPLATE" --output "$TMP_DIR/trae-disabled.json"
+python3 - "$TMP_DIR/trae-disabled.json" <<'PY' || fail "TRAE disabled-hook merge contract failed"
+import json, sys
+
+doc=json.load(open(sys.argv[1],encoding="utf-8"))
+assert doc["version"] == 1 and doc["customTop"] == {"keep": True}
+commands=[]
+for groups in doc["hooks"].values():
+    if not isinstance(groups,list): continue
+    for group in groups:
+        if not isinstance(group,dict): continue
+        candidates=group.get("hooks",[]) if isinstance(group.get("hooks"),list) else [group]
+        for hook in candidates:
+            if isinstance(hook,dict) and isinstance(hook.get("command"),str):
+                commands.append(hook["command"])
+assert not any(
+    value.strip().lower().startswith("node ")
+    and ".trae/hooks/story_trae_hook.js" in value.replace("\\","/").lower()
+    for value in commands
+)
+assert "bash ./user-trae-hook.sh" in commands
+assert "printf '%s' '.trae/hooks/story_trae_hook.js'" in commands
+assert "bash ./user-notify.sh" in commands
+PY
+python3 "$TRAE_MERGE" --existing "$TMP_DIR/trae-disabled.json" --template "$TRAE_DISABLED_TEMPLATE" --output "$TMP_DIR/trae-disabled-again.json"
+cmp -s "$TMP_DIR/trae-disabled.json" "$TMP_DIR/trae-disabled-again.json" \
+  || fail "TRAE managed-hook removal is not byte-idempotent"
+
 # 重部署时 sentinel 的 target_cli 是权威：不认它就会每次重问，且 skills-only 三端根本无从探测。
 assert_grep '已部署项目以 sentinel 里的值为准' "$SKILL_FILE" "story-setup must reuse the deployed target_cli on redeploy"
 # metadata.openclaw 在 18 个 skill 上全都有，拿它判定会把 reasonix / generic 项目误认成 OpenClaw。
@@ -269,6 +524,9 @@ assert_grep '网文写作工具集（通用 Agent / Web AI）' "$SKILL_FILE" "st
 assert_grep '网文写作工具集（Reasonix）' "$SKILL_DIR/references/reasonix/AGENTS.md.tmpl" "Reasonix AGENTS template must carry the marker story-setup detects"
 assert_grep '网文写作工具集（通用 Agent / Web AI）' "$SKILL_DIR/references/generic/AGENTS.md.tmpl" "generic AGENTS template must carry the marker story-setup detects"
 assert_grep '网文写作工具集（OpenClaw）' "$SKILL_DIR/references/openclaw/AGENTS.md.tmpl" "OpenClaw AGENTS template must carry the marker story-setup detects"
+assert_grep '网文写作工具集（TRAE Code）' "$SKILL_FILE" "story-setup must detect a deployed TRAE project from AGENTS.md"
+assert_grep '网文写作工具集（TRAE Code）' "$TRAE_DIR/AGENTS.md.tmpl" "TRAE AGENTS template must carry the marker story-setup detects"
+assert_grep 'BEGIN oh-story-managed: trae' "$TRAE_DIR/AGENTS.md.tmpl" "TRAE AGENTS template must be marker-mergeable"
 echo "  OK TS2 deployment manifest"
 
 # TS3 — Agent reference bundle integrity
@@ -354,8 +612,8 @@ setup_git_repo "$bad_sentinel_root"
 copy_hooks "$bad_sentinel_root"
 cat > "$bad_sentinel_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 36
-setup_skill_version: 1.2.19
+agents_version: 39
+setup_skill_version: 1.2.22
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
@@ -379,8 +637,8 @@ printf '# ref
 ' > "$multi_refs_root/skills/story-setup/references/agent-references/ref.md"
 cat > "$multi_refs_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 36
-setup_skill_version: 1.2.19
+agents_version: 39
+setup_skill_version: 1.2.22
 target_cli: claude-code,codex,generic
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references,.codex/skills/story-setup/references/agent-references,skills/story-setup/references/agent-references
@@ -405,14 +663,14 @@ setup_git_repo "$stale_previous_root"
 copy_hooks "$stale_previous_root"
 cat > "$stale_previous_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 34
-setup_skill_version: 1.2.17
+agents_version: 38
+setup_skill_version: 1.2.21
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
 stale_previous_out="$(run_from_nested "$stale_previous_root" session-start.sh 2>&1 || true)"
-echo "$stale_previous_out" | grep -q '低于 v36' || fail "session-start did not warn for agents_version 34 stale v36 deployment"
+echo "$stale_previous_out" | grep -q '低于 v39' || fail "session-start did not warn for agents_version 38 stale v39 deployment"
 
 newer_project_root="$TMP_DIR/newer-project"
 mkdir -p "$newer_project_root/.claude/skills/story-setup/references/agent-references"
@@ -420,14 +678,14 @@ setup_git_repo "$newer_project_root"
 copy_hooks "$newer_project_root"
 cat > "$newer_project_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 37
+agents_version: 40
 setup_skill_version: 1.3.0
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
 newer_project_out="$(run_from_nested "$newer_project_root" session-start.sh 2>&1 || true)"
-echo "$newer_project_out" | grep -q '高于本 hook 支持的 v36' || fail "session-start did not reject agents_version 37 downgrade"
+echo "$newer_project_out" | grep -q '高于本 hook 支持的 v39' || fail "session-start did not reject agents_version 40 downgrade"
 echo "$newer_project_out" | grep -q '不要降级覆盖' || fail "session-start did not explain future-version safety"
 
 mixed_version_root="$TMP_DIR/mixed-version"
@@ -437,7 +695,7 @@ copy_hooks "$mixed_version_root"
 touch "$mixed_version_root/.claude/skills/story-setup/references/agent-references/dummy.md"
 cat > "$mixed_version_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 36
+agents_version: 39
 setup_skill_version: 1.2.6
 target_cli: claude-code
 resolver_strategy: project-local-skill-reference
@@ -445,11 +703,11 @@ references_dir: .claude/skills/story-setup/references/agent-references
 SENTINEL
 mixed_version_out="$(run_from_nested "$mixed_version_root" session-start.sh 2>&1 || true)"
 # agents_version 是唯一运行时过期权威；setup_skill_version 落后不触发重部署（设计如此）
-if echo "$mixed_version_out" | grep -q '低于 v36'; then
-  fail "session-start incorrectly nagged '低于 v36' for current agents_version=36 just because setup_skill_version lags"
+if echo "$mixed_version_out" | grep -q '低于 v39'; then
+  fail "session-start incorrectly nagged '低于 v39' for current agents_version=39 just because setup_skill_version lags"
 fi
 if echo "$mixed_version_out" | grep -q '高于本 hook'; then
-  fail "session-start incorrectly nagged '高于本 hook' for current agents_version=36 just because setup_skill_version lags"
+  fail "session-start incorrectly nagged '高于本 hook' for current agents_version=39 just because setup_skill_version lags"
 fi
 
 # 多端部署的 references_dir 是逗号分隔多条路径。整串当一条路径查会每次开会话都误报缺失，
@@ -463,8 +721,8 @@ touch "$multi_end_root/.claude/skills/story-setup/references/agent-references/du
 touch "$multi_end_root/.codex/skills/story-setup/references/agent-references/dummy.md"
 cat > "$multi_end_root/.story-deployed" <<'SENTINEL'
 deployed_at: 2026-05-24T00:00:00Z
-agents_version: 36
-setup_skill_version: 1.2.19
+agents_version: 39
+setup_skill_version: 1.2.22
 target_cli: claude-code,codex
 resolver_strategy: project-local-skill-reference
 references_dir: .claude/skills/story-setup/references/agent-references,.codex/skills/story-setup/references/agent-references
@@ -576,15 +834,15 @@ echo "  OK TS9 settings JSON"
 # agent 模板要带住关键行为规则。原先还夹着一批「UPGRADING.md/README 必须写到某句话」
 # 的文档完整性断言——那种改一个词就红、测的是措辞不是行为，已随 check-story-long-write-contract.sh
 # 一并去掉，发版是否补 UPGRADING 由发版清单和人把关，不靠 CI 钉死措辞。
-assert_grep 'AGENTS_VERSION.*-lt 36|AGENTS_VERSION" -lt 36' "$HOOKS_DIR/session-start.sh" "session-start must warn for agents_version 35 under v36 deployment"
-assert_grep 'AGENTS_VERSION.*-gt 36|AGENTS_VERSION" -gt 36' "$HOOKS_DIR/session-start.sh" "session-start must reject a newer agents_version as a downgrade"
+assert_grep 'AGENTS_VERSION.*-lt 39|AGENTS_VERSION" -lt 39' "$HOOKS_DIR/session-start.sh" "session-start must warn for agents_version 38 under v39 deployment"
+assert_grep 'AGENTS_VERSION.*-gt 39|AGENTS_VERSION" -gt 39' "$HOOKS_DIR/session-start.sh" "session-start must reject a newer agents_version as a downgrade"
 assert_grep 'TRACKING_REQUIRED_AGENTS_VERSION[[:space:]]*=[[:space:]]*28' "$HOOKS_DIR/guard-outline-before-prose.sh" "Claude bash tracking gate must activate at agents_version 28"
 assert_grep 'TRACKING_REQUIRED_AGENTS_VERSION[[:space:]]*=[[:space:]]*28' "$HOOKS_DIR/story_hook_cli.js" "Claude CLI tracking gate must activate at agents_version 28"
-assert_grep 'agents_version.*小于 `36`|版本 < 36' "$SKILL_DIR/SKILL.md" "story-setup redeploy branch must treat agents_version 35 as stale"
-assert_grep 'agents_version.*大于 `36`' "$SKILL_DIR/SKILL.md" "story-setup must stop before downgrading a newer deployment"
+assert_grep 'agents_version.*小于 `39`|版本 < 39' "$SKILL_DIR/SKILL.md" "story-setup redeploy branch must treat agents_version 38 as stale"
+assert_grep 'agents_version.*大于 `39`' "$SKILL_DIR/SKILL.md" "story-setup must stop before downgrading a newer deployment"
 assert_grep 'Notice: agents bundle 版本不匹配' "$REPO_ROOT/skills/story-review/SKILL.md" "story-review must surface an agents_version mismatch"
-assert_grep '大于 36 时额外提示先更新 oh-story-claudecode' "$REPO_ROOT/skills/story-review/SKILL.md" "story-review must tell newer deployments to update the package first"
-assert_grep '^version:[[:space:]]*1\.2\.19$' "$SKILL_FILE" "story-setup frontmatter must match the deployed setup version"
+assert_grep '大于 39 时额外提示先更新 oh-story-claudecode' "$REPO_ROOT/skills/story-review/SKILL.md" "story-review must tell newer deployments to update the package first"
+assert_grep '^version:[[:space:]]*1\.2\.22$' "$SKILL_FILE" "story-setup frontmatter must match the deployed setup version"
 
 # Phase 1 自检的目录名单是硬编码的，必须与实际 references/ 子目录集合一致。
 # 漏写一个 → 半装的包检不出；名单里多出已删除的目录 → 完好的包被判残缺，fail-closed 卡死所有部署。
@@ -595,6 +853,18 @@ case "$selfcheck_text" in
   *'scripts/copy-path-safety.py'*) ;;
   *) fail "story-setup Phase 1 self-check is missing copy-path-safety.py" ;;
 esac
+case "$selfcheck_text" in
+  *'scripts/merge-trae-hooks.py'*) ;;
+  *) fail "story-setup Phase 1 self-check is missing merge-trae-hooks.py" ;;
+esac
+case "$selfcheck_text" in
+  *'scripts/trae-core-ownership.py'*) ;;
+  *) fail "story-setup Phase 1 self-check is missing trae-core-ownership.py" ;;
+esac
+case "$selfcheck_text" in
+  *'scripts/merge-workbuddy-settings.py'*) ;;
+  *) fail "story-setup Phase 1 self-check is missing merge-workbuddy-settings.py" ;;
+esac
 for ref_dir in "$SKILL_DIR"/references/*/; do
   ref_name="$(basename "$ref_dir")"
   case "$selfcheck_text" in
@@ -603,7 +873,7 @@ for ref_dir in "$SKILL_DIR"/references/*/; do
   esac
 done
 ref_dir_count="$(find "$SKILL_DIR/references" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')"
-[ "$ref_dir_count" -eq 8 ] || fail "story-setup references/ now has $ref_dir_count subdirs (expected 8); update the Phase 1 self-check list and this assertion"
+[ "$ref_dir_count" -eq 10 ] || fail "story-setup references/ now has $ref_dir_count subdirs (expected 10); update the Phase 1 self-check list and this assertion"
 assert_grep '剧情/情绪模块\.md.*missing_primary_contract|missing_primary_contract.*剧情/情绪模块\.md' "$SKILL_DIR/references/templates/agents/story-explorer.md" "story-explorer must require the current emotion-module artifact"
 assert_grep '剧情/节奏\.md.*missing_primary_contract|missing_primary_contract.*剧情/节奏\.md' "$SKILL_DIR/references/templates/agents/story-explorer.md" "story-explorer must require the current rhythm artifact"
 assert_no_grep 'legacy_deconstruction|contract_version.*legacy|pre-v12' "$SKILL_DIR/references/templates/agents/story-explorer.md" "story-explorer must not keep legacy benchmark branches"

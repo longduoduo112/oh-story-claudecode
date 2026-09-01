@@ -27,12 +27,15 @@ fi
 #   non-analyst copies have not all been confirmed byte-identical.
 #   genre-writing-formulas.md graduated to ANALYST_DIVERGENT_NAMES: its writer copies
 #   are byte-identical and now guarded.
-# - AGENTS.md.tmpl / hooks.json: CLI-specific project templates differ deliberately
-#   and are validated by each CLI adapter check.
+# - AGENTS.md.tmpl / hooks.json / disabled-hooks.json: CLI-specific project templates
+#   differ deliberately and are validated by each CLI adapter check. TRAE's disabled
+#   shape retains the required version wrapper; WorkBuddy's does not.
+# - runtime-activation.md: each native runtime has different trust, registry, namespace,
+#   shell and supported-event activation steps.
 IGNORE_NAMES="output-templates.md material-decomposition.md quality-checklist.md \
 genre-catalog.md genre-core-mechanics.md genre-readers.md \
 genre-writing-techniques.md \
-AGENTS.md.tmpl hooks.json"
+AGENTS.md.tmpl hooks.json disabled-hooks.json runtime-activation.md"
 
 # Analyst-divergent (basename): the story-short-analyze copy intentionally prepends the
 # "## 用作拆文标尺时" analyst-lens header, so it is dropped from the comparison set; all
@@ -94,7 +97,11 @@ list_reference_basenames() {
   local path
   while IFS= read -r path; do
     case "$path" in
-      */.gitkeep|*/opencode/*) ;;
+      # Platform adapters intentionally reuse public Skill/Agent names while
+      # changing frontmatter and invocation syntax.  They are adapter payloads,
+      # not canonical cross-skill references.  Keep TRAE hooks in the scan so
+      # story_hook_core.js still participates in byte-parity checks.
+      */.gitkeep|*/opencode/*|*/trae/agents/*|*/trae/commands/*|*/trae/rules/*|*/workbuddy/agents/*|*/workbuddy/commands/*|*/workbuddy/rules/*) ;;
       *) printf '%s\n' "${path##*/}" ;;
     esac
   done <<< "$REFERENCE_FILES"

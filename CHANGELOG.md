@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+> 本节记录的是尚未发布的开发版能力；本轮文档闭环不改产品版本号或现有 Release 状态。
+
+### 长篇写作方法 A / B 分支
+
+- 新增受治理的 `A-standard` 与 `B-distilled` 写作方法。旧项目继续默认使用 A；B 只接收经过跨作品可蒸馏性判定、训练/校准/留出拆分、抽象规则编译、独立前向盲测与哈希验证的蒸馏包，并必须显式绑定到项目。B 的资料、规则包或绑定失效时硬停，不得静默回退 A。
+- 候选章与 `story_doctor.py` 都会校验写作方法快照、绑定新鲜度和编译包完整性；B 运行时只向写作者传递当章命中的抽象规则，不泄露来源作品、证据定位或原文语料。
+
+### TRAE Code 与 WorkBuddy / CodeBuddy Code 原生适配
+
+- `story-setup` 新增 `target_cli=trae`。中文主包在 TRAE 按逻辑角色逐卡部署 13 个 Agents（8 通用 + 5 个数据分析精确角色）；WorkBuddy 部署 10 张物理卡（8 通用 + `story-data-fetcher` + `story-data-readonly-runner`），由 readonly pooled runner 承载其余四个只读数据逻辑角色。WorkBuddy 的 19 张上限仅是 CodeBuddy 平台容量边界，不是主包实际卡数。
+- 中文主包的构建、验包与 TRAE / WorkBuddy 项目部署统一锁定精确 18 个 canonical Skill；传错工作区根、出现外来 Skill 或名称替换时在写出产物前 fail closed，独立工具不进中文包也不进本轮平台适配。
+- TRAE Hook 只使用原生事件/工具名，按稳定身份合并用户 hooks，并由 `TRAE_PROJECT_DIR` 避免与 `.claude/settings*.json` 双触发。从 `target_cli` 移除 TRAE 时使用 `disabled-hooks.json` 合并移除且仅移除 oh-story 注册；TRAE / WorkBuddy runner 发现 sentinel 已不含当前端时立即静默返回，防止减端中途失败后旧 runner 继续执行。
+- 共享书目发现核心明确排除路径分段含“备份”“归档”或 `archive` / `archives` 的历史副本；`.active-book` 误指历史树时回退到真实在写书目，不再产生伪连续性欠账。
+- WorkBuddy / CodeBuddy Code 同时支持项目裸 `/story-*` 与 plugin `/oh-story:story-*` 模式；plugin/project Hooks 严格互斥，memory 合并保留既有 `AGENTS.md`。项目 Hook 入口将 CodeBuddy CLI 在 Windows 导出的 `/c/...` 归一化为盘符路径，Bash / PowerShell 受测静态写入面和真实 CLI manifest 继续进入回归。部署后需新开会话并实际调用 Agent；设置页显示角色已启用不等于 Task registry 可调度。
+- WorkBuddy 数据分析适配把 fetcher 保留为精确物理角色，将其余四个只读角色收敛进 `story-data-readonly-runner`；每次调用必须注入 `logical_role`、Skill 内角色卡路径与完整任务合同。TRAE 保留五个数据分析精确角色。
+- 新增 canonical 18 固定部署、WorkBuddy 数据只读池化、19 卡平台容量守卫、中文包边界验证、历史目录过滤、减端、TRAE disabled-hook 合并与 WorkBuddy `/c/...` 路径回归。未发布开发部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`；产品版本仍为 v0.8.0，存量项目需重跑 `story-setup` 并新开会话。
+
 ## v0.8.0（2026-08-29）
 
 本版把“长篇写得下去”升级为“可选择、可接纳、可回修、可追溯、可安全发布”的完整闭环：AI 默认先给候选章，用户接纳后才进入正文；旧正文、大纲和设定修改先做影响计划；发布材料与平台写入分权，番茄发布器通过项目适配器安全接入。

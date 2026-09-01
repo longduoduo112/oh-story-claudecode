@@ -12,9 +12,9 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 ---
 
-> Agent 兼容性：检查专业 agent 是否可用时，按 `.claude/agents/{agent}.md` → `.opencode/agents/{agent}.md` → `.codex/agents/{agent}.toml` 的顺序查找。Codex 原生子代理调用优先使用同名 `agent_type`；如果当前 Codex 运行时返回 `unknown agent_type` 或未暴露 custom-agent registry，必须降级为 solo/direct。检测到 `.zcode/` 时同样直接 solo/direct，因为 ZCode 3.3.4 不执行项目 custom agents；报告 `Fallback: project custom agents unavailable -> solo`。Claude/OpenCode 兼容面保留 `subagent_type`。
+> Agent 兼容性：先识别当前运行时，只检查对应的项目定义：Claude Code 为 `.claude/agents/{agent}.md`，OpenCode 为 `.opencode/agents/{agent}.md`，TRAE Code 为 `.trae/agents/{agent}.md`，WorkBuddy（CodeBuddy Code）项目模式为 `.codebuddy/agents/{agent}.md`，Codex 为 `.codex/agents/{agent}.toml`；运行时无法识别时才按上述顺序探测。TRAE Code 使用内置 `Agent` 智能体按 `.trae/agents/{agent}.md` 的名称选择同名 Subagent，并把下文 prompt 作为任务正文，不把 Claude 的 `subagent_type` 参数原样传给 TRAE；WorkBuddy 项目模式使用内置 `Agent` 与原始 `subagent_type: "{agent}"`。WorkBuddy plugin-only 模式只有在当前 Agent registry 真实返回 `oh-story:{agent}` 时才使用该精确命名空间值，不从 plugin manifest 或磁盘文件推测已注册；未返回则按 solo/direct fallback。Codex 原生子代理优先使用同名 `agent_type`，Claude/OpenCode 兼容面保留 `subagent_type`。当前运行时未暴露对应 Agent registry/tool 或 Codex 返回 `unknown agent_type` 时，必须降级为 solo/direct，并报告 `Fallback: project custom agents unavailable -> solo`。只有当前运行时确实是 ZCode 时才强制该降级；其他运行时不得因项目里并存 `.zcode/` 而误判。
 >
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 36` 不一致时（标记缺失、字段缺失/非整数、小于或大于 36）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 36）` 并提示重新运行 `/story-setup` 后新开会话；大于 36 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 39` 不一致时（标记缺失、字段缺失/非整数、小于或大于 39）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 39）` 并提示重新运行 `/story-setup` 后新开会话；大于 39 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 ## 拆解边界声明（主线程同样适用）
 
@@ -142,7 +142,7 @@ Stage 0+1 完成后，管道**自动停靠**，产出快速预览报告并询问
 
 1. **生成停靠交付物**：写 `拆文库/{书名}/快速预览.md`（模板见 [output-templates.md](references/output-templates.md) 的「快速预览报告」）。此时 `概要.md`、`章节/第1章_深度拆解.md`、`章节/第2章_深度拆解.md`、`章节/第3章_深度拆解.md`、`原文/` 均已落盘。
 2. **写停靠状态**：`_progress.md` 的「最终状态」字段写 `paused_after_stage1`，「断点」段记录「下一操作：Stage 2 逐章摘要」。
-3. **询问用户**（用 AskUserQuestion 风格的明确二选一）：
+3. **询问用户**（使用当前平台可用的交互方式给出明确二选一；Claude 可用 `AskUserQuestion`，TRAE Code 直接在主会话提问）：
    > 「黄金三章已拆完，快速预览报告见 `快速预览.md`。是否继续全量拆解（Stage 2-6：逐章摘要 / 聚合分析（含 `剧情/节奏.md`、`剧情/情绪模块.md`）/ 设定关系 / 汇总报告 / 文风）？预计耗时 {基于章节数粗估}。」
    - 选「继续全量拆解」→ 读 `_progress.md`，从 **Stage 2** 续跑，**不重跑 Stage 0/1**。
    - 选「就到这里」→ 管道结束，`_progress.md` 状态保持 `paused_after_stage1`，告知用户「之后可随时 `/story-long-analyze` 同一本书，会自动从 Stage 2 续跑」。
@@ -152,7 +152,7 @@ Stage 0+1 完成后，管道**自动停靠**，产出快速预览报告并询问
 
 `拆文报告.md` 出来后（Stage 5 跑完）执行——和 Stage 6 无关，Stage 6 失败也不影响这步。
 
-先定位 `选题决策.md`：项目根有就用它。项目根没有 → 从项目根及其上一级目录起、向下最多 3 层按文件名搜（跳过隐藏目录），按 mtime 由新到旧取最新 3 份。回填是写文件，项目根之外的文件写之前必须先确认：搜到 1 份 → 报出路径问「把本书的拆解支撑回填进这份吗？」；搜到多份 → 用 AskUserQuestion 列候选（路径 + `扫榜日期` + 「都不回填」）。用户不选 → 记「未回填」跳过，不动任何文件。
+先定位 `选题决策.md`：项目根有就用它。项目根没有 → 从项目根及其上一级目录起、向下最多 3 层按文件名搜（跳过隐藏目录），按 mtime 由新到旧取最新 3 份。回填是写文件，项目根之外的文件写之前必须先确认：搜到 1 份 → 报出路径问「把本书的拆解支撑回填进这份吗？」；搜到多份 → 用当前平台交互能力列候选（Claude 可用 `AskUserQuestion`；TRAE Code 直接列出路径 + `扫榜日期` + 「都不回填」并等待回复）。用户不选 → 记「未回填」跳过，不动任何文件。
 
 **仅当**定位到 `选题决策.md`（项目根那份直接用；项目根之外的那份须经上面的确认）时：按本书题材，在它的推荐选题里找**题材关键词对得上**的那个——
 - 正好对上一个 → 把该选题的"能爆的原因"从 `待拆文验证` 改成带出处的支撑：「本书拆解支撑：{`拆文报告.md` 的 读者需求/情绪引擎 + `剧情/情绪模块.md` 的可复现模块 Top + `剧情/节奏.md` 的爽点/触动点节奏摘要}（`拆文库/{书名}/拆文报告.md`、`剧情/情绪模块.md`、`剧情/节奏.md`）」。注意还只是假设（只拆了一本，不算坐实）。
@@ -211,6 +211,8 @@ Stage 2 使用 chapter-extractor agent 并行处理每章，替代原来的串�
 
 每条章节 prompt **必须以「材料声明」前缀开头**（即下方 prompt 字符串首段）——给子代理正确语境，避免它把通俗题材的正常戏剧化剧情误判为有害内容而拒绝拆解。前缀是固定文本，逐字带上，不要改写或省略。prompt 最后一行必须是 `OUTPUT_MODE: json`。
 
+下方 `Agent(subagent_type=...)` 是 Claude/OpenCode 及 WorkBuddy 项目模式的调用示意；WorkBuddy 项目模式先验证 `.codebuddy/agents/chapter-extractor.md`，然后使用原始 `subagent_type: "chapter-extractor"`。WorkBuddy plugin-only 模式只有在当前 Agent registry 真实返回 `oh-story:chapter-extractor` 时，才把示例中的 `subagent_type` 替换为该精确值；否则转下方 solo 规则。TRAE Code 必须由内置 `Agent` 智能体按 `.trae/agents/chapter-extractor.md` 的名称选择同名 Subagent，并把完全相同的 prompt 字符串作为任务正文；不得把 `subagent_type` 或 `model` 当成 TRAE 参数。Codex 使用同名 `agent_type`。
+
 ```python
 Agent(
   subagent_type: "chapter-extractor",
@@ -261,6 +263,8 @@ Agent(
 
 **升级重试调用方式**（主线程在校验失败后执行）：
 
+Claude/OpenCode 可按下例显式升级模型。TRAE Code 的项目 subagent 不接受 Claude 的 `sonnet` 模型名或调用时 `model` 覆盖；在 TRAE 中仍选择同名 `chapter-extractor`，把“升级重试、逐项修复 renderer stderr”写入任务正文，由当前 TRAE 模型执行。WorkBuddy 当前 `Agent` 调用同样不把 Claude 的 `model: "sonnet"` 当成可移植参数：项目模式仍用 `chapter-extractor`，plugin-only 模式仍用 registry 真实返回的 `oh-story:chapter-extractor`，把失败原因与修复要求写入 prompt，由当前 WorkBuddy 模型执行。若当前 TRAE/WorkBuddy registry 无该 agent，按下方 solo 规则处理，不伪造升级成功。
+
 ```python
 Agent(
   subagent_type: "chapter-extractor",
@@ -281,7 +285,7 @@ Agent(
 
 以下任一情况，Stage 2 自动退回串行模式，由主线程逐章处理（质量不受影响，只是改为串行、速度略慢）。**两条路径使用同一 JSON contract 和同一 renderer**：主线程按 [output-templates.md](references/output-templates.md)「Stage 2 结构化中间件」先产出 JSON，调用 `scripts/render_chapter_summary.py`，不直接排版 Markdown。validator 或语义自检失败时，主线程按具体失败项重写 JSON 1 次；第二次仍为 JSON 契约失败才可走一次明示 `legacy_markdown_fallback`，仍不过则按 `⚠️ 跳过` 记入 `_progress.md` 「失败记录」表。
 
-- **agent 未部署**：agent 目录（优先 `.claude/agents/`，其次 `.opencode/agents/`，再检查 `.codex/agents/`）下的 `chapter-extractor.md` 或 `.codex/agents/chapter-extractor.toml` 不存在。`.claude/agents/` 通常不随仓库提交，应重新运行 `/story-setup` 完成当前适配器部署，不跨 Skill 读取模板源。
+- **agent 未部署/未注册**：当前运行时对应目录（Claude `.claude/agents/`、OpenCode `.opencode/agents/`、TRAE Code `.trae/agents/`、WorkBuddy 项目模式 `.codebuddy/agents/`、Codex `.codex/agents/`）下的 `chapter-extractor.md` 或 `chapter-extractor.toml` 不存在，或 WorkBuddy plugin-only 模式的当前 registry 未返回 `oh-story:chapter-extractor`。应重新运行 `/story-setup`（WorkBuddy plugin 模式为 `/oh-story:story-setup`）完成当前适配器部署，不跨 Skill 读取模板源。
 - **环境不支持 spawn 子代理**：本 skill 正运行在某个子代理上下文中，无法再起下一层 agent。
 
 ### Stage 2 收尾：合并章节摘要（_章节摘要汇总.md）

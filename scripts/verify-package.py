@@ -25,6 +25,36 @@ PROJECT_NAME = "oh-story"
 SCHEMA_VERSION = 1
 SKILLS_CLI_VERSION = "1.5.22"
 DEFAULT_EXPECTED_SKILLS = 18
+CANONICAL_SKILL_NAMES = frozenset(
+    {
+        "browser-cdp",
+        "story",
+        "story-cover",
+        "story-data-analyze",
+        "story-deslop",
+        "story-explore",
+        "story-import",
+        "story-long-analyze",
+        "story-long-scan",
+        "story-long-write",
+        "story-publish",
+        "story-release-package",
+        "story-research",
+        "story-review",
+        "story-setup",
+        "story-short-analyze",
+        "story-short-scan",
+        "story-short-write",
+    }
+)
+REQUIRED_PRODUCT_FILES = (
+    "skills/story/VERSION",
+    ".claude-plugin/marketplace.json",
+    ".zcode-plugin/plugin.json",
+    ".codebuddy-plugin/plugin.json",
+    "reasonix-plugin.json",
+    "marketplace.json",
+)
 MAX_ARCHIVE_MEMBERS = 10_000
 MAX_MEMBER_SIZE = 256 * 1024 * 1024
 MAX_UNCOMPRESSED_SIZE = 1024 * 1024 * 1024
@@ -43,6 +73,46 @@ ANSI_ESCAPE_RE = re.compile(
     r"(?:\x1B\][^\x07]*(?:\x07|\x1B\\)|\x1B\[[0-?]*[ -/]*[@-~])"
 )
 FOUND_SKILLS_RE = re.compile(r"\bFound\s+([0-9]+)\s+skills?\b", re.IGNORECASE)
+SKILL_NAME_RE = re.compile(r"^name:[ \t]*([a-z0-9][a-z0-9-]*)[ \t]*$")
+SIMPLE_FRONTMATTER_KEY_RE = re.compile(
+    r"^([A-Za-z][A-Za-z0-9_-]*):(?:[ \t]*(.*))?$"
+)
+
+EXCLUDED_EXTERNAL_PATH_SEGMENTS = frozenset({"story-globalize"})
+FORBIDDEN_DEPLOYMENT_DIR_NAMES = frozenset(
+    {
+        ".claude",
+        ".codebuddy",
+        ".codex",
+        ".codewhale",
+        ".openclaw",
+        ".opencode",
+        ".reasonix",
+        ".trae",
+        ".zcode",
+        ".omc",
+    }
+)
+CANONICAL_PLUGIN_DIR_NAMES = frozenset(
+    {".claude-plugin", ".codebuddy-plugin", ".zcode-plugin"}
+)
+
+CLAUDE_MARKETPLACE_NAME = "oh-story-skills"
+ZCODE_MARKETPLACE_NAME = "oh-story-zcode"
+ZCODE_ENTRYPOINTS = {
+    "skills": "skills",
+    "commands": "skills/story-setup/references/zcode/commands",
+    "hooks": "skills/story-setup/references/zcode/hooks/hooks.json",
+}
+CODEBUDDY_ENTRYPOINTS = {
+    "skills": "./skills/",
+    "agents": [
+        "./skills/story-setup/references/workbuddy/agents/",
+        "./skills/story-data-analyze/agents/workbuddy/",
+    ],
+    "hooks": "./skills/story-setup/references/workbuddy/hooks/hooks.json",
+}
+REASONIX_ENTRYPOINTS = {"skills": "skills"}
 
 
 class VerificationError(RuntimeError):
@@ -280,6 +350,27 @@ def _inspect_archive(archive: zipfile.ZipFile, expected_root: str) -> ArchiveIns
     total_size = 0
     for info in members:
         normalised, parts, is_directory = _normalise_member_name(info.filename)
+        policy_parts = tuple(
+            unicodedata.normalize("NFC", part).casefold() for part in parts[1:]
+        )
+        if any(part in EXCLUDED_EXTERNAL_PATH_SEGMENTS for part in policy_parts):
+            raise VerificationError(
+                "ZIP contains story-globalize, a separate overseas tool: {!r}".format(
+                    info.filename
+                )
+            )
+        forbidden_deployment_parts = [
+            part
+            for part in policy_parts
+            if part in FORBIDDEN_DEPLOYMENT_DIR_NAMES
+            and part not in CANONICAL_PLUGIN_DIR_NAMES
+        ]
+        if forbidden_deployment_parts:
+            raise VerificationError(
+                "ZIP contains forbidden local deployment directory {!r}: {!r}".format(
+                    forbidden_deployment_parts[0], info.filename
+                )
+            )
         kind = _entry_kind(info, is_directory)
         if info.flag_bits & 0x1:
             raise VerificationError("ZIP contains encrypted member {!r}".format(info.filename))
@@ -378,6 +469,97 @@ def _load_json_surface(
     return document
 
 
+def _require_manifest_value(
+    document: object,
+    field: str,
+    expected: object,
+    label: str,
+) -> None:
+    if not isinstance(document, dict) or document.get(field) != expected:
+        actual = document.get(field) if isinstance(document, dict) else None
+        raise VerificationError(
+            "{} field {!r} is {!r}, expected {!r}".format(
+                label, field, actual, expected
+            )
+        )
+
+
+def _verify_claude_plugin_inventory(document: object) -> None:
+    label = ".claude-plugin/marketplace.json"
+    _require_manifest_value(document, "name", CLAUDE_MARKETPLACE_NAME, label)
+    if not isinstance(document, dict) or not isinstance(document.get("plugins"), list):
+        raise VerificationError("{} has no plugins array".format(label))
+    by_name = {}
+    for plugin in document["plugins"]:
+        if not isinstance(plugin, dict) or not isinstance(plugin.get("name"), str):
+            raise VerificationError("{} contains a plugin without a valid name".format(label))
+        name = plugin["name"]
+        if name in by_name:
+            raise VerificationError("{} contains duplicate plugin {!r}".format(label, name))
+        by_name[name] = plugin
+    if set(by_name) != CANONICAL_SKILL_NAMES:
+        missing = sorted(CANONICAL_SKILL_NAMES.difference(by_name))
+        unexpected = sorted(set(by_name).difference(CANONICAL_SKILL_NAMES))
+        details = []
+        if missing:
+            details.append("missing: {}".format(", ".join(missing)))
+        if unexpected:
+            details.append("unexpected: {}".format(", ".join(unexpected)))
+        raise VerificationError(
+            "{} plugin names do not match the canonical 18-skill inventory ({})".format(
+                label, "; ".join(details)
+            )
+        )
+    for name, plugin in by_name.items():
+        plugin_label = "{} plugin {!r}".format(label, name)
+        _require_manifest_value(plugin, "source", "./", plugin_label)
+        _require_manifest_value(
+            plugin,
+            "skills",
+            ["./skills/{}".format(name)],
+            plugin_label,
+        )
+
+
+def _verify_product_manifest_contracts(
+    claude: dict,
+    zcode: dict,
+    codebuddy: dict,
+    reasonix: dict,
+    marketplace: dict,
+) -> None:
+    _verify_claude_plugin_inventory(claude)
+
+    _require_manifest_value(zcode, "name", PROJECT_NAME, ".zcode-plugin/plugin.json")
+    for field, expected in ZCODE_ENTRYPOINTS.items():
+        _require_manifest_value(zcode, field, expected, ".zcode-plugin/plugin.json")
+
+    _require_manifest_value(
+        codebuddy, "name", PROJECT_NAME, ".codebuddy-plugin/plugin.json"
+    )
+    for field, expected in CODEBUDDY_ENTRYPOINTS.items():
+        _require_manifest_value(
+            codebuddy, field, expected, ".codebuddy-plugin/plugin.json"
+        )
+
+    _require_manifest_value(reasonix, "name", PROJECT_NAME, "reasonix-plugin.json")
+    for field, expected in REASONIX_ENTRYPOINTS.items():
+        _require_manifest_value(reasonix, field, expected, "reasonix-plugin.json")
+
+    _require_manifest_value(
+        marketplace, "name", ZCODE_MARKETPLACE_NAME, "marketplace.json"
+    )
+    _require_manifest_value(marketplace, "version", 1, "marketplace.json")
+    plugins = marketplace.get("plugins")
+    if not isinstance(plugins, list) or len(plugins) != 1:
+        raise VerificationError(
+            "marketplace.json must contain exactly one oh-story plugin"
+        )
+    plugin = plugins[0]
+    _require_manifest_value(plugin, "name", PROJECT_NAME, "marketplace.json plugin")
+    _require_manifest_value(plugin, "source", "./", "marketplace.json plugin")
+
+
 def _verify_product_versions(
     archive: zipfile.ZipFile,
     inspection: ArchiveInspection,
@@ -395,6 +577,7 @@ def _verify_product_versions(
     claude_version = metadata.get("version") if isinstance(metadata, dict) else None
 
     zcode = _load_json_surface(archive, inspection, ".zcode-plugin/plugin.json")
+    codebuddy = _load_json_surface(archive, inspection, ".codebuddy-plugin/plugin.json")
     reasonix = _load_json_surface(archive, inspection, "reasonix-plugin.json")
     marketplace = _load_json_surface(archive, inspection, "marketplace.json")
     plugins = marketplace.get("plugins")
@@ -412,6 +595,7 @@ def _verify_product_versions(
         "skills/story/VERSION": version,
         ".claude-plugin/marketplace.json:metadata.version": claude_version,
         ".zcode-plugin/plugin.json:version": zcode.get("version"),
+        ".codebuddy-plugin/plugin.json:version": codebuddy.get("version"),
         "marketplace.json:oh-story.version": matches[0].get("version"),
         "reasonix-plugin.json:version": reasonix.get("version"),
     }
@@ -427,6 +611,118 @@ def _verify_product_versions(
                 expected_version, details
             )
         )
+    _verify_product_manifest_contracts(
+        claude,
+        zcode,
+        codebuddy,
+        reasonix,
+        marketplace,
+    )
+
+
+def _declared_skill_name(raw: bytes, relative: str) -> str:
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeError as exc:
+        raise VerificationError("canonical skill file is not UTF-8: {}".format(relative)) from exc
+    if not lines or lines[0].strip() != "---":
+        raise VerificationError("canonical skill file has no YAML frontmatter: {}".format(relative))
+    try:
+        closing = next(
+            index
+            for index in range(1, len(lines))
+            if lines[index].strip() == "---"
+        )
+    except StopIteration as exc:
+        raise VerificationError(
+            "canonical skill file has unterminated YAML frontmatter: {}".format(relative)
+        ) from exc
+
+    names = []
+    seen_keys = set()
+    for line in lines[1:closing]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0] in " \t":
+            continue
+        key_match = SIMPLE_FRONTMATTER_KEY_RE.fullmatch(line)
+        if key_match is None:
+            raise VerificationError(
+                "canonical skill frontmatter only permits simple unquoted top-level keys: {}".format(
+                    relative
+                )
+            )
+        key = key_match.group(1)
+        if key in seen_keys:
+            raise VerificationError(
+                "canonical skill frontmatter contains duplicate key {!r}: {}".format(
+                    key, relative
+                )
+            )
+        seen_keys.add(key)
+        if key == "name":
+            name_match = SKILL_NAME_RE.fullmatch(line)
+            if name_match is None:
+                raise VerificationError(
+                    "canonical skill name must use one simple unquoted value: {}".format(
+                        relative
+                    )
+                )
+            names.append(name_match.group(1))
+    if len(names) != 1:
+        raise VerificationError(
+            "canonical skill file must declare exactly one simple name: {}".format(relative)
+        )
+    return names[0]
+
+
+def _verify_chinese_product_inventory(
+    archive: zipfile.ZipFile,
+    inspection: ArchiveInspection,
+) -> None:
+    """Reject missing, renamed, or foreign skills before any install smoke."""
+
+    skill_names = set()
+    for member_name in inspection.by_name:
+        relative = PurePosixPath(member_name).relative_to(inspection.root)
+        if len(relative.parts) >= 2 and relative.parts[0] == "skills":
+            skill_names.add(relative.parts[1])
+
+    if "story-globalize" in skill_names:
+        raise VerificationError(
+            "ZIP contains story-globalize, a separate overseas tool that is not part "
+            "of the Chinese oh-story package"
+        )
+    if skill_names != CANONICAL_SKILL_NAMES:
+        missing = sorted(CANONICAL_SKILL_NAMES.difference(skill_names))
+        unexpected = sorted(skill_names.difference(CANONICAL_SKILL_NAMES))
+        details = []
+        if missing:
+            details.append("missing: {}".format(", ".join(missing)))
+        if unexpected:
+            details.append("unexpected: {}".format(", ".join(unexpected)))
+        raise VerificationError(
+            "ZIP does not contain the exact canonical 18-skill Chinese inventory ({})".format(
+                "; ".join(details)
+            )
+        )
+
+    declared_names = set()
+    for skill_name in sorted(CANONICAL_SKILL_NAMES):
+        relative = "skills/{}/SKILL.md".format(skill_name)
+        raw = _read_required_file(archive, inspection, relative)
+        declared_name = _declared_skill_name(raw, relative)
+        declared_names.add(declared_name)
+        if declared_name != skill_name:
+            raise VerificationError(
+                "canonical skill name mismatch at {}: declared {!r}".format(
+                    relative, declared_name
+                )
+            )
+    if declared_names != CANONICAL_SKILL_NAMES:
+        raise VerificationError("canonical skill frontmatter names are not the exact Chinese inventory")
+    for relative in REQUIRED_PRODUCT_FILES:
+        _read_required_file(archive, inspection, relative)
 
 
 def _safe_symlink_target(member_name: str, target: str, archive_root: str) -> None:
@@ -593,6 +889,7 @@ def verify_package(
 
     with archive_context as archive:
         inspection = _inspect_archive(archive, metadata["archive_root"])
+        _verify_chinese_product_inventory(archive, inspection)
         _verify_product_versions(archive, inspection, metadata["version"])
         if install_smoke:
             with tempfile.TemporaryDirectory(prefix="oh-story-install-smoke-") as temporary:
@@ -649,7 +946,7 @@ def _parser() -> argparse.ArgumentParser:
         "--expected-skills",
         type=_positive_integer,
         default=DEFAULT_EXPECTED_SKILLS,
-        help="expected discovery count for --install-smoke (default: 17)",
+        help="expected discovery count for --install-smoke (default: 18)",
     )
     return parser
 

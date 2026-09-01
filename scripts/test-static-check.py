@@ -69,6 +69,40 @@ def test_valid_contract() -> None:
         assert "Total: 2 | Pass: 2 | Fail: 0 | Warn: 0" in result.stdout
 
 
+def test_trae_deployed_runtime_paths_are_not_repository_links() -> None:
+    with tempfile.TemporaryDirectory(prefix="story-static-trae-runtime-") as tmp:
+        root = Path(tmp)
+        build_agent_catalog(root)
+        write(
+            root / "skills/demo/SKILL.md",
+            "---\nname: demo\ndescription: Demo skill\n---\n"
+            "# Demo\n\n"
+            "TRAE 运行时按 `.trae/agents/helper.md` 与 "
+            "`.trae/skills/demo/SKILL.md` 解析已部署资产。\n",
+        )
+
+        result = run(root)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "[broken-inline-path]" not in result.stdout, result.stdout
+
+
+def test_workbuddy_deployed_runtime_paths_are_not_repository_links() -> None:
+    with tempfile.TemporaryDirectory(prefix="story-static-workbuddy-runtime-") as tmp:
+        root = Path(tmp)
+        build_agent_catalog(root)
+        write(
+            root / "skills/demo/SKILL.md",
+            "---\nname: demo\ndescription: Demo skill\n---\n"
+            "# Demo\n\n"
+            "WorkBuddy 运行时按 `.codebuddy/agents/helper.md` 与 "
+            "`.codebuddy/skills/demo/SKILL.md` 解析已部署资产。\n",
+        )
+
+        result = run(root)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "[broken-inline-path]" not in result.stdout, result.stdout
+
+
 def test_structural_failures_are_not_hidden_by_prose() -> None:
     with tempfile.TemporaryDirectory(prefix="story-static-invalid-") as tmp:
         root = Path(tmp)
@@ -474,6 +508,8 @@ def test_launcher_reports_missing_git_repository() -> None:
 
 def main() -> None:
     test_valid_contract()
+    test_trae_deployed_runtime_paths_are_not_repository_links()
+    test_workbuddy_deployed_runtime_paths_are_not_repository_links()
     test_structural_failures_are_not_hidden_by_prose()
     test_local_paths_stay_in_skill_and_repository_scope()
     test_markdown_links_do_not_use_fallback_locations()

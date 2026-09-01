@@ -110,7 +110,7 @@ with tempfile.TemporaryDirectory(prefix="chapter-candidate-") as temporary:
     candidate.write_text(prose, encoding="utf-8")
     checked = json.loads(run(CANDIDATE, "check", "--run", str(workspace)).stdout)
     gate_names = {item["name"] for item in checked["gates"]}
-    assert {"prose_metrics", "outline_copy", "accepted_voice_profile", "cross_chapter_shape"} <= gate_names, checked
+    assert {"writing_method", "prose_metrics", "outline_copy", "accepted_voice_profile", "cross_chapter_shape"} <= gate_names, checked
     shape_gate = next(item for item in checked["gates"] if item["name"] == "cross_chapter_shape")
     assert shape_gate["payload"]["status"] == "insufficient_history", shape_gate
 
@@ -160,6 +160,7 @@ with tempfile.TemporaryDirectory(prefix="chapter-candidate-") as temporary:
     doctor = run(DOCTOR, "--project", str(project))
     report = json.loads(doctor.stdout)
     assert report["status"] == "pass", report
+    assert any(item["name"] == "writing_method" and item["status"] == "pass" for item in report["checks"]), report
     assert any(item["code"] == "voice-profile-not-configured" for item in report["warnings"]), report
 
     final_prose = project / "正文" / "第001章_春雨入院.md"

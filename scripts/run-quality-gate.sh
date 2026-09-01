@@ -54,6 +54,7 @@ step "tracking and deployment contracts"
 python3 scripts/test-tracking-workflow-contracts.py
 python3 scripts/test-tracking-commit.py
 python3 scripts/test-outline-forecast.py
+python3 scripts/test-style-method.py
 python3 scripts/test-chapter-candidate.py
 python3 scripts/test-voice-profile.py
 python3 scripts/test-cold-read-ledger.py
@@ -67,9 +68,15 @@ bash scripts/check-codex-adapter.sh
 bash scripts/check-opencode-adapter.sh
 bash scripts/check-openclaw-skills.sh
 bash scripts/check-zcode-adapter.sh
+bash scripts/check-trae-adapter.sh
+bash scripts/check-trae-runtime-routing.sh
+python3 scripts/check-workbuddy-adapter.py
+python3 scripts/test-trae-core-ownership.py
 bash scripts/check-reasonix-adapter.sh
 bash scripts/test-codex-hooks.sh
 bash scripts/test-zcode-hooks.sh
+bash scripts/test-trae-hooks.sh
+python3 scripts/test-workbuddy-runtime.py
 
 step "portable invocation and encoding"
 bash scripts/check-python-invocation.sh

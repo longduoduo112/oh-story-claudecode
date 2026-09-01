@@ -6,7 +6,7 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 ---
 # story-review：多视角对抗式审查
 
-> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 36` 不一致时（标记缺失、字段缺失/非整数、小于或大于 36）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 36）` 并提示重新运行 `/story-setup` 后新开会话；大于 36 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
+> Spawn 版本提示（不阻断 spawn）：先读取项目根 `.story-deployed` 的 `agents_version`。与本版 `agents_version: 39` 不一致时（标记缺失、字段缺失/非整数、小于或大于 39）**照常按文件存在性检查并 spawn**，同时报告 `Notice: agents bundle 版本不匹配（项目 {N}，本版 39）` 并提示重新运行 `/story-setup` 后新开会话；大于 39 时额外提示先更新 oh-story-claudecode，不要用本地旧版 setup 降级覆盖。只有 agent 文件缺失、或运行时不暴露 custom agent 时才降级 solo/direct，报告 `Fallback: ... -> solo`。
 
 你是审查协调器。你的职责是找出小说文本中的结构、角色、文字、设定问题，并给出可执行修改建议。
 
@@ -29,19 +29,21 @@ metadata: {"openclaw":{"source":"https://github.com/qin1473692580-ux/oh-story-cl
 
 1. **确定请求模式**：解析用户输入中的 `full`、`lean`、`solo`；未指定时目标模式为 `full`。
 2. **确认是否允许 spawn**：如果当前已经在子代理/Agent 内执行，不再递归 spawn，直接降级为 `solo`。
-3. **识别 ZCode 能力边界**：如果当前运行于 ZCode 且项目使用 `.zcode/`，ZCode 3.3.4 不执行项目/plugin custom agents；不要因为磁盘上存在其他端的 agent 文件就尝试同名 spawn，直接降级 `solo` 并报告 `Fallback: project custom agents unavailable -> solo`。
-4. **检查核心 Agent 部署状态**（检查项目内 agents，同时兼容 Claude Code、OpenCode 和 Codex）：
-   - 优先检查 `.claude/agents/`，其次检查 `.opencode/agents/`，再检查 `.codex/agents/`；三个目录任一存在即视为已部署
-    - full 必需：Claude/OpenCode 为 `story-architect.md`、`character-designer.md`、`narrative-writer.md`、`consistency-checker.md`；Codex 为同名 `.toml`
-    - lean 必需：Claude/OpenCode 为 `story-architect.md`、`consistency-checker.md`；Codex 为同名 `.toml`
+3. **识别 ZCode 能力边界**：如果当前运行于 ZCode 且项目使用 `.zcode/`，ZCode 3.3.4 不执行项目/plugin custom agents；不要因为磁盘上存在其他端的 agent 文件就尝试同名 spawn，直接降级 `solo` 并报告 `Fallback: project custom agents unavailable -> solo`。反过来，当前运行时是 WorkBuddy 或其他端时，项目中仅并存 `.zcode/` 不得强制 solo。
+4. **检查核心 Agent 部署状态**（先识别当前运行时，只检查对应目录/registry；无法识别运行时才按 Claude → OpenCode → TRAE Code → WorkBuddy → Codex 的顺序探测，禁止拿其他端残留文件冒充已注册 agent）：
+   - Claude Code 使用 `.claude/agents/`，OpenCode 使用 `.opencode/agents/`，TRAE Code 使用 `.trae/agents/`，WorkBuddy（CodeBuddy Code）项目模式使用 `.codebuddy/agents/`，Codex 使用 `.codex/agents/`。WorkBuddy plugin-only 模式不要求项目 `.codebuddy/agents/`：只有当前 Agent registry 真实返回所需的 `oh-story:{agent}` 才视为可用。
+    - full 必需：Claude/OpenCode/TRAE Code/WorkBuddy 项目模式为 `story-architect.md`、`character-designer.md`、`narrative-writer.md`、`consistency-checker.md`；WorkBuddy plugin-only 模式为 registry 中对应的 4 个 `oh-story:*`；Codex 为同名 `.toml`
+    - lean 必需：Claude/OpenCode/TRAE Code/WorkBuddy 项目模式为 `story-architect.md`、`consistency-checker.md`；WorkBuddy plugin-only 模式为 registry 中对应的 2 个 `oh-story:*`；Codex 为同名 `.toml`
     - 对每个必需 Agent 文件：
       - **Claude Code agent（`.claude/agents/`）**：读取 frontmatter，确认 `name:` 与 subagent_type 完全一致；frontmatter 缺失、不可解析或 name 不匹配时视为 malformed agent。
       - **OpenCode agent（`.opencode/agents/`）**：文件名即 agent 名（OpenCode 不要求在 frontmatter 中写 `name:`），读取 frontmatter 确认 `mode: subagent` 和 `permission` 字段存在且可解析即可；frontmatter 缺失或不可解析视为 malformed。
+      - **TRAE Code agent（`.trae/agents/`）**：读取 YAML frontmatter，确认 `name`、`description` 存在，`name` 与文件名完全一致；`tools` / `disallowedTools` 如存在必须是逗号分隔字符串，不能沿用 Claude/OpenCode 的 YAML 数组或不受支持的模型名。frontmatter 缺失、不可解析或字段不匹配时视为 malformed。
+      - **WorkBuddy 项目 agent（`.codebuddy/agents/`）**：读取 YAML frontmatter，确认 `name`、`description` 存在且 `name` 与文件名完全一致；`tools` / `disallowedTools` 如存在必须为逗号分隔字符串。项目模式调用内置 `Agent` 时传原始 `subagent_type: "{agent}"`。WorkBuddy plugin-only 模式不用项目文件代替 registry 检查，只传 registry 真实列出的 `oh-story:{agent}`。
       - **Codex agent（`.codex/agents/`）**：文件名为 `{agent}.toml`，TOML 必须可解析，且包含 `name`、`description`、`developer_instructions`；`name` 必须与目标 agent 完全一致。
     - `agents_version` 与本版不一致不影响本步：照常检查下列 agent 文件结构并 spawn，只按顶部规则附带版本提示。文件缺失或 malformed 才降级。
-   - 如果目标模式所需任一文件缺失或 malformed，**不要尝试 spawn 缺失/异常 Agent**；自动降级为 `solo`，并在报告开头写明：`Fallback: missing agents -> solo` 或 `Fallback: malformed agents -> solo`，列出问题文件，建议用户运行 `/story-setup`。
-5. **确认 Agent/Task 工具可用**：如果当前环境没有可用的子 Agent/Task 调用能力，直接降级为 `solo`，报告 `Fallback: agent tool unavailable -> solo`。
-6. **运行时失败降级**：如果任何 Agent spawn 返回失败、`subagent_type` / `agent_type` 不可用、frontmatter/TOML 运行时解析失败或子 Agent 无法启动，停止继续 spawn，改用 `solo` 重新审查，并报告 `Fallback: spawn failed -> solo` 与失败的 subagent_type/agent_type；不要把部分成功的 Agent 结果当成 full/lean 结论。
+   - 如果项目模式所需任一文件缺失/malformed，或 WorkBuddy plugin-only 模式所需 registry 名不完整，**不要尝试 spawn 缺失/异常 Agent**；自动降级为 `solo`，并在报告开头写明：`Fallback: missing agents -> solo` 或 `Fallback: malformed agents -> solo`，列出问题文件/registry 名，建议用户运行 `/story-setup`（WorkBuddy plugin 模式为 `/oh-story:story-setup`）。
+5. **确认子 Agent 工具可用**：如果当前环境没有可用的子 Agent 调用能力，直接降级为 `solo`，报告 `Fallback: agent tool unavailable -> solo`。TRAE Code 必须使用内置 `Agent` 智能体选择已注册的同名 subagent，不把 Claude 的 `subagent_type` 字段当成 TRAE 工具参数。WorkBuddy 必须使用其内置 `Agent`：项目模式传原始 `subagent_type`，plugin-only 模式只传 registry 实际返回的命名空间值。
+6. **运行时失败降级**：如果任何 Agent spawn 返回失败、`subagent_type` / `agent_type` / TRAE 同名 subagent / WorkBuddy registry 精确名不可用、frontmatter/TOML 运行时解析失败或子 Agent 无法启动，停止继续 spawn，改用 `solo` 重新审查，并报告 `Fallback: spawn failed -> solo` 与失败的 agent 名；不要把部分成功的 Agent 结果当成 full/lean 结论。
 7. **确定实际模式**：报告中必须同时列出 `Requested Mode` 与 `Effective Mode`。
 8. **禁止把 `.active-book` 当作平台来源**：`.active-book` 只表示当前书名/目录名，不代表目标平台。
 
@@ -68,13 +70,15 @@ Rubric Source: file | embedded fallback
 可读取参考文件时，按以下顺序尝试，第一个命中即用：
 1. `{项目根}/.claude/skills/{规范路径}`（Claude Code 项目内安装）
 2. `{项目根}/.opencode/skills/{规范路径}`（OpenCode 项目内安装）
-3. `{项目根}/.codex/skills/{规范路径}`（Codex 项目内安装）
-4. `{项目根}/.zcode/skills/{规范路径}`（ZCode 项目内安装）
-5. `{项目根}/skills/{规范路径}`（OpenClaw / Reasonix / generic 部署，也是本仓库开发环境）
-6. `{项目根}/.agents/skills/{规范路径}`（Codex / Reasonix 扫描的项目 skill root，通常是指向 `skills/` 的 symlink）
-7. 当前运行时加载本 skill 的目录，或其可访问的全局 skill 搜索路径中同名 `{skill-name}/...` 目录
+3. `{项目根}/.trae/skills/{规范路径}`（TRAE Code 项目内安装）
+4. `{项目根}/.codebuddy/skills/{规范路径}`（WorkBuddy / CodeBuddy Code 项目模式）
+5. `{项目根}/.codex/skills/{规范路径}`（Codex 项目内安装）
+6. `{项目根}/.zcode/skills/{规范路径}`（ZCode 项目内安装）
+7. `{项目根}/skills/{规范路径}`（OpenClaw / Reasonix / generic 部署，也是本仓库开发环境）
+8. `{项目根}/.agents/skills/{规范路径}`（Codex / Reasonix / TRAE Code 可扫描的项目 skill root，通常是指向 `skills/` 的 symlink）
+9. 当前运行时加载本 skill 的目录，或其可访问的全局/plugin skill 搜索路径中同名 `{skill-name}/...` 目录；WorkBuddy plugin-only 模式属于此项，不将未展开的 plugin 变量当成项目路径
 
-> 靠前几层不存在是正常的，不是部署损坏。`/story-setup` 只在 ZCode 的 `.zcode/skills/` 和 OpenClaw / Reasonix / generic 的 `skills/` 下整份复制 skill；Codex 项目部署不复制 skill 本体，本 skill 由 Codex 从 skill root 加载，references 就在其中，通常命中第 6 或第 7 层。不要手工把 `references/` 复制进 `.codex/skills/`——手工副本不受 story-setup 管理，升级后会静默变旧。
+> 靠前几层不存在是正常的，不是部署损坏。`/story-setup` 在 WorkBuddy 项目模式的 `.codebuddy/skills/`、ZCode 的 `.zcode/skills/` 和 OpenClaw / Reasonix / generic 的 `skills/` 下整份复制 skill；WorkBuddy plugin-only 模式从当前已加载的命名空间 skill 目录读 references，不要求项目 `.codebuddy/skills/`。Codex 项目部署不复制 skill 本体，本 skill 由 Codex 从 skill root 加载，references 就在其中，通常命中第 7 或第 8 层。不要手工把 `references/` 复制进 `.codex/skills/`——手工副本不受 story-setup 管理，升级后会静默变旧。
 
 规范路径如下；禁止只写裸文件名，禁止跨 skill 误读其他 skill 的 references：
 
@@ -185,7 +189,7 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
    - 默认 `--quote-mode keep`，不把知乎盐言短篇的 `「」` 当作问题；只有项目明确指定引号风格时才检查对应转换建议。
    - 这些脚本都是 `story-review` 的本地副本，不引用其他 skill 的文件。
 
-**story-explorer 预查询（可选）**。仅当 `Effective Mode` 仍为 `full`/`lean`、当前允许 spawn 且 Agent/Task 工具可用时，才可检查 agent 目录（优先 `.claude/agents/`，其次 `.opencode/agents/`，再检查 `.codex/agents/`）下的 `story-explorer.md` 或 `story-explorer.toml` 并 spawn `story-explorer` 预查设定摘要；`solo` 或子代理递归保护场景下不得 spawn，只能直接 Read/Grep。Prompt 示例：
+**story-explorer 预查询（可选）**。仅当 `Effective Mode` 仍为 `full`/`lean`、当前允许 spawn 且子 Agent 工具可用时，才可按当前运行时检查 story-explorer（Claude `.claude/agents/story-explorer.md`、OpenCode `.opencode/agents/story-explorer.md`、TRAE Code `.trae/agents/story-explorer.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-explorer.md`、Codex `.codex/agents/story-explorer.toml`）并调用它预查设定摘要。WorkBuddy 项目模式用 `Agent(subagent_type: "story-explorer", ...)`；plugin-only 模式只在 registry 真实返回 `oh-story:story-explorer` 时使用该值。`solo` 或子代理递归保护场景下不得 spawn，只能直接 Read/Grep。Prompt 示例：
 
 ```text
 项目目录：{dir}
@@ -222,7 +226,7 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
 
 ## Phase 2：并行 Spawn Agent（full/lean 模式）
 
-使用 Agent/Task 工具并行调用（Codex 原生子代理使用 `agent_type`，Claude Code 兼容面使用 `subagent_type`；实际字段以当前 CLI 暴露的工具为准）。每个 Agent 不继承父对话上下文，prompt 必须自包含项目路径、审查范围、文件路径、必要摘录、审查基准包摘要、Rubric Source 和统一 Findings Schema。
+使用当前运行时的子 Agent 工具并行调用（TRAE Code 用内置 `Agent` 智能体按 `.trae/agents/<name>.md` 的 `name` 选择下列同名 Subagent，不传 Claude 的 `subagent_type`；WorkBuddy 用内置 `Agent`，项目模式传原始 `subagent_type`，plugin-only 模式只传 registry 真实返回的 `oh-story:{agent}`；Codex 原生子代理使用 `agent_type`；Claude Code/OpenCode 兼容面使用 `subagent_type`；实际字段以当前 CLI 暴露的工具为准）。下方 `subagent_type: story-*` 标题只是 Claude/OpenCode/WorkBuddy 项目模式的名称示意；TRAE 按同名 Subagent 选择，WorkBuddy plugin-only 模式替换为 registry 返回的命名空间值。每个 Agent 不继承父对话上下文，prompt 必须自包含项目路径、审查范围、文件路径、必要摘录、审查基准包摘要、Rubric Source 和统一 Findings Schema。
 
 **调用规则**：执行 Phase 0 后，只有实际模式仍是 full/lean 时才 spawn。不要 spawn 缺失 Agent。
 
@@ -360,7 +364,7 @@ full/lean 模式下，主会话必须把“审查基准包摘要”直接写进�
 
 1. 收集实际执行的 reviewer VERDICT 和 FINDINGS。
 2. 合并去重：按 `severity` 排序（S1 > S2 > S3 > S4），同级内按影响范围排序。
-3. **可选事实核查**：如果审查内容涉及需要验证的外部事实（历史年代、地理方位、职业细节等），只有在 `Effective Mode` 仍为 `full`/`lean`、当前不是子 Agent、Agent/Task 工具可用且 agent 目录（优先 `.claude/agents/`，其次 `.opencode/agents/`，再检查 `.codex/agents/`）下的 `story-researcher.md` 或 `story-researcher.toml` 已部署时，才可额外 spawn `story-researcher` 搜索验证；`solo`、missing/malformed/stale/spawn failed 降级或子代理递归保护场景下不得 spawn，只能在报告中标记“需人工事实核查”。
+3. **可选事实核查**：如果审查内容涉及需要验证的外部事实（历史年代、地理方位、职业细节等），只有在 `Effective Mode` 仍为 `full`/`lean`、当前不是子 Agent、子 Agent 工具可用且当前运行时已部署 story-researcher（Claude `.claude/agents/story-researcher.md`、OpenCode `.opencode/agents/story-researcher.md`、TRAE Code `.trae/agents/story-researcher.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-researcher.md`、Codex `.codex/agents/story-researcher.toml`）时，才可额外调用 `story-researcher` 搜索验证。TRAE Code 使用内置 `Agent` 按 `.trae/agents/story-researcher.md` 的名称选择该 Subagent，不传 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "story-researcher", ...)`，plugin-only 模式只在 registry 真实返回 `oh-story:story-researcher` 时使用该值。使用当前平台联网能力；若无联网工具，可转交只读 `browser-cdp` 流程，不调用不存在的 `WebFetch`。`solo`、missing/malformed/spawn failed 降级或子代理递归保护场景下不得 spawn，只能在报告中标记“需人工事实核查”。单纯 `agents_version` 不匹配不是本条的降级原因。
 4. **分歧呈现**：如果 reviewer 间有冲突意见，明确呈现分歧让用户裁决；不要自动妥协。
 5. 输出综合审查报告。报告必须列出实际模式、fallback 原因、使用的 rubric、Rubric Source、审查范围和证据不足项。
 

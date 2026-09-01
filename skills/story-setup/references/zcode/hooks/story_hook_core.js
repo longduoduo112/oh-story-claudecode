@@ -1,5 +1,7 @@
 "use strict"
 
+// oh-story-managed: shared-hook-core
+
 const fs = require("node:fs")
 const path = require("node:path")
 const crypto = require("node:crypto")
@@ -37,6 +39,17 @@ function firstLine(file) {
   }
 }
 
+function isHistoricalCopySegment(value) {
+  const name = String(value || "")
+  return name.includes("备份") || name.includes("归档") || /archives?/i.test(name)
+}
+
+function isDiscoveryExcludedEntry(entry) {
+  return entry.name.startsWith(".")
+    || entry.name === "node_modules"
+    || (entry.isDirectory() && isHistoricalCopySegment(entry.name))
+}
+
 function findFirst(base, maxDepth, predicate) {
   // maxDepth 与 `find -maxdepth N` 一致：root 的直属条目深度为 1，深度 N 的条目可见，N+1 不可见。
   if (maxDepth <= 0) return null
@@ -47,13 +60,13 @@ function findFirst(base, maxDepth, predicate) {
     return null
   }
   for (const entry of entries) {
-    if (entry.name.startsWith(".") || entry.name === "node_modules") continue
+    if (isDiscoveryExcludedEntry(entry)) continue
     const full = path.join(base, entry.name)
     if (predicate(full, entry)) return full
   }
   if (maxDepth === 1) return null
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue
+    if (!entry.isDirectory() || isDiscoveryExcludedEntry(entry)) continue
     const found = findFirst(path.join(base, entry.name), maxDepth - 1, predicate)
     if (found) return found
   }
@@ -70,7 +83,8 @@ function discoverActiveBook(root) {
       // 假性以 ".." 开头，合法的 .active-book 被静默丢弃。bash 用 pwd -P、python 用
       // root.resolve()，此处对齐两端。
       const rel = path.relative(existingDir(root) || path.resolve(root), candidate)
-      if (!rel.startsWith("..") && !path.isAbsolute(rel)) return candidate
+      const inHistoricalCopy = rel.split(path.sep).filter(Boolean).some(isHistoricalCopySegment)
+      if (!rel.startsWith("..") && !path.isAbsolute(rel) && !inHistoricalCopy) return candidate
     }
   }
   const tracking = findFirst(root, 4, (_full, entry) => entry.isDirectory() && entry.name === "追踪")
@@ -88,7 +102,7 @@ function discoverAllBooks(root) {
     let entries = []
     try { entries = fs.readdirSync(base, { withFileTypes: true }) } catch { return }
     for (const entry of entries) {
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue
+      if (isDiscoveryExcludedEntry(entry)) continue
       const full = path.join(base, entry.name)
       if (entry.isDirectory() && (entry.name === "追踪" || entry.name === "正文")) {
         books.set(path.dirname(full), path.dirname(full))
@@ -98,7 +112,7 @@ function discoverAllBooks(root) {
     }
     if (depth === 1) return
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue
+      if (!entry.isDirectory() || isDiscoveryExcludedEntry(entry)) continue
       walk(path.join(base, entry.name), depth - 1)
     }
   }
@@ -1606,6 +1620,7 @@ module.exports = {
   safeRelative,
   resolveTarget,
   firstLine,
+  isHistoricalCopySegment,
   findFirst,
   discoverActiveBook,
   discoverAllBooks,

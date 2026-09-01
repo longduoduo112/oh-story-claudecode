@@ -30,8 +30,42 @@ import zipfile
 
 PROJECT_NAME = "oh-story"
 VERSION_FILE = PurePosixPath("skills/story/VERSION")
+CANONICAL_SKILL_NAMES = frozenset(
+    {
+        "browser-cdp",
+        "story",
+        "story-cover",
+        "story-data-analyze",
+        "story-deslop",
+        "story-explore",
+        "story-import",
+        "story-long-analyze",
+        "story-long-scan",
+        "story-long-write",
+        "story-publish",
+        "story-release-package",
+        "story-research",
+        "story-review",
+        "story-setup",
+        "story-short-analyze",
+        "story-short-scan",
+        "story-short-write",
+    }
+)
+REQUIRED_PRODUCT_FILES = (
+    VERSION_FILE.as_posix(),
+    ".claude-plugin/marketplace.json",
+    ".zcode-plugin/plugin.json",
+    ".codebuddy-plugin/plugin.json",
+    "reasonix-plugin.json",
+    "marketplace.json",
+)
 STABLE_VERSION_RE = re.compile(
     r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$"
+)
+SKILL_NAME_RE = re.compile(r"^name:[ \t]*([a-z0-9][a-z0-9-]*)[ \t]*$")
+SIMPLE_FRONTMATTER_KEY_RE = re.compile(
+    r"^([A-Za-z][A-Za-z0-9_-]*):(?:[ \t]*(.*))?$"
 )
 
 # These exclusions are applied even to tracked files.  Release packages use
@@ -43,7 +77,13 @@ EXCLUDED_DIR_NAMES = frozenset(
         ".git",
         ".claude",
         ".codebuddy",
+        ".codex",
         ".codewhale",
+        ".openclaw",
+        ".opencode",
+        ".reasonix",
+        ".trae",
+        ".zcode",
         ".omc",
         ".idea",
         ".vscode",
@@ -113,6 +153,33 @@ EXCLUDED_SUFFIXES = (
     ".jks",
     ".keystore",
 )
+
+# `story-globalize` is a separately versioned overseas tool. The Chinese
+# oh-story distribution must never absorb it, even if a maintainer temporarily
+# places a checkout below this repository's skills/ directory while testing.
+EXCLUDED_EXTERNAL_SKILL_PREFIXES = (
+    ("skills", "story-globalize"),
+)
+EXCLUDED_EXTERNAL_PATH_SEGMENTS = frozenset(
+    prefix[-1] for prefix in EXCLUDED_EXTERNAL_SKILL_PREFIXES
+)
+
+CLAUDE_MARKETPLACE_NAME = "oh-story-skills"
+ZCODE_MARKETPLACE_NAME = "oh-story-zcode"
+ZCODE_ENTRYPOINTS = {
+    "skills": "skills",
+    "commands": "skills/story-setup/references/zcode/commands",
+    "hooks": "skills/story-setup/references/zcode/hooks/hooks.json",
+}
+CODEBUDDY_ENTRYPOINTS = {
+    "skills": "./skills/",
+    "agents": [
+        "./skills/story-setup/references/workbuddy/agents/",
+        "./skills/story-data-analyze/agents/workbuddy/",
+    ],
+    "hooks": "./skills/story-setup/references/workbuddy/hooks/hooks.json",
+}
+REASONIX_ENTRYPOINTS = {"skills": "skills"}
 
 
 class BuildError(RuntimeError):
@@ -267,6 +334,12 @@ def _validate_relative_path(value: str) -> PurePosixPath:
 
 def _is_excluded(path: PurePosixPath, output_rel: Optional[PurePosixPath]) -> bool:
     lower_parts = tuple(part.lower() for part in path.parts)
+    if any(part in EXCLUDED_EXTERNAL_PATH_SEGMENTS for part in lower_parts):
+        raise BuildError(
+            "source inventory contains story-globalize, a separate overseas tool: {}".format(
+                path
+            )
+        )
     if output_rel is not None:
         output_parts = tuple(part.lower() for part in output_rel.parts)
         if lower_parts[: len(output_parts)] == output_parts:
@@ -415,6 +488,169 @@ def _read_source_version(root: Path, channel: str) -> str:
     return version
 
 
+def _inventory_difference(actual: set[str]) -> str:
+    missing = sorted(CANONICAL_SKILL_NAMES.difference(actual))
+    unexpected = sorted(actual.difference(CANONICAL_SKILL_NAMES))
+    details = []
+    if missing:
+        details.append("missing: {}".format(", ".join(missing)))
+    if unexpected:
+        details.append("unexpected: {}".format(", ".join(unexpected)))
+    return "; ".join(details)
+
+
+def _declared_skill_name(data: bytes, relative: str) -> str:
+    try:
+        lines = data.decode("utf-8").splitlines()
+    except UnicodeError as exc:
+        raise BuildError("canonical skill file is not UTF-8: {}".format(relative)) from exc
+    if not lines or lines[0].strip() != "---":
+        raise BuildError("canonical skill file has no YAML frontmatter: {}".format(relative))
+    try:
+        closing = next(index for index in range(1, len(lines)) if lines[index].strip() == "---")
+    except StopIteration as exc:
+        raise BuildError("canonical skill file has unterminated YAML frontmatter: {}".format(relative)) from exc
+    names = []
+    seen_keys = set()
+    for line in lines[1:closing]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0] in " \t":
+            continue
+        key_match = SIMPLE_FRONTMATTER_KEY_RE.fullmatch(line)
+        if key_match is None:
+            raise BuildError(
+                "canonical skill frontmatter only permits simple unquoted top-level keys: {}".format(
+                    relative
+                )
+            )
+        key = key_match.group(1)
+        if key in seen_keys:
+            raise BuildError(
+                "canonical skill frontmatter contains duplicate key {!r}: {}".format(
+                    key, relative
+                )
+            )
+        seen_keys.add(key)
+        if key == "name":
+            name_match = SKILL_NAME_RE.fullmatch(line)
+            if name_match is None:
+                raise BuildError(
+                    "canonical skill name must use one simple unquoted value: {}".format(
+                        relative
+                    )
+                )
+            names.append(name_match.group(1))
+    if len(names) != 1:
+        raise BuildError("canonical skill file must declare exactly one simple name: {}".format(relative))
+    return names[0]
+
+
+def _validate_source_root(root: Path) -> None:
+    """Fail closed unless *root* is the canonical Chinese product source tree."""
+
+    skills_root = root / "skills"
+    try:
+        skills_metadata = skills_root.lstat()
+    except OSError as exc:
+        raise BuildError("source root has no readable skills directory: {}".format(exc)) from exc
+    if not stat.S_ISDIR(skills_metadata.st_mode):
+        raise BuildError("source root skills path must be a real directory")
+
+    try:
+        children = list(skills_root.iterdir())
+    except OSError as exc:
+        raise BuildError("cannot inspect source skill inventory: {}".format(exc)) from exc
+    actual = {
+        child.name
+        for child in children
+        if (child.is_dir() or child.is_symlink())
+        and child.name.casefold() not in EXCLUDED_DIR_NAMES
+    }
+    if "story-globalize" in actual:
+        raise BuildError(
+            "source root contains story-globalize, a separate overseas tool that must "
+            "not be absorbed into the Chinese oh-story package"
+        )
+    if actual != CANONICAL_SKILL_NAMES:
+        raise BuildError(
+            "source root does not have the exact canonical 18-skill Chinese inventory ({})".format(
+                _inventory_difference(actual)
+            )
+        )
+
+    for skill_name in sorted(CANONICAL_SKILL_NAMES):
+        skill_dir = skills_root / skill_name
+        skill_file = skill_dir / "SKILL.md"
+        try:
+            directory_metadata = skill_dir.lstat()
+            file_metadata = skill_file.lstat()
+        except OSError as exc:
+            raise BuildError(
+                "canonical skill {} is incomplete: {}".format(skill_name, exc)
+            ) from exc
+        if not stat.S_ISDIR(directory_metadata.st_mode):
+            raise BuildError("canonical skill directory must not be a symlink: {}".format(skill_name))
+        if not stat.S_ISREG(file_metadata.st_mode):
+            raise BuildError("canonical skill SKILL.md must be a regular file: {}".format(skill_name))
+        try:
+            declared_name = _declared_skill_name(
+                skill_file.read_bytes(),
+                "skills/{}/SKILL.md".format(skill_name),
+            )
+        except OSError as exc:
+            raise BuildError("cannot read canonical skill {}: {}".format(skill_name, exc)) from exc
+        if declared_name != skill_name:
+            raise BuildError(
+                "canonical skill name mismatch at skills/{}/SKILL.md: declared {!r}".format(
+                    skill_name, declared_name
+                )
+            )
+
+    for relative in REQUIRED_PRODUCT_FILES:
+        path = root.joinpath(*PurePosixPath(relative).parts)
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise BuildError("source root is missing required product file {}: {}".format(relative, exc)) from exc
+        if not stat.S_ISREG(metadata.st_mode):
+            raise BuildError("required product file must be a regular file: {}".format(relative))
+
+
+def _validate_entry_inventory(entries: Sequence[SourceEntry]) -> None:
+    """Repeat identity checks against the actual Git/filesystem package inventory."""
+
+    by_path = {entry.path: entry for entry in entries}
+    actual = {
+        parts[1]
+        for entry in entries
+        for parts in (PurePosixPath(entry.path).parts,)
+        if len(parts) >= 2 and parts[0] == "skills"
+    }
+    if actual != CANONICAL_SKILL_NAMES:
+        raise BuildError(
+            "package inventory does not have the exact canonical 18-skill Chinese inventory ({})".format(
+                _inventory_difference(actual)
+            )
+        )
+    for skill_name in sorted(CANONICAL_SKILL_NAMES):
+        relative = "skills/{}/SKILL.md".format(skill_name)
+        entry = by_path.get(relative)
+        if entry is None or entry.kind != "file":
+            raise BuildError("package inventory is missing regular canonical skill file {}".format(relative))
+        declared_name = _declared_skill_name(entry.data, relative)
+        if declared_name != skill_name:
+            raise BuildError(
+                "package canonical skill name mismatch at {}: declared {!r}".format(
+                    relative, declared_name
+                )
+            )
+    for relative in REQUIRED_PRODUCT_FILES:
+        entry = by_path.get(relative)
+        if entry is None or entry.kind != "file":
+            raise BuildError("package inventory is missing required product file {}".format(relative))
+
+
 def _load_json_entry(entries: Dict[str, SourceEntry], path: str) -> Optional[object]:
     entry = entries.get(path)
     if entry is None:
@@ -433,6 +669,51 @@ def _require_product_version(current: object, source_version: str, label: str) -
             "{} is {!r}, expected canonical product version {!r}".format(
                 label, current, source_version
             )
+        )
+
+
+def _require_manifest_value(
+    document: object,
+    field: str,
+    expected: object,
+    label: str,
+) -> None:
+    if not isinstance(document, dict) or document.get(field) != expected:
+        actual = document.get(field) if isinstance(document, dict) else None
+        raise BuildError(
+            "{} field {!r} is {!r}, expected {!r}".format(
+                label, field, actual, expected
+            )
+        )
+
+
+def _validate_claude_plugin_inventory(document: object) -> None:
+    label = ".claude-plugin/marketplace.json"
+    _require_manifest_value(document, "name", CLAUDE_MARKETPLACE_NAME, label)
+    if not isinstance(document, dict) or not isinstance(document.get("plugins"), list):
+        raise BuildError("{} has no plugins array".format(label))
+    plugins = document["plugins"]
+    by_name = {}
+    for plugin in plugins:
+        if not isinstance(plugin, dict) or not isinstance(plugin.get("name"), str):
+            raise BuildError("{} contains a plugin without a valid name".format(label))
+        name = plugin["name"]
+        if name in by_name:
+            raise BuildError("{} contains duplicate plugin {!r}".format(label, name))
+        by_name[name] = plugin
+    if set(by_name) != CANONICAL_SKILL_NAMES:
+        raise BuildError(
+            "{} plugin names do not match the canonical 18-skill inventory ({})".format(
+                label, _inventory_difference(set(by_name))
+            )
+        )
+    for name, plugin in by_name.items():
+        _require_manifest_value(plugin, "source", "./", "{} plugin {!r}".format(label, name))
+        _require_manifest_value(
+            plugin,
+            "skills",
+            ["./skills/{}".format(name)],
+            "{} plugin {!r}".format(label, name),
         )
 
 
@@ -469,14 +750,35 @@ def _rewrite_product_versions(
         document["version"] = package_version
         return package_version != source_version
 
-    update_json(
-        ".zcode-plugin/plugin.json",
-        lambda document: update_top_version(document, ".zcode-plugin/plugin.json"),
-    )
-    update_json(
-        "reasonix-plugin.json",
-        lambda document: update_top_version(document, "reasonix-plugin.json"),
-    )
+    def update_zcode(document: object) -> bool:
+        label = ".zcode-plugin/plugin.json"
+        changed = update_top_version(document, label)
+        _require_manifest_value(document, "name", PROJECT_NAME, label)
+        for field, expected in ZCODE_ENTRYPOINTS.items():
+            _require_manifest_value(document, field, expected, label)
+        return changed
+
+    update_json(".zcode-plugin/plugin.json", update_zcode)
+
+    def update_codebuddy(document: object) -> bool:
+        label = ".codebuddy-plugin/plugin.json"
+        changed = update_top_version(document, label)
+        _require_manifest_value(document, "name", PROJECT_NAME, label)
+        for field, expected in CODEBUDDY_ENTRYPOINTS.items():
+            _require_manifest_value(document, field, expected, label)
+        return changed
+
+    update_json(".codebuddy-plugin/plugin.json", update_codebuddy)
+
+    def update_reasonix(document: object) -> bool:
+        label = "reasonix-plugin.json"
+        changed = update_top_version(document, label)
+        _require_manifest_value(document, "name", PROJECT_NAME, label)
+        for field, expected in REASONIX_ENTRYPOINTS.items():
+            _require_manifest_value(document, field, expected, label)
+        return changed
+
+    update_json("reasonix-plugin.json", update_reasonix)
 
     def update_claude_marketplace(document: object) -> bool:
         if not isinstance(document, dict) or not isinstance(document.get("metadata"), dict):
@@ -487,12 +789,15 @@ def _rewrite_product_versions(
         _require_product_version(
             metadata["version"], source_version, ".claude-plugin/marketplace.json metadata.version"
         )
+        _validate_claude_plugin_inventory(document)
         metadata["version"] = package_version
         return package_version != source_version
 
     update_json(".claude-plugin/marketplace.json", update_claude_marketplace)
 
     def update_marketplace(document: object) -> bool:
+        _require_manifest_value(document, "name", ZCODE_MARKETPLACE_NAME, "marketplace.json")
+        _require_manifest_value(document, "version", 1, "marketplace.json")
         if not isinstance(document, dict) or not isinstance(document.get("plugins"), list):
             raise BuildError("marketplace.json has no plugins array")
         matches = [
@@ -502,7 +807,10 @@ def _rewrite_product_versions(
         ]
         if len(matches) != 1:
             raise BuildError("marketplace.json must contain exactly one oh-story plugin")
+        if len(document["plugins"]) != 1:
+            raise BuildError("marketplace.json must not contain non-oh-story plugins")
         plugin = matches[0]
+        _require_manifest_value(plugin, "source", "./", "marketplace.json oh-story plugin")
         _require_product_version(
             plugin.get("version"), source_version, "marketplace.json oh-story version"
         )
@@ -672,6 +980,7 @@ def build_package(
         raise BuildError("source root is not a directory: {}".format(root))
     output_rel = _relative_output(root, output_dir)
 
+    _validate_source_root(root)
     source_version = _read_source_version(root, channel)
     git_root = _git_root(root)
     full_sha: Optional[str] = None
@@ -690,6 +999,7 @@ def build_package(
         dirty = _git_is_dirty(root, output_rel)
 
     entries = _collect_entries(root, channel, output_rel, git_root is not None)
+    _validate_entry_inventory(entries)
     if full_sha is None or short_sha is None:
         full_sha = _content_fingerprint(entries)
         short_sha = full_sha[:12]

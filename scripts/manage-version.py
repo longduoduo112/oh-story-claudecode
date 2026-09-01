@@ -2,7 +2,7 @@
 """Check or update the public oh-story package version surfaces.
 
 The product version is intentionally separate from story-setup's schema and
-agents bundle versions.  This script owns only the five public package version
+agents bundle versions.  This script owns only the six public package version
 fields used by installers and marketplaces.
 """
 
@@ -36,6 +36,7 @@ def version_surfaces(root: Path) -> dict[str, str]:
     version_file = root / "skills/story/VERSION"
     claude_file = root / ".claude-plugin/marketplace.json"
     zcode_file = root / ".zcode-plugin/plugin.json"
+    codebuddy_file = root / ".codebuddy-plugin/plugin.json"
     marketplace_file = root / "marketplace.json"
     reasonix_file = root / "reasonix-plugin.json"
 
@@ -45,6 +46,7 @@ def version_surfaces(root: Path) -> dict[str, str]:
         .get("metadata", {})
         .get("version"),
         ".zcode-plugin/plugin.json:version": load_json(zcode_file).get("version"),
+        ".codebuddy-plugin/plugin.json:version": load_json(codebuddy_file).get("version"),
         "marketplace.json:plugins[0].version": (
             load_json(marketplace_file).get("plugins") or [{}]
         )[0].get("version"),
@@ -109,6 +111,10 @@ def set_version(root: Path, version: str) -> None:
     zcode = load_json(zcode_path)
     zcode["version"] = version
 
+    codebuddy_path = root / ".codebuddy-plugin/plugin.json"
+    codebuddy = load_json(codebuddy_path)
+    codebuddy["version"] = version
+
     marketplace_path = root / "marketplace.json"
     marketplace = load_json(marketplace_path)
     plugins = marketplace.get("plugins")
@@ -123,6 +129,7 @@ def set_version(root: Path, version: str) -> None:
     (root / "skills/story/VERSION").write_text(version + "\n", encoding="utf-8")
     write_json(claude_path, claude)
     write_json(zcode_path, zcode)
+    write_json(codebuddy_path, codebuddy)
     write_json(marketplace_path, marketplace)
     write_json(reasonix_path, reasonix)
 

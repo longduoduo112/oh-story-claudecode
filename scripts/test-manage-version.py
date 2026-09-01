@@ -20,6 +20,7 @@ class ManageVersionTests(unittest.TestCase):
         (self.root / "skills/story").mkdir(parents=True)
         (self.root / ".claude-plugin").mkdir()
         (self.root / ".zcode-plugin").mkdir()
+        (self.root / ".codebuddy-plugin").mkdir()
         self.write_version("1.2.3")
         (self.root / "CHANGELOG.md").write_text(
             "# Changelog\n\n## v1.2.3（test）\n",
@@ -42,6 +43,7 @@ class ManageVersionTests(unittest.TestCase):
             {"metadata": {"version": version}, "plugins": []},
         )
         self.write_json(".zcode-plugin/plugin.json", {"version": version})
+        self.write_json(".codebuddy-plugin/plugin.json", {"version": version})
         self.write_json("marketplace.json", {"plugins": [{"version": version}]})
         self.write_json("reasonix-plugin.json", {"version": version})
 
@@ -62,6 +64,12 @@ class ManageVersionTests(unittest.TestCase):
         result = self.run_script("check")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("reasonix-plugin.json", result.stderr)
+
+    def test_check_rejects_codebuddy_manifest_drift(self) -> None:
+        self.write_json(".codebuddy-plugin/plugin.json", {"version": "1.2.2"})
+        result = self.run_script("check")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(".codebuddy-plugin/plugin.json", result.stderr)
 
     def test_check_rejects_tag_mismatch(self) -> None:
         result = self.run_script("check", "--tag", "v1.2.4")

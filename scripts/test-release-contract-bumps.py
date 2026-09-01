@@ -23,12 +23,17 @@ class ReleaseContractBumpTests(unittest.TestCase):
         self.git("config", "user.email", "contract-test@example.invalid")
 
         (self.root / "scripts").mkdir()
+        (self.root / ".codebuddy-plugin").mkdir()
+        (self.root / "skills/story-data-analyze/agents/workbuddy").mkdir(parents=True)
         (self.root / "skills/story-setup/references/templates").mkdir(parents=True)
         (self.root / "skills/story-setup/scripts").mkdir()
         self.write_contract("1.2.7", 24)
         self.write("skills/story-setup/SKILL.md", "# story-setup\n")
         self.write("skills/story-setup/references/templates/agent.md", "agent v1\n")
         self.write("skills/story-setup/scripts/install.py", "print('v1')\n")
+        self.write("scripts/generate-workbuddy-adapter.py", "# generator v1\n")
+        self.write(".codebuddy-plugin/plugin.json", "{}\n")
+        self.write("skills/story-data-analyze/agents/workbuddy/data.md", "agent v1\n")
         self.commit("v0.7.5 baseline")
         self.git("tag", "v0.7.5")
 
@@ -118,6 +123,25 @@ class ReleaseContractBumpTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("setup_skill_version must not decrease", result.stderr)
         self.assertIn("agents_version must not decrease", result.stderr)
+
+    def test_workbuddy_payload_changes_require_agents_bump(self) -> None:
+        for index, relative in enumerate(
+            (
+                ".codebuddy-plugin/plugin.json",
+                "scripts/generate-workbuddy-adapter.py",
+                "skills/story-data-analyze/agents/workbuddy/data.md",
+            )
+        ):
+            with self.subTest(relative=relative):
+                # Each subtest gets its own commit on top of the same tagged baseline;
+                # restoring the prior payload keeps only this path changed versus v0.7.5.
+                if index:
+                    self.git("checkout", "-q", "v0.7.5", "--", ".")
+                self.write(relative, "changed {}\n".format(index))
+                self.commit("change WorkBuddy deployment payload {}".format(index))
+                result = self.run_gate("--base-tag", "v0.7.5")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("agents_version must increase", result.stderr)
 
 
 if __name__ == "__main__":

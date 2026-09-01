@@ -61,6 +61,37 @@ def run_tracking_check(project: Path, errors: list[dict[str, str]], checks: list
     return result if isinstance(result, dict) else None
 
 
+def check_writing_method(project: Path, errors: list[dict[str, str]], checks: list[dict[str, Any]]) -> None:
+    tool = Path(__file__).resolve().parent / "style_method.py"
+    completed = subprocess.run(
+        [sys.executable, str(tool), "check", "--project", str(project)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    details: dict[str, Any] | None = None
+    try:
+        payload = json.loads(completed.stdout)
+        if isinstance(payload, dict):
+            details = payload
+    except json.JSONDecodeError:
+        details = None
+    if completed.returncode != 0:
+        add(
+            errors,
+            "writing-method-invalid",
+            (completed.stderr or completed.stdout or "写作方法门禁失败").strip()[-4000:],
+            project / "设定" / "写作方法.json",
+        )
+    checks.append(
+        {
+            "name": "writing_method",
+            "status": "pass" if completed.returncode == 0 else "fail",
+            "details": details,
+        }
+    )
+
+
 def check_candidate_workspaces(project: Path, errors: list[dict[str, str]], checks: list[dict[str, Any]]) -> None:
     root = project / "追踪" / "候选章"
     open_count = 0
@@ -305,6 +336,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     warnings: list[dict[str, str]] = []
     checks: list[dict[str, Any]] = []
     tracking = run_tracking_check(project, errors, checks)
+    check_writing_method(project, errors, checks)
     check_candidate_workspaces(project, errors, checks)
     check_receipts(project, errors, checks)
     check_voice_profile(project, errors, warnings, checks)

@@ -56,28 +56,68 @@ class PackageFixture:
                 ".claude-plugin/marketplace.json",
                 self._json(
                     {
+                        "name": "oh-story-skills",
                         "metadata": {"version": self.version},
-                        "plugins": [{"name": "story", "version": "1.0.0"}],
+                        "plugins": [
+                            {
+                                "name": skill_name,
+                                "source": "./",
+                                "skills": ["./skills/{}".format(skill_name)],
+                                "version": "1.0.0",
+                            }
+                            for skill_name in sorted(
+                                verify_package.CANONICAL_SKILL_NAMES
+                            )
+                        ],
                     }
                 ),
                 "file",
             ),
             (
                 ".zcode-plugin/plugin.json",
-                self._json({"name": "oh-story", "version": self.version}),
+                self._json(
+                    {
+                        "name": "oh-story",
+                        "version": self.version,
+                        **verify_package.ZCODE_ENTRYPOINTS,
+                    }
+                ),
+                "file",
+            ),
+            (
+                ".codebuddy-plugin/plugin.json",
+                self._json(
+                    {
+                        "name": "oh-story",
+                        "version": self.version,
+                        **verify_package.CODEBUDDY_ENTRYPOINTS,
+                    }
+                ),
                 "file",
             ),
             (
                 "reasonix-plugin.json",
-                self._json({"name": "oh-story", "version": self.version}),
+                self._json(
+                    {
+                        "name": "oh-story",
+                        "version": self.version,
+                        **verify_package.REASONIX_ENTRYPOINTS,
+                    }
+                ),
                 "file",
             ),
             (
                 "marketplace.json",
                 self._json(
                     {
+                        "name": "oh-story-zcode",
+                        "version": 1,
                         "plugins": [
-                            {"name": "oh-story", "version": self.version}
+                            {
+                                "name": "oh-story",
+                                "source": "./",
+                                "version": self.version,
+                            }
                         ]
                     }
                 ),
@@ -85,8 +125,7 @@ class PackageFixture:
             ),
             ("README.md", b"fixture\n", "file"),
         ]
-        for index in range(16):
-            name = "skill-{:02d}".format(index)
+        for name in sorted(verify_package.CANONICAL_SKILL_NAMES.difference({"story"})):
             entries.append(
                 (
                     "skills/{}/SKILL.md".format(name),
@@ -297,25 +336,44 @@ class VerifyPackageTests(unittest.TestCase):
         with self.assertRaisesRegex(verify_package.VerificationError, "nested below non-directory"):
             verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
 
-    def test_all_five_public_product_version_surfaces_must_match(self) -> None:
-        mutations = {
-            "skills/story/VERSION": b"9.9.9\n",
-            ".claude-plugin/marketplace.json": json.dumps(
-                {"metadata": {"version": "9.9.9"}}
-            ).encode("utf-8"),
-            ".zcode-plugin/plugin.json": json.dumps(
-                {"name": "oh-story", "version": "9.9.9"}
-            ).encode("utf-8"),
-            "reasonix-plugin.json": json.dumps(
-                {"name": "oh-story", "version": "9.9.9"}
-            ).encode("utf-8"),
-            "marketplace.json": json.dumps(
-                {"plugins": [{"name": "oh-story", "version": "9.9.9"}]}
-            ).encode("utf-8"),
-        }
-        for index, (relative, content) in enumerate(mutations.items()):
+    def test_all_six_public_product_version_surfaces_must_match(self) -> None:
+        mutations = (
+            ("skills/story/VERSION", None),
+            (
+                ".claude-plugin/marketplace.json",
+                lambda document: document["metadata"].update(version="9.9.9"),
+            ),
+            (
+                ".zcode-plugin/plugin.json",
+                lambda document: document.update(version="9.9.9"),
+            ),
+            (
+                ".codebuddy-plugin/plugin.json",
+                lambda document: document.update(version="9.9.9"),
+            ),
+            (
+                "reasonix-plugin.json",
+                lambda document: document.update(version="9.9.9"),
+            ),
+            (
+                "marketplace.json",
+                lambda document: document["plugins"][0].update(version="9.9.9"),
+            ),
+        )
+        for index, (relative, mutate) in enumerate(mutations):
             with self.subTest(surface=relative):
                 fixture = PackageFixture(self.base / "version-{}".format(index))
+                if mutate is None:
+                    content = b"9.9.9\n"
+                else:
+                    current = next(
+                        content
+                        for name, content, _ in fixture.entries
+                        if name == relative
+                    )
+                    document = json.loads(current.decode("utf-8"))
+                    mutate(document)
+                    content = json.dumps(document).encode("utf-8")
                 fixture.replace(relative, content)
                 with self.assertRaisesRegex(verify_package.VerificationError, "version surfaces disagree"):
                     verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
@@ -330,6 +388,175 @@ class VerifyPackageTests(unittest.TestCase):
         fixture.replace(".zcode-plugin/plugin.json", b"not json\n")
         with self.assertRaisesRegex(verify_package.VerificationError, "valid UTF-8 JSON"):
             verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
+
+    def test_archive_requires_exact_chinese_skill_inventory(self) -> None:
+        fixture = self.fixture()
+        fixture.remove("skills/story-review/SKILL.md")
+        with self.assertRaisesRegex(
+            verify_package.VerificationError,
+            "exact canonical 18-skill Chinese inventory.*missing: story-review",
+        ):
+            verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
+
+        fixture = PackageFixture(self.base / "renamed-skill")
+        fixture.remove("skills/story-review/SKILL.md")
+        fixture.entries.append(
+            (
+                "skills/story-globalize/SKILL.md",
+                b"---\nname: story-globalize\ndescription: overseas\n---\n",
+                "file",
+            )
+        )
+        fixture.write()
+        with self.assertRaisesRegex(verify_package.VerificationError, "separate overseas tool"):
+            verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
+
+        fixture = PackageFixture(self.base / "foreign-skill")
+        fixture.entries.append(
+            (
+                "skills/not-oh-story/SKILL.md",
+                b"---\nname: not-oh-story\ndescription: foreign\n---\n",
+                "file",
+            )
+        )
+        fixture.write()
+        with self.assertRaisesRegex(
+            verify_package.VerificationError,
+            "exact canonical 18-skill Chinese inventory.*unexpected: not-oh-story",
+        ):
+            verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
+
+        fixture = PackageFixture(self.base / "frontmatter-impersonation")
+        fixture.replace(
+            "skills/story-review/SKILL.md",
+            b"---\nname: story-globalize\ndescription: overseas\n---\n",
+        )
+        with self.assertRaisesRegex(verify_package.VerificationError, "skill name mismatch"):
+            verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
+
+    def test_archive_rejects_relocated_story_globalize_path_segment(self) -> None:
+        fixture = self.fixture()
+        fixture.entries.append(
+            ("vendor/Story-Globalize/SKILL.md", b"foreign\n", "file")
+        )
+        fixture.write()
+        with self.assertRaisesRegex(verify_package.VerificationError, "separate overseas tool"):
+            verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
+
+    def test_archive_rejects_local_deployment_dirs_but_keeps_plugin_manifests(self) -> None:
+        valid = self.fixture()
+        verify_package.verify_package(valid.zip_path, valid.manifest_path)
+
+        for index, dirname in enumerate(
+            sorted(verify_package.FORBIDDEN_DEPLOYMENT_DIR_NAMES)
+        ):
+            with self.subTest(dirname=dirname):
+                fixture = PackageFixture(self.base / "local-dir-{}".format(index))
+                fixture.entries.append(
+                    ("nested/{}/local.txt".format(dirname), b"local\n", "file")
+                )
+                fixture.write()
+                with self.assertRaisesRegex(
+                    verify_package.VerificationError,
+                    "forbidden local deployment directory",
+                ):
+                    verify_package.verify_package(
+                        fixture.zip_path, fixture.manifest_path
+                    )
+
+    def test_skill_frontmatter_rejects_duplicate_quoted_and_complex_name_keys(self) -> None:
+        cases = {
+            "duplicate": b"name: story-review\nname: story-globalize",
+            "quoted-key": b'name: story-review\n"name": story-globalize',
+            "quoted-value": b'name: "story-review"',
+            "tagged-key": b"name: story-review\n!!str name: story-globalize",
+        }
+        for index, (label, name_lines) in enumerate(cases.items()):
+            with self.subTest(label=label):
+                fixture = PackageFixture(self.base / "complex-name-{}".format(index))
+                fixture.replace(
+                    "skills/story-review/SKILL.md",
+                    b"---\n" + name_lines + b"\ndescription: fixture\n---\n",
+                )
+                with self.assertRaisesRegex(
+                    verify_package.VerificationError,
+                    "frontmatter|simple unquoted",
+                ):
+                    verify_package.verify_package(
+                        fixture.zip_path, fixture.manifest_path
+                    )
+
+    def test_product_manifest_identity_and_entrypoints_are_locked(self) -> None:
+        manifest_paths = (
+            ".claude-plugin/marketplace.json",
+            ".zcode-plugin/plugin.json",
+            ".codebuddy-plugin/plugin.json",
+            "reasonix-plugin.json",
+            "marketplace.json",
+        )
+        for index, relative in enumerate(manifest_paths):
+            with self.subTest(relative=relative, field="name"):
+                fixture = PackageFixture(self.base / "manifest-name-{}".format(index))
+                current = next(
+                    content
+                    for name, content, _ in fixture.entries
+                    if name == relative
+                )
+                document = json.loads(current.decode("utf-8"))
+                document["name"] = "other-product"
+                fixture.replace(relative, json.dumps(document).encode("utf-8"))
+                with self.assertRaisesRegex(verify_package.VerificationError, "field 'name'"):
+                    verify_package.verify_package(
+                        fixture.zip_path, fixture.manifest_path
+                    )
+
+        entrypoint_cases = (
+            (
+                ".claude-plugin/marketplace.json",
+                lambda document: document["plugins"][0].update(
+                    skills=["./skills/not-the-declared-skill"]
+                ),
+            ),
+            (
+                ".zcode-plugin/plugin.json",
+                lambda document: document.update(hooks="elsewhere/hooks.json"),
+            ),
+            (
+                ".codebuddy-plugin/plugin.json",
+                lambda document: document.update(agents=[]),
+            ),
+            (
+                "reasonix-plugin.json",
+                lambda document: document.update(skills="elsewhere"),
+            ),
+            (
+                "marketplace.json",
+                lambda document: document["plugins"][0].update(source="elsewhere"),
+            ),
+        )
+        for index, (relative, mutate) in enumerate(entrypoint_cases):
+            with self.subTest(relative=relative, field="entrypoint"):
+                fixture = PackageFixture(self.base / "manifest-route-{}".format(index))
+                current = next(
+                    content
+                    for name, content, _ in fixture.entries
+                    if name == relative
+                )
+                document = json.loads(current.decode("utf-8"))
+                mutate(document)
+                fixture.replace(relative, json.dumps(document).encode("utf-8"))
+                with self.assertRaises(verify_package.VerificationError):
+                    verify_package.verify_package(
+                        fixture.zip_path, fixture.manifest_path
+                    )
+
+    def test_archive_requires_every_product_manifest(self) -> None:
+        for index, relative in enumerate(verify_package.REQUIRED_PRODUCT_FILES):
+            with self.subTest(relative=relative):
+                fixture = PackageFixture(self.base / "missing-product-{}".format(index))
+                fixture.remove(relative)
+                with self.assertRaises(verify_package.VerificationError):
+                    verify_package.verify_package(fixture.zip_path, fixture.manifest_path)
 
     def test_install_smoke_extracts_safely_runs_list_only_and_counts_skills(self) -> None:
         fixture = self.fixture()

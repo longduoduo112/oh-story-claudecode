@@ -4,20 +4,21 @@
 
 > **日更准备步骤**：每章写作前 4 步——状态筛选 + 题材正文提示卡召回 + 文风召回 + 意图确认，嵌入 Step 2 逐章循环。读者契约、主角代理权、期待债、终局储备统一参 `reader-contract-and-progression.md`。
 >
-> Step 2 必读 / 生成五类写前资料：
+> Step 2 必读 / 生成四类写前资料：
 > 1. `{对标书路径}/剧情/情绪模块.md`（读者需求 / 情绪引擎 + 可复现模块；缺失按下方「模块/节奏缺失」规则停下修复）
 > 2. `{对标书路径}/剧情/节奏.md`（关键信息推进 + 情绪触动点 + 爆发节奏；缺失按下方「模块/节奏缺失」规则停下修复）
 > 3. `设定/题材正文提示卡.md`（题材边界 / 核心逻辑 / 读者期待 / 节奏密度；缺失时用 `设定/题材定位.md` + `references/genre-prose-cards.md` 索引匹配并读取 `references/genre-prose-cards/{题材}.md` 单卡优先生成，`references/style-genre-modules.md` 通用流派兜底）
-> 4. `{对标书路径}/文风.md`（整书级 ~4000 字，含原文锚点范例片段）
-> 5. `{对标书路径}/章节/第K章_摘要.md`（按本章情绪/基调挑 1 章）；若同章存在 `第K章_深度拆解.md` 则加读，否则回退黄金三章深度拆解/文风文件里的可借鉴技巧
+> 4. 写作方法分支：先运行 `style_method.py resolve`。A 才读取 `{对标书路径}/文风.md`（整书级 ~4000 字，含原文锚点范例片段）；B 改读本章 `compiled_method_packet`
 >
 > 对标书路径查找：先 `{项目}/对标/{书名}/`，回退 `拆文库/{书名}/`。
 >
+> A 的文风召回在主产物齐备后，再按本章基调读取一个匹配章摘要及可用深度拆解；B 不读取匹配章原文锚点。
+>
 > **题材正文提示卡**：优先读 `设定/题材正文提示卡.md`；缺失时不阻塞，先从 `设定/题材定位.md` 精确匹配 `references/genre-prose-cards.md` 索引，并只读取 `references/genre-prose-cards/{题材}.md` 题材单卡（高/中/低置信照原卡标注），无命中再从 `references/style-genre-modules.md` 抽取通用流派短 `genre_prose_card`。题材卡只管题材味和正文取舍，不改细纲、不覆盖情绪/节奏权威文件，也不接管句长/标点等文风细节。题材卡只在写手心里校准取舍，卡名/题材标签/置信度/条目/合规自评一律不写进正文。
 >
-> **自定义文风（`设定/文风.md`，优先级最高）**：主会话每章写作前直接读 `设定/文风.md`（不经 story-explorer——它只看 `对标/文风.md`）。存在且含实质内容（去空白 ≥200 字，或含「句长 / 标点 / 对话 / 锚点 / 笔调」风格小节且小节内有可执行约束：比例 / 例句 / 禁止或偏好描述）即进入「自定义文风模式」：它是本书既定笔调的**权威**风格基，narrative-writer 的句长带 / 标点节奏 / 对话潜台词 / 情绪交替以它为准；对标 / 拆文 `文风.md` 降级为「**参考**」——只供原文锚点范例与句长分布数值兜底，不再是被遵循的最终文风。空 / 仅空白 / 仅标题 / 占位 stub（待办 / 待补充 / ___）视为不存在。仅接管风格，**不覆盖** `剧情/情绪模块.md` / `剧情/节奏.md` 的情绪与节奏意图（同下「冲突规则」）。随机标点堆砌、英文点号投机、Markdown 分隔线和项目/平台明确禁用项仍由格式门处理；有功能的 `……`、`——`/`—` 先按自定义文风和场景功能复核，不一刀切归一。段落结构、碎句密度仍按戏剧单元与读感判断。
+> **自定义文风（`设定/文风.md`，优先级最高）**：主会话每章写作前直接读 `设定/文风.md`（不经 story-explorer——它只看 `对标/文风.md`）。存在且含实质内容（去空白 ≥200 字，或含「句长 / 标点 / 对话 / 锚点 / 笔调」风格小节且小节内有可执行约束：比例 / 例句 / 禁止或偏好描述）即进入「自定义文风模式」：它是本书既定笔调的**权威**风格基，narrative-writer 的句长带 / 标点节奏 / 对话潜台词 / 情绪交替以它为准。A 的对标 / 拆文 `文风.md`或 B 的 `compiled_method_packet` 降级为「**参考**」，不再是被遵循的最终文风；B 即使降级也不回读来源原文。空 / 仅空白 / 仅标题 / 占位 stub（待办 / 待补充 / ___）视为不存在。仅接管风格，**不覆盖** `剧情/情绪模块.md` / `剧情/节奏.md` 的情绪与节奏意图（同下「冲突规则」）。随机标点堆砌、英文点号投机、Markdown 分隔线和项目/平台明确禁用项仍由格式门处理；有功能的 `……`、`——`/`—` 先按自定义文风和场景功能复核，不一刀切归一。段落结构、碎句密度仍按戏剧单元与读感判断。
 >
-> **文风缺失**：**未进入自定义文风模式**时，对标书缺 `文风.md` 则停止本章写作、不 inline 生成，报错：「对标书 X 缺少 文风.md。请用 `/story-long-analyze` 跑 Stage 6 生成文风，再 `/story-import` 同步。」**已进入自定义文风模式则不 fail-fast**，用 `设定/文风.md` 继续。
+> **文风缺失**：`A-standard` 且**未进入自定义文风模式**时，对标书缺 `文风.md` 则停止本章写作、不 inline 生成，报错：「对标书 X 缺少 文风.md。请用 `/story-long-analyze` 跑 Stage 6 生成文风，再 `/story-import` 同步。」已进入自定义文风模式则用 `设定/文风.md` 继续。`B-distilled` 不读取对标 `文风.md`，它只检查编译方法绑定和本章规则包。
 >
 > **模块/节奏缺失**：对标书缺 `剧情/情绪模块.md` 或 `剧情/节奏.md` 时停止本章准备，设置 `gaps.missing_primary_contract: true`，提示重跑 `/story-long-analyze` Stage 3+ 或重新 `/story-import`；不得用摘要文件拼装低置信替代品。
 >
@@ -28,6 +29,8 @@
 > **多本对标书**：从 `设定/题材定位.md` 读 `主对标书` 字段；字段指向当前作品时按缺失处理（老项目可能把本书自身登记成了主对标）。缺失时用 `对标/` 下字典序第一本并提示用户补字段——先按当前项目目录名、`.active-book` 和 `设定/题材定位.md` 中的本书信息识别当前作品，排除同名或来源指向当前正文的 `对标/{当前书}/`；排除后为空则按无对标处理。
 >
 > 完整写前准备逻辑见 `SKILL.md` 的 Phase 4。
+>
+> **写作方法分支**：完整规则见 `style-method-branches.md`。没有 `设定/写作方法.json` 的旧项目使用隐式 `A-standard`，行为不变。显式 `B-distilled` 每章必须先通过 `style_method.py check/resolve`；B 只替换对标文风与原文锚点直载，情绪模块、节奏、题材卡和本书声音画像仍照常加载。B 产物失效时停止，不得静默回退 A。
 
 ---
 
@@ -43,7 +46,7 @@
 
 ## Step 1：快速上下文加载
 
-**可选：使用 story-explorer agent 批量加载上下文**。如果项目已部署 story-explorer agent（检查 `.claude/agents/story-explorer.md` 是否存在），可以用 `Agent(subagent_type: "story-explorer", prompt: "项目目录：{dir}\n查询类型：context_load\n查询参数：准备写第 {N} 章\n追踪状态：last_committed_chapter={上一步 check 的值}，state_revision={上一步 check 的值}")` 执行 `context_load` 查询，一次获取全部写作上下文。spawn 返回后直接使用其 results，跳过下方手动加载步骤。如果 agent 不可用或返回不完整，回退到下方手动加载。
+**可选：使用 story-explorer agent 批量加载上下文**。按当前运行时检查 story-explorer（Claude `.claude/agents/story-explorer.md`、OpenCode `.opencode/agents/story-explorer.md`、TRAE Code `.trae/agents/story-explorer.md`、WorkBuddy 项目模式 `.codebuddy/agents/story-explorer.md`、Codex `.codex/agents/story-explorer.toml`）。可用时调用同名 agent 执行 `context_load`；TRAE Code 只用内置 `Agent` 按 `.trae/agents/story-explorer.md` 的名称选择同名 Subagent，不传 Claude 的 `subagent_type`；WorkBuddy 项目模式用 `Agent(subagent_type: "story-explorer", prompt: ...)`，plugin-only 仅在当前 Agent registry 真实返回 `oh-story:story-explorer` 时使用该精确值；Claude/OpenCode 可用等价 `subagent_type`，Codex 使用 `agent_type`，任务正文统一为 `项目目录：{dir}\n查询类型：context_load\n查询参数：准备写第 {N} 章\n追踪状态：last_committed_chapter={上一步 check 的值}，state_revision={上一步 check 的值}`。返回后直接使用其 results，跳过下方手动加载步骤。如果 agent 不可用或返回不完整，回退到下方手动加载。
 
 手动加载（默认方式）：
 
@@ -101,8 +104,10 @@
    - **上一章欠账检查**：写本章正文前，确认上一章无未清 blocking 毒句式、语言泄漏、HTML 标记和文风卫生污染。写前 hook 会自动拦；hook 不可用时，先跑 `node scripts/language_gate.js 正文/第{N-1}章_*.md`，再跑 `node scripts/check-style-hygiene.js --check --fail-on=blocking 正文/第{N-1}章_*.md`、`node scripts/check-ai-patterns.js --check --fail-on=blocking 正文/第{N-1}章_*.md` 与 `node scripts/check-degeneration.js --check --language=zh --fail-on=blocking 正文/第{N-1}章_*.md`。有欠账先清完再写本章；去味跳过不得绕过语言门或文风卫生门，正文也不得写入 HTML 豁免标记。
    - **状态筛选**：每章开始前必须确认本章细纲、上一章正文（或上一章刚写入的正文）、`追踪/上下文.md` 已在本轮实际读取/更新，并已运行 `tracking_commit.py check`。不要为取状态/章号把完整 `_tracking-state.json` 加载进 prompt。角色最新状态先取续写状态卡 `## 核心角色状态`，待回收/推进伏笔取 `## 活跃伏笔`；缺失内容按下方「旧信息查找步骤」定点查询，不得用未标明来源的聊天记忆替代，也不得为了方便通读所有逐章记录。
    - **久别角色交叉检查**：本章细纲列出的核心复用角色若不在 `## 核心角色状态`，直接读取小文件 `追踪/角色状态/{名}.md`；不存在即视为当前检查点损坏，运行 `tracking_commit.py check` 并通过完整事务修复，不能临时扫描增量后手写替代。`设定/角色/{名}.md` 只有静态原始人设，不能替代动态快照。角色重新活跃后，把名字放进本章事务 `context.active_character_names`，由工具更新续写状态卡。
+   - **写作方法分支解析**：从本章细纲提取 3-6 个场景标签，运行 `scripts/style_method.py resolve --project {项目目录} --scene-tag ...`。A 进入下方现有 `benchmark_style_load`；B 把 `selected_rules` 作为 `compiled_method_packet`，不读取对标 `文风.md`、匹配章锚点或来源原文，同时主会话直接读取 `剧情/情绪模块.md` 和 `剧情/节奏.md`。`chapter_candidate.py init/check` 会再次核验分支并把方法快照绑定进候选上下文。
    - **对标模块/节奏/题材卡/文风召回**：
-     - 调 story-explorer 的 `benchmark_style_load` query_type（输入：项目目录 + 本章目标情绪 + 本章爽点类型 + 本章目标字数）一次性拿到：`{style_profile_path, style_profile_summary, selected_emotion_module, rhythm_reference, module_source_path, rhythm_source_path, matched_chapter_K, matched_chapter_techniques, anchor_excerpts, gaps}`
+     - **A 分支**调 story-explorer 的 `benchmark_style_load` query_type（输入：项目目录 + 本章目标情绪 + 本章爽点类型 + 本章目标字数）一次性拿到：`{style_profile_path, style_profile_summary, selected_emotion_module, rhythm_reference, module_source_path, rhythm_source_path, matched_chapter_K, matched_chapter_techniques, anchor_excerpts, gaps}`。**B 分支不调用这条组合召回**；它直接选择情绪模块和节奏条目，再使用上一步的 `compiled_method_packet`
+     - 下方 `gaps.profile_*`、匹配章和锚点分支只适用于 A。B 只处理直接读取情绪模块/节奏时的 `missing_primary_contract` 与冲突，并检查 `compiled_method_packet` 非空；不得为了复用 A 的结构而读取来源文风或锚点
      - **题材正文提示卡召回**：主会话优先读 `设定/题材正文提示卡.md`；缺失则先读 `设定/题材定位.md` + `references/genre-prose-cards.md` 索引，按主题材精确匹配后只读取 `references/genre-prose-cards/{题材}.md` 单卡（如 都市脑洞 / 豪门总裁 / 年代 / 双男主；低置信卡必须在意图确认标注低置信，并要求同题材对标校准），无命中再读 `references/style-genre-modules.md` 通用流派模块。跨题材时主题材抽 3-5 条、辅题材抽 1-2 条，生成 `genre_prose_card`（题材边界、核心逻辑、读者期待、核心爽点/情绪、节奏密度、场景颗粒、禁止漂移、本章取舍、卡片置信度）。题材卡必须进入 narrative-writer prompt，但只传短摘要，并说明卡片只供内部题材校准、正文里不得出现卡片文字或合规自评
      - **自定义文风覆盖（先于下列 gaps 判定）**：主会话直接读 `设定/文风.md`（不经 explorer），含实质内容（去空白 ≥200 字，或含 句长 / 标点 / 对话 / 锚点 / 笔调 小节且小节内有可执行约束：比例 / 例句 / 禁止或偏好描述）则置 `custom_style=true`——它作权威风格基**取代** `style_profile_path` 喂给 narrative-writer（句长 / 标点 / 潜台词 / 情绪交替），对标 / 拆文 `style_profile_path` 降级为参考（原文锚点 + 句长分布数值兜底）。空 / 仅空白 / 仅标题 / 占位 stub（待办 / 待补充 / ___）视为不存在。仅接管风格，**不豁免情绪 / 节奏轴**。
      - 若 `gaps.no_benchmark: true` → `custom_style` 为真则进入「自定义文风模式」（用 `设定/文风.md` 写作；无对标可召回，情绪 / 节奏目标改从本书细纲「目标情绪」、卷纲、`设定/题材定位.md` 等内部材料取，`selected_emotion_module` / `rhythm_reference` 记为「无」，不声称从对标召回）；否则跳过文风召回，在「意图确认」标记"无对标参考"
@@ -111,14 +116,14 @@
      - 若 `gaps.profile_missing: true` → `custom_style` 为真则进入自定义文风模式继续；否则按上文 fail-fast 流程停止
      - 若 `gaps.profile_degenerate: true`（对标文风不可用） → `custom_style` 为真则用 `设定/文风.md` 写作；否则跳过文风、回到默认 Gates 写作
      - 若 `gaps.tone_match_failed: true` → 仅用整书文风写作，不喂 matched_chapter
-     - 否则原样传给 `style_profile_path`、`style_profile_summary`、`selected_emotion_module`、`rhythm_reference`、`module_source_path`、`rhythm_source_path`、`matched_chapter_K`、`matched_chapter_techniques`、`anchor_excerpts` 和 `genre_prose_card` 给 Step 2 末尾的 narrative-writer spawn prompt；其中 `selected_emotion_module` 必须进入情绪目标，`rhythm_reference` 必须进入节奏/爆发安排，`genre_prose_card` 必须进入题材取舍，`matched_chapter_techniques` 必须进入「文风召回指令」。项目存在 `追踪/文风/accepted-voice-profile.json` 时先运行 `voice_profile.py verify`；仅在 `fresh` 时传本章相关的早期/近期范围摘要，作为本书声音 advisory，不传全量逐章统计、不覆盖自定义文风或情绪/节奏契约。写前准备记录必须保留 `gaps` 原值，尤其 `gaps.module_missing`、`gaps.rhythm_missing`、`gaps.conflict`、`gaps.matched_deep_dive_missing`；若 `matched_deep_dive_missing` 为 true，文风召回指令中明确写“同章深度拆解缺失，已回退黄金三章/文风技巧”，不得在后续报告中反转为 false
-     - **无 story-explorer 时直接执行**：主会话手动按对标书路径查找，先读 `剧情/情绪模块.md` 选 `selected_emotion_module`，再读 `剧情/节奏.md` 选 `rhythm_reference`，读 `设定/题材正文提示卡.md` 或按 `genre-prose-cards.md` 索引 + 单题材卡优先即时生成 `genre_prose_card`，先读 `设定/文风.md`（含实质内容则 `custom_style=true`、作权威风格基，对标 `文风.md` 降为参考 / 句长兜底）、再读对标 `文风.md` + grep `章节/*_摘要.md` 的「基调」字段找匹配章，然后读对应 `第K章_摘要.md`；如 `第K章_深度拆解.md` 不存在，改读 `第1-3章_深度拆解.md` 中与本章基调最接近的一章。模块或节奏文件缺失时设置 `missing_primary_contract` 并停止修复
+     - A 原样传 `style_profile_path`、`style_profile_summary`、`selected_emotion_module`、`rhythm_reference`、`module_source_path`、`rhythm_source_path`、`matched_chapter_K`、`matched_chapter_techniques`、`anchor_excerpts` 和 `genre_prose_card` 给 Step 2 末尾的 narrative-writer prompt。B 只传 `selected_emotion_module`、`rhythm_reference`、`genre_prose_card`、`compiled_method_packet`，以及实质性的 `设定/文风.md` 和 fresh 声音画像；不得把整份编译方法、来源名、证据定位或语料原文塞进 prompt。两条分支中情绪、节奏、题材和声音画像的优先级不变。项目存在 `追踪/文风/accepted-voice-profile.json` 时先运行 `voice_profile.py verify`；仅在 `fresh` 时传本章相关的早期/近期范围摘要，作为本书声音 advisory，不传全量逐章统计、不覆盖自定义文风或情绪/节奏契约。A 的写前准备记录继续保留 `gaps` 原值，尤其 `gaps.module_missing`、`gaps.rhythm_missing`、`gaps.conflict`、`gaps.matched_deep_dive_missing`
+     - **无 story-explorer 时直接执行**：主会话手动按对标书路径查找，先读 `剧情/情绪模块.md` 选 `selected_emotion_module`，再读 `剧情/节奏.md` 选 `rhythm_reference`，读 `设定/题材正文提示卡.md` 或按 `genre-prose-cards.md` 索引 + 单题材卡优先即时生成 `genre_prose_card`，并直接读 `设定/文风.md` 判定 `custom_style`。A 再读对标 `文风.md` + grep `章节/*_摘要.md` 的「基调」字段找匹配章，然后读对应 `第K章_摘要.md`；如 `第K章_深度拆解.md` 不存在，改读 `第1-3章_深度拆解.md` 中与本章基调最接近的一章。B 只使用已 resolve 的 `compiled_method_packet`，不读对标文风、匹配章或原文锚点。模块或节奏文件缺失时设置 `missing_primary_contract` 并停止修复
    - **意图确认**：从细纲「目标情绪」确认本章情绪目标，综合状态筛选 + `selected_emotion_module` + `rhythm_reference` + `genre_prose_card` + 文风召回，用一句话写本章意图（情绪+节奏+模块+题材取舍+文风指令）。意图写成“**情绪前状态 → 触发 → 后状态**”，不能只写情绪标签，并指明推进单元情绪引擎的哪一环；同时消费主角代理权、当前单元的主角目标/关键选择、主推线/战果与终局底牌边界。仅当新承载对象、关键转折或高潮进入时才跑 emotional-methods.md 的「合理性五问」，不要每段填表。
      - **细纲字段只定“发生什么”，不定正文形状**：阶段位置/禁止提前释放定边界，结构公式定骨架，内容概括定起承转合，情节安排定多线取舍，人物关系与出场顺序定镜头顺序，情节细化定行动成本/收益归属，本章兑现与状态变化定留存结果，结尾设定/章尾余势与钩子定承接。情节点可自由合并、穿插、重排，演成场景；不逐条各扩一段，不把“谁做了什么”的概括语原样搬进叙述（见 writing-craft.md「从细纲到正文」）。
      - **两条写进意图**：① 爽点出手前先铺可指认的危机/期待（plot-emotion-system 倒推法，不铺=空洞）；② 装逼/打脸/揭露章把视角/信息差经出场顺序放大成在场配角的差异化反应（plot-core-methods 信息差×人际×情绪）。对话声线与细纲边界属正文层，由 narrative-writer 执行，本步不重复。
      - **期待所有权**：按因果权 + 结算权与「关键节点四问」确认。配角可执行局部动作，不要求主角亲自动手，但不得无声夺走已承诺的高光/收益；被配角、机构或偶然性捕获且无可见交换时标记 `protagonist_agency_risk`，先修细纲/卷纲再进正文。
      - 例：「快节奏打脸——起因=账单暴露，逻辑线=发现→逼问→反证→公开代价；复现 M03‘信息差反杀’的读者期待，按都市世情题材卡落到账单/转账/旁人反应，关键信息先压后爆，爆发后用一段冷却承接下一钩子；标点照文风里的停顿节奏、对话潜台词用问非所答；剧情边界=不得新增账单之外的新敌人或提前解决下一章钩子。」
-   - 写章节候选 → **字数验证（优先 Python 字符统计，`wc -m` 仅作 Unix 备选，< 目标90%则对照情节点字数预算定位欠账密点、一次性重写到配额，不挤牙膏反复回炉；只能扩写细纲内已有情节点，若现有细纲不足以达标则停止并输出 `outline_underfilled` 欠账点；> 章目标×1.1 则压过场/合并疏点收敛；90% 是放行下限非目标，理想落在 [章目标, 章目标×1.1]）** → 检查钩子/爽点 → **正文元信息扫描** → 禁用词扫描 → `chapter_candidate.py check`（含中文、AI 模式、退化三道硬门和本书声音 advisory）
+   - 写章节候选 → **字数验证（优先 Python 字符统计，`wc -m` 仅作 Unix 备选，< 目标90%则对照情节点字数预算定位欠账密点、一次性重写到配额，不挤牙膏反复回炉；只能扩写细纲内已有情节点，若现有细纲不足以达标则停止并输出 `outline_underfilled` 欠账点；> 章目标×1.1 则压过场/合并疏点收敛；90% 是放行下限非目标，理想落在 [章目标, 章目标×1.1]）** → 检查钩子/爽点 → **正文元信息扫描** → 禁用词扫描 → `chapter_candidate.py check`（含写作方法绑定、中文、AI 模式、退化三道硬门和本书声音 advisory）
      - **正文元信息扫描**：标题行以外不得出现 `第[一二三四五六七八九十百千万两0-9]+章|上一章|上章|前一章|本章|这一章|前文|后文|伏笔|细纲|读者|ch\d+ 等英文章号缩写`。这些词属于写作/工程元信息，必须改成角色当下能感知的事件锚点或相对时间；例如“比第一章那三秒开火更疼”改成“比那三秒开火更疼”。只有角色在故事世界内真实阅读/讨论“第X章”文本，或真实身为作者/读者并谈论读者身份时例外。
      - **中文语言锁**：正文叙述、对话、心理和场景都默认用中文，不得突然写出英文句/段、句首大写英文词或未命名的裸英文词。外国人对话默认翻成中文并在场内标明语种。缩写、型号和剧情代号不得自动豁免；URL、邮箱、文件名和代码只机械保护明确非叙事结构；其他外语只在用户单独确认后写入 `.deslop-whitelist`；HTML 标记不得进入正文。
    - **接纳边界**：`review` 模式报告候选标题、字数、关键变化、Gate 结果和运行目录后停止；不得先写正式正文或构造已发生事实。用户明确接纳后恢复此工作区。`auto` 模式使用 manifest 中的本次授权说明继续。
@@ -186,7 +191,7 @@
 
 **本步不再写任何追踪内容**——每章 Step 2 已完成事务。只做两项验证：
 
-1. 对项目运行 `story_doctor.py --project`；它包含 `tracking_commit.py check`，并验证 state/派生视图、章节提交凭证、正文摘要、悬空候选、已配置声音画像的来源摘要和修订门禁。
+1. 对项目运行 `story_doctor.py --project`；它包含 `tracking_commit.py check` 与写作方法分支检查，并验证 state/派生视图、章节提交凭证、正文摘要、悬空候选、已配置声音画像的来源摘要和修订门禁。
 2. 确认本批每章都有对应 `追踪/逐章记录/第NNN章.md`，每个文件 ≤3072 字节。缺失或超限时不手工补文件，回到该章事务修正并重跑 `commit`。
 
 然后判断任务总目标：
