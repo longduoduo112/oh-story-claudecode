@@ -34,7 +34,7 @@
 
 围绕四条线展开：爆款逆向 · 剧情模块化重组 · 上下文状态分层管理 · 人机协同。
 
-> **v0.9.0 正式版说明：** 本版新增 `A-standard` / `B-distilled` 长篇写作方法治理，并新增 TRAE Code 与 WorkBuddy / CodeBuddy Code 的原生发现与项目部署适配。中文主包在 TRAE 逐角色部署 13 个 Agents（8 个通用 + 5 个数据分析精确角色）；WorkBuddy 部署 10 张基础物理卡（8 个通用 + `story-data-fetcher` + `story-data-readonly-runner`），其余四个只读数据逻辑角色由 pooled runner 按 Skill 内角色卡执行。CodeBuddy agentic registry 的 20 个总槽位意味着 oh-story 项目物理卡不得超过 19，这是平台容量边界，不是中文主包的实际卡数。TRAE 另处理兼容读取 `.claude/settings*.json` 时的 Hook 去重；WorkBuddy 同时支持命名空间 `/oh-story:story-*` 的 plugin 模式和裸 `/story-*` 的项目模式。两端升级后都需重新部署并新开会话；部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`。
+> **v0.9.0 正式版说明：** 本版新增 `A-standard` / `B-distilled` 长篇写作方法治理，并新增 TRAE Code 与 WorkBuddy / CodeBuddy Code 的原生发现与项目部署适配。中文主包在 TRAE 实际注册 13 个 Agent（8 个通用角色 + 5 个数据分析精确角色）；WorkBuddy 实际注册 10 个 Agent（8 个通用角色 + `story-data-fetcher` + `story-data-readonly-runner`）。其中 `story-data-readonly-runner` 可按任务承担其余四种只读数据分析职责，这四种职责不分别注册 Agent、不额外占用 registry 名额。CodeBuddy agentic registry 共有 20 个槽位，oh-story 项目最多注册 19 个 Agent；这是平台容量边界，中文主包实际注册 10 个。TRAE 另处理兼容读取 `.claude/settings*.json` 时的 Hook 去重；WorkBuddy 同时支持命名空间 `/oh-story:story-*` 的 plugin 模式和裸 `/story-*` 的项目模式。两端升级后都需重新部署并新开会话；部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`。
 >
 > 本轮升级安全链把中文主包锁定为精确 18 个 Skill：构建、验包和 TRAE / WorkBuddy 项目部署都不从项目旁路吸收独立工具。其他工具既不进中文发行包，也不注入本轮 TRAE / WorkBuddy 适配。书目发现跳过“备份/归档/`archive(s)`”历史树；从 `target_cli` 减端时先备份并只移除受管注册，旧 runner 看到 sentinel 已不含当前端会静默自锁。
 >
@@ -144,7 +144,7 @@ npx skills add https://github.com/qin1473692580-ux/oh-story-claudecode/releases/
 >
 > **TRAE Code 用户：** 在写作项目根用自然语言调用 `story-setup`，并指定 `target_cli=trae`。部署器会按当前中文主包动态生成 `.trae/skills/`、`.trae/commands/`，安装 `.trae/agents/`（8 个通用 + 5 个数据分析精确角色，共 13 个）、`.trae/rules/` 与 TRAE 原生 `.trae/hooks.json`，并保留已有用户 hooks 和自定义资产；Hook 文件固定使用官方 `{version: 1, hooks: {...}}`，旧事件直挂结构会在升级时迁移。Hook 依赖 PATH 中的 `node`；部署后需在 TRAE Settings 的 Hooks 页面 review/enable 本项目 Hooks，确认项目 `AGENTS.md` / Rules 导入开启，再重载项目或新开会话。如 Subagents 未出现，在「设置 > Beta > Subagents」开启目录发现后再重载。
 >
-> **WorkBuddy / CodeBuddy Code 用户：** 有两种原生模式。项目模式在写作项目根调用 `story-setup` 并选择 `target_cli=workbuddy`，会部署固定 18 个中文主包 Skill、裸 `/story-*` Commands、10 张中文主包物理 Agent 卡（8 个通用 + `story-data-fetcher` + `story-data-readonly-runner`）、Rules、memory 与 Hooks；plugin-only 模式由规范 `.codebuddy-plugin/plugin.json` 暴露命名空间化 `/oh-story:story-*` Skills、Agents 与 Hooks，不再加载同名 Commands。plugin hooks 与项目 `.codebuddy/settings.json` hooks 只能启用一套，部署器会保留用户配置并自动互斥；已有 `AGENTS.md` 不会被短 `CODEBUDDY.md` 遮蔽。CodeBuddy 的平台容量边界是 19 张 oh-story 项目物理卡，但主包实际只部署上述 10 张。部署后必须新开会话并实际调用 Agent 验证 registry；设置页显示角色已启用不等于 `Agent` 工具能够调度。Bash/PowerShell 仅覆盖受测静态写法，工具白名单也不是目录沙箱。
+> **WorkBuddy / CodeBuddy Code 用户：** 有两种原生模式。项目模式在写作项目根调用 `story-setup` 并选择 `target_cli=workbuddy`，会部署固定 18 个中文主包 Skill、裸 `/story-*` Commands、实际注册 10 个中文主包 Agent（8 个通用角色 + `story-data-fetcher` + `story-data-readonly-runner`）、Rules、memory 与 Hooks；plugin-only 模式由规范 `.codebuddy-plugin/plugin.json` 暴露命名空间化 `/oh-story:story-*` Skills、Agents 与 Hooks，不再加载同名 Commands。plugin hooks 与项目 `.codebuddy/settings.json` hooks 只能启用一套，部署器会保留用户配置并自动互斥；已有 `AGENTS.md` 不会被短 `CODEBUDDY.md` 遮蔽。CodeBuddy 平台为 oh-story 项目留出的容量边界是最多注册 19 个 Agent，但中文主包实际只注册上述 10 个。部署后必须新开会话并实际调用 Agent 验证 registry；设置页显示角色已启用不等于 `Agent` 工具能够调度。Bash/PowerShell 仅覆盖受测静态写法，工具白名单也不是目录沙箱。
 >
 > **ZCode 用户：** 稳定版先用上方 Release 压缩包安装；把浮动仓库加入 Plugin Management marketplace 仅用于开发测试（dev-only）。安装后可用 `$story`、`$story-setup` 或 `/` 面板调用 18 个 Skills/Commands。`$story-setup` 选择 `target_cli=zcode` 会部署 `.zcode/skills/`、`.zcode/commands/`、`.zcode/hooks/story_zcode_hook.js`，安全合并 `.zcode/config.json` 与根 `AGENTS.md`；Hook 依赖 PATH 中的 `node`。ZCode 3.3.4 不执行项目/plugin custom agents，也没有 `PreCompact` / `SessionEnd`，相关流程会明确降级 solo/direct，compact 后由 `SessionStart` 恢复上下文。
 >
@@ -158,7 +158,7 @@ npx skills add https://github.com/qin1473692580-ux/oh-story-claudecode/releases/
 >
 > 升级后如果项目里已经跑过 `/story-setup`，建议在项目根重跑一次 `/story-setup`，同步 hooks / agents / references。每版变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Releases](https://github.com/qin1473692580-ux/oh-story-claudecode/releases)；发版流程见 [RELEASING.md](RELEASING.md)。
 
-> **多 agent 协作要先部署再新开会话**：中文主包在 TRAE 的名册为 8 个通用专业 agent（story-architect、narrative-writer、consistency-checker、revision-governor 等）+ 5 个数据分析精确角色，共 13 个；WorkBuddy 名册为相同的 8 个通用角色 + 数据抓取角色 + 数据只读池化 runner，共 10 张物理卡。Claude Code / Codex / TRAE Code / WorkBuddy 都建议在部署后新开会话。ZCode 3.3.4、OpenClaw Phase 1、Reasonix Phase 1 与 generic 路径默认走 skills + solo fallback。判断是否生效：新会话里跑 `/story-review`（WorkBuddy plugin-only 用 `/oh-story:story-review`），报告头是 `Effective Mode: full/lean` 即注册成功，是 `Fallback: ... -> solo` 说明当前运行时未暴露该 agent；WorkBuddy 还必须实际调用基础 Agent、`story-data-fetcher` 及 `story-data-readonly-runner` 承载的一个逻辑角色，不能把设置页的启用状态当成 registry 调度证据。
+> **多 agent 协作要先部署再新开会话**：中文主包在 TRAE 实际注册 8 个通用专业 Agent（story-architect、narrative-writer、consistency-checker、revision-governor 等）+ 5 个数据分析精确角色，共 13 个 Agent；WorkBuddy 实际注册相同的 8 个通用角色 + 数据抓取角色 + 数据只读池化 Runner，共 10 个 Agent。Claude Code / Codex / TRAE Code / WorkBuddy 都建议在部署后新开会话。ZCode 3.3.4、OpenClaw Phase 1、Reasonix Phase 1 与 generic 路径默认走 skills + solo fallback。判断是否生效：新会话里跑 `/story-review`（WorkBuddy plugin-only 用 `/oh-story:story-review`），报告头是 `Effective Mode: full/lean` 即注册成功，是 `Fallback: ... -> solo` 说明当前运行时未暴露该 Agent；WorkBuddy 还必须实际调用基础 Agent、`story-data-fetcher` 及 `story-data-readonly-runner` 承载的一种逻辑职责，不能把设置页的启用状态当成 registry 调度证据。
 
 > **导入续写顺序：** 推荐先在写作项目根运行 `/story-setup`（部署 hooks/agents/AGENTS），新开/刷新会话后运行 `/story-import` 导入已有小说，再用 `/story-long-write 日更` 或 `/story-long-write 写第N章` 续写。也可以直接运行 `/story-import`；它会先检测是否已 setup，未部署时让你选择先去 setup 或继续串行导入。
 
@@ -211,7 +211,7 @@ Dashboard 的自动化测试使用仓库内即时生成的中性夹具，不依�
 
 Agent 按需加载 `references/` 中的写作理论（角色设计、对话技法、反转工具箱等 100+ 份方法论文件），不预占上下文。
 
-TRAE 项目部署时，以上 8 个通用 Agent 与 5 个数据分析精确角色构成中文主包的 13 张物理卡。WorkBuddy 项目部署使用 10 张物理卡（8 个通用 + `story-data-fetcher` + `story-data-readonly-runner`）；readonly runner 按 Skill 内角色卡承载其余四个只读数据逻辑角色。WorkBuddy 的 19 张上限仅是平台容量边界，不是主包实际部署数量。
+TRAE 项目部署时，以上 8 个通用 Agent 与 5 个数据分析精确角色会实际注册为 13 个中文主包 Agent。WorkBuddy 项目部署会实际注册 10 个 Agent（8 个通用角色 + `story-data-fetcher` + `story-data-readonly-runner`）；`story-data-readonly-runner` 按任务加载 Skill 内对应角色规则，可承担其余四种只读数据分析职责，这四种职责不额外占用 registry 名额。WorkBuddy 的 19 个 Agent 上限仅是平台容量边界，中文主包实际注册 10 个。
 
 ## 自动化 Hooks
 

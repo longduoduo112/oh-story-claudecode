@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## v0.9.0（2026-09-01）
 
-v0.9.0 聚焦中文主包的写作方法治理与 TRAE Code、WorkBuddy / CodeBuddy Code 原生兼容：长篇写作新增 `A-standard` / `B-distilled` 双分支，TRAE 部署 13 张中文主包 Agent 卡，WorkBuddy 部署 10 张物理卡并用只读池化 Runner 承载数据分析角色。构建、验包与部署统一锁定中文主包的 18 个 canonical Skill，独立海外工具不随本版本打包或适配。
+v0.9.0 聚焦中文主包的写作方法治理与 TRAE Code、WorkBuddy / CodeBuddy Code 原生兼容：长篇写作新增 `A-standard` / `B-distilled` 双分支；TRAE 实际注册 13 个中文主包 Agent，WorkBuddy 实际注册 10 个 Agent，其中只读池化 Runner 可按任务承担四种数据分析职责。构建、验包与部署统一锁定中文主包的 18 个 canonical Skill，独立海外工具不随本版本打包或适配。
 
 ### 长篇写作方法 A / B 分支
 
@@ -13,14 +13,14 @@ v0.9.0 聚焦中文主包的写作方法治理与 TRAE Code、WorkBuddy / CodeBu
 
 ### TRAE Code 与 WorkBuddy / CodeBuddy Code 原生适配
 
-- `story-setup` 新增 `target_cli=trae`。中文主包在 TRAE 按逻辑角色逐卡部署 13 个 Agents（8 通用 + 5 个数据分析精确角色）；WorkBuddy 部署 10 张物理卡（8 通用 + `story-data-fetcher` + `story-data-readonly-runner`），由 readonly pooled runner 承载其余四个只读数据逻辑角色。WorkBuddy 的 19 张上限仅是 CodeBuddy 平台容量边界，不是主包实际卡数。
+- `story-setup` 新增 `target_cli=trae`。中文主包在 TRAE 实际注册 13 个 Agent（8 个通用角色 + 5 个数据分析精确角色）；WorkBuddy 实际注册 10 个 Agent（8 个通用角色 + `story-data-fetcher` + `story-data-readonly-runner`）。其中 `story-data-readonly-runner` 按任务加载对应角色规则，可承担其余四种只读数据分析职责；这四种逻辑职责不分别注册 Agent，因此不额外占用 registry 名额。CodeBuddy agentic registry 的总槽位为 20，所以 oh-story 项目最多注册 19 个 Agent；这只是平台容量边界，中文主包实际注册 10 个。
 - 中文主包的构建、验包与 TRAE / WorkBuddy 项目部署统一锁定精确 18 个 canonical Skill；传错工作区根、出现外来 Skill 或名称替换时在写出产物前 fail closed，独立工具不进中文包也不进本轮平台适配。
 - TRAE Hook 只使用原生事件/工具名，按稳定身份合并用户 hooks，并由 `TRAE_PROJECT_DIR` 避免与 `.claude/settings*.json` 双触发。从 `target_cli` 移除 TRAE 时使用 `disabled-hooks.json` 合并移除且仅移除 oh-story 注册；TRAE / WorkBuddy runner 发现 sentinel 已不含当前端时立即静默返回，防止减端中途失败后旧 runner 继续执行。
 - 共享书目发现核心明确排除路径分段含“备份”“归档”或 `archive` / `archives` 的历史副本；`.active-book` 误指历史树时回退到真实在写书目，不再产生伪连续性欠账。
 - WorkBuddy / CodeBuddy Code 同时支持项目裸 `/story-*` 与 plugin `/oh-story:story-*` 模式；plugin/project Hooks 严格互斥，memory 合并保留既有 `AGENTS.md`。项目 Hook 入口将 CodeBuddy CLI 在 Windows 导出的 `/c/...` 归一化为盘符路径，Bash / PowerShell 受测静态写入面和真实 CLI manifest 继续进入回归。部署后需新开会话并实际调用 Agent；设置页显示角色已启用不等于 Task registry 可调度。
-- WorkBuddy 数据分析适配把 fetcher 保留为精确物理角色，将其余四个只读角色收敛进 `story-data-readonly-runner`；每次调用必须注入 `logical_role`、Skill 内角色卡路径与完整任务合同。TRAE 保留五个数据分析精确角色。
+- WorkBuddy 数据分析适配单独注册 `story-data-fetcher`，并注册 `story-data-readonly-runner` 作为只读池化 Runner；其余四种只读职责由该 Runner 按 `logical_role` 加载 Skill 内角色规则和完整任务合同后执行。TRAE 保留五个分别注册的数据分析精确角色。
 - 发行回归兼容 Codex CLI 0.151+ 的 Skill root 短别名、Windows CRLF 检出、WorkBuddy UTF-8 Hook 输出与 Windows 主机编码的解码/控制台输出边界，以及未预装 `rg` 的 GitHub runner，避免把已发现的 Skill 误报为缺失或把有效 JSON 误报为空输出。
-- 新增 canonical 18 固定部署、WorkBuddy 数据只读池化、19 卡平台容量守卫、中文包边界验证、历史目录过滤、减端、TRAE disabled-hook 合并与 WorkBuddy `/c/...` 路径回归。正式部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`；产品版本升至 v0.9.0，存量项目需重跑 `story-setup` 并新开会话。
+- 新增 canonical 18 固定部署、WorkBuddy 数据只读池化、19 个 Agent 平台容量守卫、中文包边界验证、历史目录过滤、减端、TRAE disabled-hook 合并与 WorkBuddy `/c/...` 路径回归。正式部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`；产品版本升至 v0.9.0，存量项目需重跑 `story-setup` 并新开会话。
 
 ## v0.8.0（2026-08-29）
 
