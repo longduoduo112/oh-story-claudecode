@@ -85,14 +85,44 @@ if len(expected) != expected_count:
         f"repository fixture error: expected {expected_count} skills, found {len(expected)}"
     )
 
-missing = sorted(name for name, path in expected.items() if path not in rendered)
+skill_root = (repo_root / "skills").resolve()
+root_aliases = {
+    alias: Path(path).resolve()
+    for alias, path in re.findall(r"^- `([^`]+)` = `([^`]+)`\s*$", rendered, re.M)
+}
+repository_aliases = {
+    alias for alias, path in root_aliases.items() if path == skill_root
+}
+
+def prompt_has_skill(name, absolute_path):
+    if absolute_path in rendered:
+        return True
+    return any(
+        re.search(
+            rf"\(file:\s*{re.escape(alias)}/{re.escape(name)}/SKILL\.md\)",
+            rendered,
+        )
+        for alias in repository_aliases
+    )
+
+missing = sorted(
+    name for name, path in expected.items() if not prompt_has_skill(name, path)
+)
 if missing:
-    raise SystemExit(f"Codex prompt input omitted repository skills: {missing}")
+    raise SystemExit(
+        "Codex prompt input omitted repository skills: {} "
+        "(repository aliases: {})".format(missing, sorted(repository_aliases))
+    )
 
 repo_pattern = re.compile(
     re.escape(str(repo_root / "skills")) + r"/([^/]+)/SKILL\.md"
 )
 discovered = set(repo_pattern.findall(rendered))
+for alias in repository_aliases:
+    alias_pattern = re.compile(
+        rf"\(file:\s*{re.escape(alias)}/([^/\s)]+)/SKILL\.md\)"
+    )
+    discovered.update(alias_pattern.findall(rendered))
 extra = sorted(discovered - set(expected))
 if extra:
     raise SystemExit(f"Codex discovered unexpected repository skills: {extra}")

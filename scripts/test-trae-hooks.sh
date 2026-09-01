@@ -456,7 +456,7 @@ for malformed_payload in 'not-json' '[]'; do
   out="$(printf '%s' "$malformed_payload" | TRAE_PROJECT_DIR="$ROOT" node "$HOOK" pre-tool-prose-guard 2>> "$TMP_DIR/trae-malformed-input.stderr")"
   assert_denied "$out" "malformed PreToolUse input must fail closed"
 done
-rg -q 'oh-story trae hook' "$TMP_DIR/trae-malformed-input.stderr" || fail "malformed PreToolUse input lacks stderr diagnostics"
+grep -q 'oh-story trae hook' "$TMP_DIR/trae-malformed-input.stderr" || fail "malformed PreToolUse input lacks stderr diagnostics"
 
 NO_PROJECT="$TMP_DIR/no-project"
 mkdir -p "$NO_PROJECT"

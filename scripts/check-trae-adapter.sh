@@ -64,9 +64,11 @@ assert all(re.fullmatch(r'[0-9a-f]{64}', value) for value in hashes)
 
 # v37 及更早的共享核没有 marker。新版首次升级时必须能以历史
 # SHA-256 证明它是 oh-story 资产；否则“只认新 marker”会让现存用户永久无法升级。
-legacy_current = core.replace(b'// oh-story-managed: shared-hook-core\n\n', b'', 1)
-assert hashlib.sha256(legacy_current).hexdigest() in hashes
-assert hashlib.sha256(legacy_current.replace(b'\n', b'\r\n')).hexdigest() in hashes
+core_lf = core.replace(b'\r\n', b'\n')
+legacy_lf = core_lf.replace(b'// oh-story-managed: shared-hook-core\n\n', b'', 1)
+assert legacy_lf != core_lf
+assert hashlib.sha256(legacy_lf).hexdigest() in hashes
+assert hashlib.sha256(legacy_lf.replace(b'\n', b'\r\n')).hexdigest() in hashes
 assert hashlib.sha256(b'user-owned unrelated core\n').hexdigest() not in hashes
 PY
 echo "  OK JSON/JavaScript syntax + shared core parity/ownership registry"

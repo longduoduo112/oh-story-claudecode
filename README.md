@@ -34,7 +34,7 @@
 
 围绕四条线展开：爆款逆向 · 剧情模块化重组 · 上下文状态分层管理 · 人机协同。
 
-> **未发布开发版说明：** 当前 `main` 新增 TRAE Code 与 WorkBuddy / CodeBuddy Code 的原生发现与项目部署适配，但尚未改变现有 Release 状态或产品版本号。中文主包在 TRAE 逐角色部署 13 个 Agents（8 个通用 + 5 个数据分析精确角色）；WorkBuddy 部署 10 张基础物理卡（8 个通用 + `story-data-fetcher` + `story-data-readonly-runner`），其余四个只读数据逻辑角色由 pooled runner 按 Skill 内角色卡执行。CodeBuddy agentic registry 的 20 个总槽位意味着 oh-story 项目物理卡不得超过 19，这是平台容量边界，不是中文主包的实际卡数。TRAE 另处理兼容读取 `.claude/settings*.json` 时的 Hook 去重；WorkBuddy 同时支持命名空间 `/oh-story:story-*` 的 plugin 模式和裸 `/story-*` 的项目模式。两端都需重新部署并新开会话；开发部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`。
+> **v0.9.0 正式版说明：** 本版新增 `A-standard` / `B-distilled` 长篇写作方法治理，并新增 TRAE Code 与 WorkBuddy / CodeBuddy Code 的原生发现与项目部署适配。中文主包在 TRAE 逐角色部署 13 个 Agents（8 个通用 + 5 个数据分析精确角色）；WorkBuddy 部署 10 张基础物理卡（8 个通用 + `story-data-fetcher` + `story-data-readonly-runner`），其余四个只读数据逻辑角色由 pooled runner 按 Skill 内角色卡执行。CodeBuddy agentic registry 的 20 个总槽位意味着 oh-story 项目物理卡不得超过 19，这是平台容量边界，不是中文主包的实际卡数。TRAE 另处理兼容读取 `.claude/settings*.json` 时的 Hook 去重；WorkBuddy 同时支持命名空间 `/oh-story:story-*` 的 plugin 模式和裸 `/story-*` 的项目模式。两端升级后都需重新部署并新开会话；部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`。
 >
 > 本轮升级安全链把中文主包锁定为精确 18 个 Skill：构建、验包和 TRAE / WorkBuddy 项目部署都不从项目旁路吸收独立工具。其他工具既不进中文发行包，也不注入本轮 TRAE / WorkBuddy 适配。书目发现跳过“备份/归档/`archive(s)`”历史树；从 `target_cli` 减端时先备份并只移除受管注册，旧 runner 看到 sentinel 已不含当前端会静默自锁。
 >
@@ -174,7 +174,7 @@ Dashboard 的自动化测试使用仓库内即时生成的中性夹具，不依�
 |:------|:-----|:-----|
 | `story-setup` | `/story-setup` `$story-setup` `/准备写书` | 环境部署 · Claude/OpenCode/Codex/TRAE/WorkBuddy/ZCode/OpenClaw + generic（已有配置安全合并） |
 | `story` | `/story` `$story` `/网文` | 工具箱路由 · 自动分发对应 skill，并可启动本地 Dashboard |
-| `story-long-write` | `/story-long-write` `/写长篇` | 长篇写作 · 大纲搭建、人物设定、正文输出 |
+| `story-long-write` | `/story-long-write` `/写长篇` | 长篇写作 · 大纲搭建、人物设定、A/B 写作方法与正文输出 |
 | `story-long-analyze` | `/story-long-analyze` | 长篇拆文 · 黄金三章、爽点设计、节奏分析 |
 | `story-long-scan` | `/story-long-scan` | 长篇扫榜 · 起点/番茄/晋江市场趋势 |
 | `story-short-write` | `/story-short-write` | 短篇写作 · 情绪设计、反转构思、精修出稿 |

@@ -5,7 +5,7 @@
 - `setup_skill_version: 1.2.22`
 - `agents_version: 39`
 
-> **未发布开发契约：** 以下 TRAE / WorkBuddy 增强仍属于 `Unreleased`。本轮只提升部署合同号，不调整产品版本，也不改变现有 Release 状态。
+> **v0.9.0 正式契约：** TRAE / WorkBuddy 中文主包适配已进入正式发行版。本轮同步提升产品版本与部署合同，独立海外工具不随本版本打包或适配。
 
 `.story-deployed` 缺失任一字段，或 `agents_version` 缺失 / 非整数 / 小于 `39`，都视为待更新部署。直接重新运行 `/story-setup`（Codex / ZCode 用 `$story-setup`，TRAE / WorkBuddy 项目模式用 `/story-setup`，WorkBuddy plugin-only 用 `/oh-story:story-setup`）；不在运行时逐级兼容历史模板。如项目 `agents_version` 大于 `39`，说明本地 story-setup 比项目旧：先更新 oh-story-claudecode，不得用 v39 之前的版本降级覆盖。历史版本改动见仓库根目录 `CHANGELOG.md`。
 
@@ -186,7 +186,7 @@
 
 ### v39（当前）
 
-- `.story-deployed` 的 `agents_version` 升级到 `39`，`setup_skill_version` 升级到 `1.2.22`；产品版本保持 v0.8.0，本合同仍为未发布本地 dev。
+- `.story-deployed` 的 `agents_version` 升级到 `39`，`setup_skill_version` 升级到 `1.2.22`；产品版本升级到 v0.9.0。
 - WorkBuddy 中文主包物理名册由旧口径收敛为 10 张（8 通用 + `story-data-fetcher` + `story-data-readonly-runner`），其余四个只读数据逻辑角色走 pooled runner；19 张仅为平台容量边界。TRAE 保持 13 张逐角色部署。
 - 升级后必须新开会话实调基础 Agent、fetcher 与 readonly pooled runner 的一个逻辑角色；设置页 enabled 不构成 Task registry 验收。
 
