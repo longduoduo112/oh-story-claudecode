@@ -19,7 +19,7 @@ v0.9.0 聚焦中文主包的写作方法治理与 TRAE Code、WorkBuddy / CodeBu
 - 共享书目发现核心明确排除路径分段含“备份”“归档”或 `archive` / `archives` 的历史副本；`.active-book` 误指历史树时回退到真实在写书目，不再产生伪连续性欠账。
 - WorkBuddy / CodeBuddy Code 同时支持项目裸 `/story-*` 与 plugin `/oh-story:story-*` 模式；plugin/project Hooks 严格互斥，memory 合并保留既有 `AGENTS.md`。项目 Hook 入口将 CodeBuddy CLI 在 Windows 导出的 `/c/...` 归一化为盘符路径，Bash / PowerShell 受测静态写入面和真实 CLI manifest 继续进入回归。部署后需新开会话并实际调用 Agent；设置页显示角色已启用不等于 Task registry 可调度。
 - WorkBuddy 数据分析适配把 fetcher 保留为精确物理角色，将其余四个只读角色收敛进 `story-data-readonly-runner`；每次调用必须注入 `logical_role`、Skill 内角色卡路径与完整任务合同。TRAE 保留五个数据分析精确角色。
-- 发行回归兼容 Codex CLI 0.151+ 的 Skill root 短别名、Windows CRLF 检出、WorkBuddy UTF-8 Hook 输出与 Windows 主机编码的解码边界，以及未预装 `rg` 的 GitHub runner，避免把已发现的 Skill 误报为缺失或把有效 JSON 误报为空输出。
+- 发行回归兼容 Codex CLI 0.151+ 的 Skill root 短别名、Windows CRLF 检出、WorkBuddy UTF-8 Hook 输出与 Windows 主机编码的解码/控制台输出边界，以及未预装 `rg` 的 GitHub runner，避免把已发现的 Skill 误报为缺失或把有效 JSON 误报为空输出。
 - 新增 canonical 18 固定部署、WorkBuddy 数据只读池化、19 卡平台容量守卫、中文包边界验证、历史目录过滤、减端、TRAE disabled-hook 合并与 WorkBuddy `/c/...` 路径回归。正式部署契约为 `setup_skill_version: 1.2.22` / `agents_version: 39`；产品版本升至 v0.9.0，存量项目需重跑 `story-setup` 并新开会话。
 
 ## v0.8.0（2026-08-29）

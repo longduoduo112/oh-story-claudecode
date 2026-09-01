@@ -34,6 +34,15 @@ def require(condition: object, message: str) -> None:
         raise AssertionError(message)
 
 
+def configure_utf8_stdio() -> None:
+    """Keep Chinese diagnostics portable on non-UTF-8 Windows consoles."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="strict")
+
+
 def git_for_windows_bash() -> str:
     """Locate Git for Windows Bash, the shell CodeBuddy uses for Hooks."""
 
@@ -782,6 +791,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    configure_utf8_stdio()
     try:
         raise SystemExit(main())
     except (AssertionError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as exc:
